@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: clara
+      POSTGRES_PASSWORD: clara
+      POSTGRES_DB: clara
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clara"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # After first run: docker compose exec ollama ollama pull nomic-embed-text
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=clara
+      - POSTGRES_PWD=clara
+      - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    volumes:
+      - ./configs/temporal:/etc/temporal/config/dynamicconfig
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    ports:
+      - "8088:8080"
+    depends_on:
+      - temporal
+
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    environment:
+      - CLARA_DB_DSN=postgres://clara:clara@postgres:5432/clara?sslmode=disable
+      - CLARA_OLLAMA_URL=http://ollama:11434
+      - CLARA_TEMPORAL_HOST=temporal:7233
+      - CLARA_GRPC_ADDR=:50051
+      - CLARA_HTTP_ADDR=:8080
+    ports:
+      - "50051:50051"
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  ollama_models:
