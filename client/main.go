@@ -9,9 +9,9 @@ import (
 )
 
 func main() {
-	serverURL := envOr("CLARA_SERVER_URL", "http://localhost:8080")
+	cfg := loadClientConfig()
 
-	apiClient := tui.NewAPIClient(serverURL)
+	apiClient := tui.NewAPIClient(cfg.Server.URL)
 	model := tui.New(apiClient)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
@@ -19,11 +19,4 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

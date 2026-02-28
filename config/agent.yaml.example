@@ -1,0 +1,24 @@
+# Clara agent configuration
+# Install to: ~/.config/clara/agent.yaml
+# All values can be overridden with environment variables (listed in comments).
+
+server:
+  # Address of the clara-server gRPC endpoint.
+  # Env: CLARA_SERVER_ADDR
+  addr: "localhost:50051"
+
+notes:
+  # Root directory to watch for markdown files (.md, .markdown).
+  # Subdirectories are watched recursively.
+  # Env: CLARA_NOTES_DIR
+  dir: "~/notes"
+
+# Stable identifier for this agent instance. Useful when running multiple
+# agents (e.g. laptop + desktop) against the same server in the future.
+# Env: CLARA_AGENT_ID
+agent_id: "default"
+
+# How often to poll the server for approved actions to execute locally.
+# Accepts Go duration strings: 10s, 1m, 30s, etc.
+# Env: CLARA_POLL_INTERVAL
+poll_interval: "10s"

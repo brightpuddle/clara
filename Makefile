@@ -35,3 +35,16 @@ setup-ollama:
 	brew services start ollama
 	ollama pull nomic-embed-text
 	@echo "Ollama running at http://localhost:11434"
+
+# Copy example configs to ~/.config/clara/ without overwriting existing files.
+install-config:
+	@mkdir -p "$${XDG_CONFIG_HOME:-$$HOME/.config}/clara"
+	@for f in config/*.yaml.example; do \
+		dest="$${XDG_CONFIG_HOME:-$$HOME/.config}/clara/$$(basename $$f .example)"; \
+		if [ -f "$$dest" ]; then \
+			echo "skip (exists): $$dest"; \
+		else \
+			cp "$$f" "$$dest"; \
+			echo "installed: $$dest"; \
+		fi; \
+	done

@@ -1,0 +1,10 @@
+# Clara TUI client configuration
+# Install to: ~/.config/clara/client.yaml
+# All values can be overridden with environment variables (listed in comments).
+
+server:
+  # Base URL of the clara-server REST API.
+  # On the same machine: http://localhost:8080
+  # Remote (via Tailscale or LAN): http://mac-mini.local:8080
+  # Env: CLARA_SERVER_URL
+  url: "http://localhost:8080"

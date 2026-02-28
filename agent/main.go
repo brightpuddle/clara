@@ -14,23 +14,23 @@ import (
 )
 
 func main() {
-	cfg := configFromEnv()
+	cfg := loadAgentConfig()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
 	// gRPC client to clara-server
-	client, err := ingest.NewClient(cfg.ServerAddr)
+	client, err := ingest.NewClient(cfg.Server.Addr)
 	if err != nil {
-		slog.Error("failed to connect to server", "err", err, "addr", cfg.ServerAddr)
+		slog.Error("failed to connect to server", "err", err, "addr", cfg.Server.Addr)
 		os.Exit(1)
 	}
 	defer client.Close()
 
-	slog.Info("connected to server", "addr", cfg.ServerAddr)
+	slog.Info("connected to server", "addr", cfg.Server.Addr)
 
-	// Start markdown watcher — sends notes to server on create/modify
-	w, err := watcher.New(cfg.NotesDir, client)
+	// Start markdown watcher
+	w, err := watcher.New(cfg.Notes.Dir, client)
 	if err != nil {
 		slog.Error("failed to create watcher", "err", err)
 		os.Exit(1)
@@ -42,21 +42,19 @@ func main() {
 		}
 	}()
 
-	// Initial full scan
 	go func() {
-		slog.Info("scanning notes directory", "dir", cfg.NotesDir)
+		slog.Info("scanning notes directory", "dir", cfg.Notes.Dir)
 		if err := w.Scan(ctx); err != nil {
 			slog.Warn("initial scan error", "err", err)
 		}
 	}()
 
-	// Poll server for approved actions and execute them
-	ticker := time.NewTicker(cfg.PollInterval)
+	ticker := time.NewTicker(cfg.parsedPollInterval())
 	defer ticker.Stop()
 
 	executor := actions.NewExecutor()
 
-	slog.Info("agent running", "notes_dir", cfg.NotesDir, "poll_interval", cfg.PollInterval)
+	slog.Info("agent running", "notes_dir", cfg.Notes.Dir, "poll_interval", cfg.PollInterval)
 
 	for {
 		select {
@@ -91,27 +89,4 @@ func pollAndExecute(ctx context.Context, client *ingest.Client, executor *action
 		}
 	}
 	return nil
-}
-
-type config struct {
-	ServerAddr   string
-	NotesDir     string
-	PollInterval time.Duration
-	AgentID      string
-}
-
-func configFromEnv() config {
-	return config{
-		ServerAddr:   envOr("CLARA_SERVER_ADDR", "localhost:50051"),
-		NotesDir:     envOr("CLARA_NOTES_DIR", os.ExpandEnv("$HOME/notes")),
-		PollInterval: 10 * time.Second,
-		AgentID:      envOr("CLARA_AGENT_ID", "default"),
-	}
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

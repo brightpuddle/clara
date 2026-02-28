@@ -19,11 +19,11 @@ const LinkAnalysisQueue = "link-analysis"
 // Server implements pb.IngestServiceServer.
 type Server struct {
 	db       *db.DB
-	embedder *rag.Embedder
+	embedder rag.Embedder
 	temporal client.Client
 }
 
-func New(database *db.DB, embedder *rag.Embedder, temporalClient client.Client) *Server {
+func New(database *db.DB, embedder rag.Embedder, temporalClient client.Client) *Server {
 	return &Server{db: database, embedder: embedder, temporal: temporalClient}
 }
 
