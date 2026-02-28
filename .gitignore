@@ -6,3 +6,8 @@
 clara
 clara-agent
 clara-server
+
+# Xcode generated files (source of truth is apple/project.yml)
+apple/Clara.xcodeproj/
+apple/Clara.xcworkspace/
+apple/DerivedData/
