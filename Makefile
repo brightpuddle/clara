@@ -1,4 +1,4 @@
-.PHONY: proto build build-server build-agent build-client clean docker-up docker-down
+.PHONY: proto build build-server build-agent build-client clean docker-up docker-down setup
 
 BINARY_SERVER = clara-server
 BINARY_AGENT  = clara-agent
@@ -21,11 +21,17 @@ build-client:
 clean:
 	rm -f $(BINARY_SERVER) $(BINARY_AGENT) $(BINARY_CLIENT)
 
+# Start infrastructure (postgres + temporal). Ollama runs natively — see setup target.
 docker-up:
 	docker compose -f docker/docker-compose.yml up -d
 
 docker-down:
 	docker compose -f docker/docker-compose.yml down
 
-ollama-pull:
-	docker compose -f docker/docker-compose.yml exec ollama ollama pull nomic-embed-text
+# One-time setup for the M4 Mini: install and configure native Ollama via Homebrew.
+# Ollama must run natively to use Apple Silicon GPU (Metal). Docker blocks GPU access.
+setup-ollama:
+	@which ollama > /dev/null 2>&1 || brew install ollama
+	brew services start ollama
+	ollama pull nomic-embed-text
+	@echo "Ollama running at http://localhost:11434"

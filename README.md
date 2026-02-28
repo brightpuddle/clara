@@ -7,45 +7,55 @@ A personal information management system and AI assistant built on your own data
 ## Architecture
 
 ```
-M4 Mac Mini (Server)          Laptop
-┌──────────────────────┐      ┌─────────────────┐   ┌────────────────┐
-│ postgres + pgvector  │      │ clara-agent      │   │ clara (TUI)    │
-│ ollama               │◄─────│ watches ~/notes/ │   │ review links   │
-│ temporal             │ gRPC │ ingests changes  │   │ y/n approve    │
-│ clara-server (API)   │◄─────┴─────────────────┘   │                │
-│                      │◄─── REST ──────────────────┘
-└──────────────────────┘
+M4 Mac Mini
+┌─────────────────────────────────────────────────────┐
+│ brew services (native, full Metal GPU):             │
+│   ollama        :11434  ← 5-10× faster than Docker │
+│   clara-server  :8080, :50051                       │
+│                                                     │
+│ docker compose (infrastructure only):               │
+│   postgres + pgvector  :5432                        │
+│   temporal             :7233                        │
+│   temporal-ui          :8088                        │
+└─────────────────────────────────────────────────────┘
+         │ gRPC :50051          │ REST :8080
+         ▼                      ▼
+  clara-agent (laptop)    clara TUI (anywhere on LAN)
+  watches ~/notes/
 ```
+
+> **Why native Ollama?** Docker/Podman on macOS runs inside a Linux VM with no
+> access to Apple Silicon's Metal GPU. Running Ollama in a container gives
+> CPU-only inference — 5–10× slower. Always run Ollama natively on macOS.
 
 ## Quickstart
 
-### 1. Start the server stack (on the M4 Mini)
+### 1. Install native Ollama (M4 Mini, one-time)
 
 ```bash
-# Pull the nomic-embed-text model on first run
+make setup-ollama
+```
+
+This installs Ollama via Homebrew, starts it as a background service, and pulls
+the `nomic-embed-text` embedding model.
+
+### 2. Start infrastructure (postgres + temporal)
+
+```bash
 make docker-up
-make ollama-pull
 ```
 
-Wait for all services to be healthy:
+### 3. Build and start the server
+
 ```bash
-docker compose -f docker/docker-compose.yml ps
+make build-server
+./clara-server
 ```
 
-### 2. Build the binaries
+### 4. Start the agent (on your laptop)
 
 ```bash
-make build
-```
-
-This produces:
-- `clara-server` — the server (runs inside Docker, but can also run standalone)
-- `clara-agent` — the laptop daemon
-- `clara` — the TUI client
-
-### 3. Start the agent (on your laptop)
-
-```bash
+make build-agent
 CLARA_NOTES_DIR=~/notes CLARA_SERVER_ADDR=mac-mini.local:50051 ./clara-agent
 ```
 
@@ -53,7 +63,7 @@ The agent will:
 1. Do an initial scan of your notes directory and ingest all `.md` files
 2. Watch for subsequent changes and ingest them incrementally
 
-### 4. Review suggestions in the TUI
+### 5. Review suggestions in the TUI
 
 Once the agent has ingested notes and the Temporal workflow has run link analysis:
 
@@ -69,7 +79,7 @@ Keys:
 - `/` — filter/search
 - `q` — quit
 
-### 5. Approved links
+### 6. Approved links
 
 Within 10 seconds of approving, the agent will add the link to the appropriate note file:
 
