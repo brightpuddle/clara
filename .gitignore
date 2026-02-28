@@ -3,3 +3,6 @@
 # air live-reload temp dirs
 .air-tmp-server/
 .air-tmp-agent/
+clara
+clara-agent
+clara-server
