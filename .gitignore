@@ -1,1 +1,5 @@
 .aider*
+
+# air live-reload temp dirs
+.air-tmp-server/
+.air-tmp-agent/

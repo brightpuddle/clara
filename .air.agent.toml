@@ -1,0 +1,25 @@
+root = "."
+tmp_dir = ".air-tmp-agent"
+
+[build]
+  cmd        = "go build -o .air-tmp-agent/clara-agent ./agent"
+  bin        = ".air-tmp-agent/clara-agent"
+  full_bin   = ".air-tmp-agent/clara-agent"
+  include_dir = ["agent", "internal", "pb"]
+  include_ext = ["go"]
+  exclude_dir = ["vendor", ".air-tmp-server", ".air-tmp-agent"]
+  delay       = 500          # ms after last change before rebuilding
+  kill_delay  = "1s"         # grace period before SIGKILL after SIGTERM
+  rerun       = false
+
+[log]
+  time = false
+
+[color]
+  build  = "yellow"
+  runner = "green"
+  app    = "cyan"
+  watcher = "magenta"
+
+[misc]
+  clean_on_exit = true       # remove tmp binary on exit
