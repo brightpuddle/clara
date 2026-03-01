@@ -34,3 +34,13 @@ func ConfigFile(name string) (string, error) {
 	}
 	return filepath.Join(dir, name), nil
 }
+
+// RuntimeFile returns the full path to a named runtime file (e.g. a Unix
+// domain socket) inside the clara config directory.  The directory is created
+// if it does not already exist.
+//
+// On macOS there is no standard XDG_RUNTIME_DIR, so the config directory is
+// reused for runtime state.
+func RuntimeFile(name string) (string, error) {
+	return ConfigFile(name)
+}

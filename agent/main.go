@@ -29,6 +29,9 @@ func main() {
 
 	slog.Info("connected to server", "addr", cfg.Server.Addr)
 
+	stats := newAgentStats(cfg.Notes.Dir, cfg.Server.Addr)
+	go serveSocket(ctx, stats, cancel)
+
 	// Start markdown watcher
 	w, err := watcher.New(cfg.Notes.Dir, client)
 	if err != nil {
@@ -62,14 +65,14 @@ func main() {
 			slog.Info("agent shutting down")
 			return
 		case <-ticker.C:
-			if err := pollAndExecute(ctx, client, executor); err != nil {
+			if err := pollAndExecute(ctx, client, executor, stats); err != nil {
 				slog.Warn("action poll error", "err", err)
 			}
 		}
 	}
 }
 
-func pollAndExecute(ctx context.Context, client *ingest.Client, executor *actions.Executor) error {
+func pollAndExecute(ctx context.Context, client *ingest.Client, executor *actions.Executor, stats *agentStats) error {
 	pendingActions, err := client.GetPendingActions(ctx)
 	if err != nil {
 		return err
@@ -83,6 +86,9 @@ func pollAndExecute(ctx context.Context, client *ingest.Client, executor *action
 			errMsg = execErr.Error()
 		} else {
 			slog.Info("action applied", "id", action.ActionId, "path", action.DocumentPath)
+			if stats != nil {
+				stats.actionsApplied.Add(1)
+			}
 		}
 		if ackErr := client.AckAction(ctx, action.ActionId, success, errMsg); ackErr != nil {
 			slog.Warn("ack failed", "id", action.ActionId, "err", ackErr)

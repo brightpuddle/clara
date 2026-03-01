@@ -15,6 +15,7 @@ import (
 	"github.com/brightpuddle/clara/server/api"
 	"github.com/brightpuddle/clara/server/db"
 	grpcserver "github.com/brightpuddle/clara/server/grpc"
+	"github.com/brightpuddle/clara/server/web"
 	"github.com/brightpuddle/clara/server/workers"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -90,6 +91,8 @@ func run() error {
 
 	// HTTP/REST server
 	handler := api.NewHandler(database)
+	webHandler := web.NewWebHandler(database)
+	handler.SetWebHandler(webHandler.Router())
 	httpSrv := &http.Server{
 		Addr:         cfg.HTTP.Addr,
 		Handler:      handler.Router(),

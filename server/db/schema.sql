@@ -40,8 +40,15 @@ CREATE TABLE IF NOT EXISTS suggestions (
     similarity    FLOAT       NOT NULL,
     context       TEXT        NOT NULL, -- explanation shown to user
     status        TEXT        NOT NULL DEFAULT 'pending', -- pending|approved|rejected|applied
+    action_surface TEXT       NOT NULL DEFAULT 'local_mac', -- cloud|local_mac
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- prevent duplicate suggestions for the same pair
     UNIQUE (source_doc_id, target_doc_id)
 );
+
+-- Add action_surface column to existing installations (idempotent)
+DO $$ BEGIN
+    ALTER TABLE suggestions ADD COLUMN action_surface TEXT NOT NULL DEFAULT 'local_mac';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;

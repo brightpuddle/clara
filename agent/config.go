@@ -14,7 +14,8 @@ type agentConfig struct {
 		Addr string `yaml:"addr"`
 	} `yaml:"server"`
 	Notes struct {
-		Dir string `yaml:"dir"`
+		Dir     string `yaml:"dir"`
+		Storage string `yaml:"storage"` // local | icloud — determines action_surface for proposals
 	} `yaml:"notes"`
 	AgentID      string `yaml:"agent_id"`
 	PollInterval string `yaml:"poll_interval"`
@@ -45,6 +46,7 @@ func defaultAgentConfig() agentConfig {
 	var cfg agentConfig
 	cfg.Server.Addr = "localhost:50051"
 	cfg.Notes.Dir = home + "/notes"
+	cfg.Notes.Storage = "local"
 	cfg.AgentID = "default"
 	cfg.PollInterval = "10s"
 	return cfg
@@ -56,6 +58,9 @@ func applyAgentEnvOverrides(cfg *agentConfig) {
 	}
 	if v := os.Getenv("CLARA_NOTES_DIR"); v != "" {
 		cfg.Notes.Dir = v
+	}
+	if v := os.Getenv("CLARA_NOTES_STORAGE"); v != "" {
+		cfg.Notes.Storage = v
 	}
 	if v := os.Getenv("CLARA_AGENT_ID"); v != "" {
 		cfg.AgentID = v

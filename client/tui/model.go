@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,10 +47,11 @@ const (
 // ---- Today data -------------------------------------------------------------
 
 type todayItem struct {
-	title     string // short display line, e.g. "meeting-notes  →  [[Project Alpha]]"
-	detail    string // secondary info, e.g. "85% match"
-	expandText string // shown in chat viewport when item is selected
-	prefill   string // input pre-fill, e.g. "/approve 42"
+	title      string       // short display line, e.g. "meeting-notes  →  [[Project Alpha]]"
+	detail     string       // secondary info, e.g. "85% match"
+	expandText string       // shown in chat viewport when item is selected
+	prefill    string       // input pre-fill, e.g. "/approve 42"
+	proposal   *ClaraItemJSON // underlying proposal (nil for non-proposal items)
 }
 
 type todaySection struct {
@@ -117,20 +118,13 @@ func (m Model) inputAreaHeight() int {
 	return n
 }
 
-func (m Model) statusAreaHeight() int {
-	if len(m.inputCandidates()) > 0 {
-		return 1
-	}
-	return 0
-}
-
 func (m Model) viewportHeight() int {
-	// Today mode: separator(1) + hint(1); Chat mode: separator(1) + input(n) + status(0|1)
+	// Today mode: separator(1) + hint(1); Chat mode: separator(1) + input(n) + status(1, always reserved)
 	var bottomHeight int
 	if m.screen == screenToday {
 		bottomHeight = 2 // separator + hint line
 	} else {
-		bottomHeight = 1 + m.inputAreaHeight() + m.statusAreaHeight()
+		bottomHeight = 1 + m.inputAreaHeight() + 1 // separator + input + status (always 1 line)
 	}
 	h := m.height - bottomHeight
 	if h < 1 {
@@ -139,17 +133,41 @@ func (m Model) viewportHeight() int {
 	return h
 }
 
-// inputCandidates returns visible command names matching the current input prefix.
+// inputCompletionBase returns the fixed prefix to preserve when tab-completing.
+// For top-level completion it is "/"; for subcommand completion it is "/cmd ".
+func (m Model) inputCompletionBase() string {
+	val := strings.TrimLeft(m.input.value(), " \t") // keep trailing space
+	if !strings.HasPrefix(val, "/") {
+		return "/"
+	}
+	withoutSlash := val[1:]
+	idx := strings.IndexAny(withoutSlash, " \t")
+	if idx < 0 {
+		return "/"
+	}
+	return "/" + withoutSlash[:idx] + " "
+}
+
+// inputCandidates returns completable names matching the current input prefix.
+// For top-level it returns command names; for subcommands it returns sub-names.
 func (m Model) inputCandidates() []string {
-	val := strings.TrimSpace(m.input.value())
+	val := strings.TrimLeft(m.input.value(), " \t") // keep trailing space
 	if !strings.HasPrefix(val, "/") {
 		return nil
 	}
 	withoutSlash := val[1:]
-	if strings.ContainsAny(withoutSlash, " \t") {
-		return nil
+	idx := strings.IndexAny(withoutSlash, " \t")
+	if idx < 0 {
+		// Top-level: no space yet.
+		return candidatesFor(withoutSlash)
 	}
-	return candidatesFor(withoutSlash)
+	// Subcommand: text after the first space (must be a single word).
+	cmdName := withoutSlash[:idx]
+	rest := strings.TrimLeft(withoutSlash[idx+1:], " \t")
+	if strings.ContainsAny(rest, " \t") {
+		return nil // second space — nothing to complete
+	}
+	return subCandidatesFor(cmdName, rest)
 }
 
 // updateViewportContent refreshes the viewport based on current screen.
@@ -174,31 +192,28 @@ func (m Model) flatTodayItems() []todayItem {
 
 func (m Model) loadToday() tea.Cmd {
 	return func() tea.Msg {
-		suggestions, err := m.api.ListSuggestions(context.Background())
+		proposals, err := m.api.GetProposals(context.Background())
 		if err != nil {
 			// Return empty today on API error so startup is not blocked.
 			return todayLoadedMsg{}
 		}
 
 		var items []todayItem
-		for _, s := range suggestions {
-			src := filepath.Base(s.SourcePath)
-			src = strings.TrimSuffix(src, filepath.Ext(src))
-			title := fmt.Sprintf("%s  →  [[%s]]", src, s.TargetTitle)
-			detail := fmt.Sprintf("%.0f%% match", s.Similarity*100)
-
-			var expand strings.Builder
-			fmt.Fprintf(&expand, "%s  →  [[%s]]  %.0f%%\n", src, s.TargetTitle, s.Similarity*100)
-			if s.Context != "" {
-				fmt.Fprintf(&expand, "  %s\n", truncate(s.Context, 100))
+		for i := range proposals {
+			p := &proposals[i]
+			title, detail := proposalSummary(p)
+			expandText := proposalExpandText(p)
+			// Extract numeric ID from "suggestion-<n>"
+			prefill := fmt.Sprintf("/approve %s", p.ID)
+			if numID := extractNumericID(p.ID); numID != "" {
+				prefill = fmt.Sprintf("/approve %s", numID)
 			}
-			fmt.Fprintf(&expand, "\n  /approve %-6d  or  /reject %d", s.ID, s.ID)
-
 			items = append(items, todayItem{
-				title:     title,
-				detail:    detail,
-				expandText: expand.String(),
-				prefill:   fmt.Sprintf("/approve %d", s.ID),
+				title:      title,
+				detail:     detail,
+				expandText: expandText,
+				prefill:    prefill,
+				proposal:   p,
 			})
 		}
 
@@ -208,6 +223,59 @@ func (m Model) loadToday() tea.Cmd {
 		}
 		return todayLoadedMsg{sections: sections}
 	}
+}
+
+// proposalSummary returns the one-line title and detail for the today list.
+func proposalSummary(p *ClaraItemJSON) (title, detail string) {
+	if p.Body == "" {
+		return p.ID, ""
+	}
+	// First non-empty line of the body is the title.
+	lines := strings.SplitN(p.Body, "\n", 2)
+	title = strings.TrimSpace(lines[0])
+	if len(lines) > 1 {
+		// Find the similarity line for detail.
+		for _, line := range strings.Split(lines[1], "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "Similarity:") {
+				detail = line
+				break
+			}
+		}
+	}
+	return title, detail
+}
+
+// proposalExpandText renders the proposal as YAML frontmatter + markdown for
+// display in the chat viewport when the user selects it.
+func proposalExpandText(p *ClaraItemJSON) string {
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("id:             %s\n", p.ID))
+	sb.WriteString(fmt.Sprintf("type:           %s\n", p.Type))
+	sb.WriteString(fmt.Sprintf("source:         %s\n", p.Source))
+	if p.SourceRef != "" {
+		sb.WriteString(fmt.Sprintf("source_ref:     %s\n", p.SourceRef))
+	}
+	sb.WriteString(fmt.Sprintf("status:         %s\n", p.Status))
+	sb.WriteString(fmt.Sprintf("action_surface: %s\n", p.ActionSurface))
+	sb.WriteString("---\n")
+	if p.Body != "" {
+		sb.WriteString(p.Body)
+		if !strings.HasSuffix(p.Body, "\n") {
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
+}
+
+// extractNumericID extracts the numeric part from "suggestion-42" → "42".
+func extractNumericID(id string) string {
+	parts := strings.SplitN(id, "-", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return id
 }
 
 // ---- Update -----------------------------------------------------------------
@@ -258,6 +326,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case findReadyMsg:
 		cmd = execFzf(msg.files)
+
+	case editDoneMsg:
+		if msg.err != nil {
+			m.history = append(m.history, chatEntry{kindError, "Edit error: " + msg.err.Error()})
+		} else if msg.original != nil && len(msg.content) > 0 {
+			// Parse status from edited YAML frontmatter; apply approve/dismiss accordingly.
+			edited := parseEditedStatus(msg.content)
+			var result string
+			var apiErr error
+			switch edited {
+			case "approved":
+				if numID := extractNumericID(msg.original.ID); numID != "" {
+					result, apiErr = runApproveByID(numID, m.api)
+				}
+			case "dismissed":
+				if numID := extractNumericID(msg.original.ID); numID != "" {
+					if n, convErr := strconv.ParseInt(numID, 10, 64); convErr == nil {
+						apiErr = m.api.Dismiss(context.Background(), n)
+						if apiErr == nil {
+							result = "Dismissed: " + msg.original.ID
+						}
+					}
+				}
+			default:
+				result = "Saved (no status change)"
+			}
+			if apiErr != nil {
+				m.history = append(m.history, chatEntry{kindError, "Apply error: " + apiErr.Error()})
+			} else if result != "" {
+				m.history = append(m.history, chatEntry{kindResult, result})
+			}
+		}
+		m.screen = screenChat
+		m.vp.SetContent(m.renderHistory())
+		m.vp.GotoBottom()
 
 	case tea.KeyMsg:
 		if m.screen == screenToday {
@@ -417,6 +520,16 @@ func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if line == "" {
 			return m, nil
 		}
+		// Handle /edit <n> specially: needs access to today items.
+		if cmd, handled := m.handleEditCommand(line); handled {
+			m.history = append(m.history, chatEntry{kindEcho, line})
+			m.input.clear()
+			m.input.mode = modeNormal
+			m.tabIndex = -1
+			m.vp.SetContent(m.renderHistory())
+			m.vp.GotoBottom()
+			return m, cmd
+		}
 		m.history = append(m.history, chatEntry{kindEcho, line})
 		m.input.clear()
 		m.input.mode = modeNormal
@@ -431,12 +544,13 @@ func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if len(candidates) == 0 {
 			return m, nil
 		}
+		base := m.inputCompletionBase() // capture before input is modified
 		if len(candidates) == 1 {
-			m.setInputToCommand(candidates[0], true)
+			m.setInputTo(base + candidates[0] + " ")
 			m.tabIndex = -1
 		} else {
 			m.tabIndex = (m.tabIndex + 1) % len(candidates)
-			m.setInputToCommand(candidates[m.tabIndex], false)
+			m.setInputTo(base + candidates[m.tabIndex])
 		}
 		return m, nil
 
@@ -466,15 +580,65 @@ func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) setInputToCommand(name string, trailingSpace bool) {
+func (m *Model) setInputTo(s string) {
 	m.input.clear()
-	s := "/" + name
-	if trailingSpace {
-		s += " "
-	}
 	for _, r := range s {
 		m.input.insertChar(r)
 	}
+}
+
+// handleEditCommand detects "/edit <n>" and returns the editor tea.Cmd.
+// Returns (nil, false) if the line is not an edit command.
+func (m Model) handleEditCommand(line string) (tea.Cmd, bool) {
+	bare := strings.TrimPrefix(line, "/")
+	name, args := parseLine(bare)
+	if !strings.HasPrefix("edit", name) || name == "" {
+		return nil, false
+	}
+	if len(args) == 0 {
+		return func() tea.Msg {
+			return inputResultMsg{err: fmt.Errorf("usage: /edit <number>")}
+		}, true
+	}
+	n, err := strconv.Atoi(args[0])
+	if err != nil || n < 1 {
+		return func() tea.Msg {
+			return inputResultMsg{err: fmt.Errorf("invalid item number: %s", args[0])}
+		}, true
+	}
+	items := m.flatTodayItems()
+	if n > len(items) {
+		return func() tea.Msg {
+			return inputResultMsg{err: fmt.Errorf("item %d not found", n)}
+		}, true
+	}
+	item := items[n-1]
+	if item.proposal == nil {
+		return func() tea.Msg {
+			return inputResultMsg{err: fmt.Errorf("item %d is not editable", n)}
+		}, true
+	}
+	return editItemCmd(item.proposal), true
+}
+
+// parseEditedStatus extracts the status value from YAML+md content bytes.
+func parseEditedStatus(content []byte) string {
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "status:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "status:"))
+		}
+	}
+	return ""
+}
+
+// runApproveByID calls the approve endpoint for a numeric-string ID.
+func runApproveByID(numID string, api *APIClient) (string, error) {
+	id, err := strconv.Atoi(numID)
+	if err != nil {
+		return "", fmt.Errorf("invalid id: %s", numID)
+	}
+	return runApprove(context.Background(), []string{strconv.Itoa(id)}, api)
 }
 
 // ---- Rendering --------------------------------------------------------------
@@ -561,9 +725,15 @@ func (m Model) statusView() string {
 	if len(candidates) == 0 {
 		return ""
 	}
+	isSubcmd := m.inputCompletionBase() != "/"
 	parts := make([]string, len(candidates))
 	for i, name := range candidates {
-		label := "/" + name
+		var label string
+		if isSubcmd {
+			label = name // no slash for subcommand options
+		} else {
+			label = "/" + name
+		}
 		if i == m.tabIndex {
 			parts[i] = tabSelStyle.Render(label)
 		} else {
@@ -599,10 +769,7 @@ func (m Model) View() string {
 		promptStyle.Render("❯"),
 		m.input.view(),
 	)
-	parts := []string{m.vp.View(), sep, inputLine}
-	if s := m.statusView(); s != "" {
-		parts = append(parts, s)
-	}
+	parts := []string{m.vp.View(), sep, inputLine, m.statusView()}
 	return strings.Join(parts, "\n")
 }
 

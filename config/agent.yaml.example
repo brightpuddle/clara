@@ -13,6 +13,12 @@ notes:
   # Env: CLARA_NOTES_DIR
   dir: "~/notes"
 
+  # Storage backend for the notes directory.
+  # "local"  — files are only on this machine (proposals will only appear on Mac)
+  # "icloud" — directory is inside iCloud Drive (proposals can appear on Mac + iOS)
+  # Env: CLARA_NOTES_STORAGE
+  storage: "local"
+
 # Stable identifier for this agent instance. Useful when running multiple
 # agents (e.g. laptop + desktop) against the same server in the future.
 # Env: CLARA_AGENT_ID

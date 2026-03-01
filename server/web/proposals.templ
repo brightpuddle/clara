@@ -1,0 +1,155 @@
+package web
+
+// Proposals renders the full proposals page.
+templ Proposals(items []ProposalItem, status string) {
+	@Layout("Proposals", "proposals") {
+		<h1 class="text-2xl font-bold mb-6">Proposals</h1>
+		<!-- Filter tabs -->
+		<div class="tabs tabs-boxed mb-4">
+			<a
+				class={ "tab", templ.KV("tab-active", status == "pending") }
+				hx-get="/proposals?status=pending"
+				hx-target="#proposals-list"
+				hx-swap="innerHTML"
+			>⏳ Pending</a>
+			<a
+				class={ "tab", templ.KV("tab-active", status == "approved") }
+				hx-get="/proposals?status=approved"
+				hx-target="#proposals-list"
+				hx-swap="innerHTML"
+			>✅ Approved</a>
+			<a
+				class={ "tab", templ.KV("tab-active", status == "dismissed") }
+				hx-get="/proposals?status=dismissed"
+				hx-target="#proposals-list"
+				hx-swap="innerHTML"
+			>🚫 Dismissed</a>
+		</div>
+		<div id="proposals-list">
+			@ProposalList(items, status)
+		</div>
+	}
+}
+
+// ProposalList renders the list of proposals (used as an HTMX partial for tab switching).
+templ ProposalList(items []ProposalItem, status string) {
+	if len(items) == 0 {
+		<div class="hero bg-base-200 rounded-box p-12">
+			<div class="hero-content text-center">
+				<div>
+					<p class="text-4xl mb-4">📭</p>
+					<p class="text-base-content/60 text-lg">No proposals</p>
+				</div>
+			</div>
+		</div>
+	} else {
+		<!-- Desktop table -->
+		<div class="hidden md:block overflow-x-auto">
+			<table class="table table-zebra w-full">
+				<thead>
+					<tr>
+						<th>Type</th>
+						<th>Source</th>
+						<th>Preview</th>
+						<th>Surface</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, item := range items {
+						@ProposalRow(item)
+					}
+				</tbody>
+			</table>
+		</div>
+		<!-- Mobile cards -->
+		<div class="block md:hidden space-y-4">
+			for _, item := range items {
+				@ProposalCard(item)
+			}
+		</div>
+	}
+}
+
+// ProposalRow renders a single table row (also returned as HTMX swap target for approve/dismiss).
+templ ProposalRow(item ProposalItem) {
+	<tr id={ "row-" + item.ID }>
+		<td>
+			if item.Type != "" {
+				<span class="badge badge-info badge-sm">{ item.Type }</span>
+			}
+		</td>
+		<td class="font-medium">{ item.Source }</td>
+		<td class="max-w-xs text-sm text-base-content/70">{ truncate(item.Body, 80) }</td>
+		<td>
+			@surfaceBadge(item.ActionSurface)
+		</td>
+		<td>
+			if item.Status == "pending" {
+				<div class="flex gap-1">
+					<button
+						class="btn btn-success btn-sm"
+						hx-post={ "/proposals/" + item.ID + "/approve" }
+						hx-target={ "#row-" + item.ID }
+						hx-swap="outerHTML"
+					>Approve</button>
+					<button
+						class="btn btn-ghost btn-sm"
+						hx-post={ "/proposals/" + item.ID + "/dismiss" }
+						hx-target={ "#row-" + item.ID }
+						hx-swap="outerHTML"
+					>Dismiss</button>
+				</div>
+			} else {
+				<span class={ "badge", templ.KV("badge-success", item.Status == "approved"), templ.KV("badge-ghost", item.Status == "dismissed") }>{ item.Status }</span>
+			}
+		</td>
+	</tr>
+}
+
+// ProposalCard renders a mobile card for a single proposal.
+templ ProposalCard(item ProposalItem) {
+	<div class="card bg-base-200 shadow" id={ "card-" + item.ID }>
+		<div class="card-body gap-2">
+			<div class="flex justify-between items-center">
+				if item.Type != "" {
+					<span class="badge badge-info badge-sm">{ item.Type }</span>
+				}
+				@surfaceBadge(item.ActionSurface)
+			</div>
+			<p class="font-medium">{ item.Source }</p>
+			<p class="text-sm text-base-content/70">{ truncate(item.Body, 80) }</p>
+			if item.Status == "pending" {
+				<div class="card-actions justify-end mt-2">
+					<button
+						class="btn btn-success btn-sm"
+						hx-post={ "/proposals/" + item.ID + "/approve" }
+						hx-target={ "#card-" + item.ID }
+						hx-swap="outerHTML"
+					>Approve</button>
+					<button
+						class="btn btn-ghost btn-sm"
+						hx-post={ "/proposals/" + item.ID + "/dismiss" }
+						hx-target={ "#card-" + item.ID }
+						hx-swap="outerHTML"
+					>Dismiss</button>
+				</div>
+			} else {
+				<div class="card-actions justify-end">
+					<span class={ "badge", templ.KV("badge-success", item.Status == "approved"), templ.KV("badge-ghost", item.Status == "dismissed") }>{ item.Status }</span>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+// surfaceBadge renders the action surface badge.
+templ surfaceBadge(surface string) {
+	if surface == "cloud" || surface == "icloud" {
+		<span class="badge badge-info badge-sm">☁️ iCloud</span>
+	} else if surface == "local_mac" {
+		<span class="badge badge-ghost badge-sm">🖥 Local</span>
+	} else if surface != "" {
+		<span class="badge badge-ghost badge-sm">{ surface }</span>
+	}
+}

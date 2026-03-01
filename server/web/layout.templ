@@ -1,0 +1,68 @@
+package web
+
+templ Layout(title string, currentPage string) {
+	<!DOCTYPE html>
+	<html lang="en" data-theme="light">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } - Clara</title>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet"/>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
+		</head>
+		<body hx-boost="true" class="bg-base-100">
+			<div class="drawer lg:drawer-open">
+				<input id="my-drawer" type="checkbox" class="drawer-toggle"/>
+				<div class="drawer-content flex flex-col min-h-screen">
+					<!-- Mobile navbar (hidden on lg+) -->
+					<div class="navbar bg-base-200 shadow lg:hidden sticky top-0 z-10">
+						<div class="flex-none">
+							<label for="my-drawer" class="btn btn-square btn-ghost">
+								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-5 h-5 stroke-current">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+								</svg>
+							</label>
+						</div>
+						<div class="flex-1">
+							<span class="text-xl font-bold">Clara</span>
+						</div>
+					</div>
+					<!-- Page content -->
+					<main class="flex-1 p-6">
+						{ children... }
+					</main>
+				</div>
+				<!-- Sidebar -->
+				<div class="drawer-side z-20">
+					<label for="my-drawer" class="drawer-overlay"></label>
+					<aside class="min-h-screen w-64 bg-base-200 flex flex-col">
+						<!-- Wordmark -->
+						<div class="px-6 py-5 border-b border-base-300">
+							<span class="text-2xl font-bold text-primary">Clara</span>
+						</div>
+						<!-- Nav links -->
+						<nav class="flex-1 px-3 py-4">
+							<ul class="menu menu-lg w-full gap-1 p-0">
+								<li>
+									<a href="/" class={ templ.KV("active", currentPage == "dashboard") }>
+										📊 Dashboard
+									</a>
+								</li>
+								<li>
+									<a href="/proposals" class={ templ.KV("active", currentPage == "proposals") }>
+										📋 Proposals
+									</a>
+								</li>
+							</ul>
+						</nav>
+						<!-- Sidebar footer -->
+						<div class="px-6 py-4 border-t border-base-300">
+							<span class="text-sm text-base-content/60">Clara Server</span>
+						</div>
+					</aside>
+				</div>
+			</div>
+		</body>
+	</html>
+}

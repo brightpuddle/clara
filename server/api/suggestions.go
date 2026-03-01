@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/brightpuddle/clara/server/db"
 	"github.com/go-chi/chi/v5"
@@ -11,11 +12,18 @@ import (
 )
 
 type Handler struct {
-	db *db.DB
+	db         *db.DB
+	startTime  time.Time
+	webHandler http.Handler
 }
 
 func NewHandler(database *db.DB) *Handler {
-	return &Handler{db: database}
+	return &Handler{db: database, startTime: time.Now()}
+}
+
+// SetWebHandler mounts a web UI handler at the root path of the API router.
+func (h *Handler) SetWebHandler(web http.Handler) {
+	h.webHandler = web
 }
 
 // Router returns a chi router with all API routes mounted.
@@ -29,7 +37,13 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/suggestions/{id}/approve", h.approveSuggestion)
 		r.Post("/suggestions/{id}/reject", h.rejectSuggestion)
 		r.Get("/health", h.health)
+		r.Get("/status", h.status)
+		r.Route("/proposals", h.proposalsRouter)
 	})
+
+	if h.webHandler != nil {
+		r.Mount("/", h.webHandler)
+	}
 
 	return r
 }
@@ -70,6 +84,24 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request, status st
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
+	counts, err := h.db.CountSuggestions(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	type statusResp struct {
+		Status      string               `json:"status"`
+		Uptime      string               `json:"uptime"`
+		Suggestions db.SuggestionCounts  `json:"suggestions"`
+	}
+	writeJSON(w, http.StatusOK, statusResp{
+		Status:      "ok",
+		Uptime:      time.Since(h.startTime).Round(time.Second).String(),
+		Suggestions: counts,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

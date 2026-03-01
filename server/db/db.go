@@ -164,16 +164,17 @@ func (d *DB) FindSimilar(ctx context.Context, documentID string, limit int, minS
 // ---- Suggestions ------------------------------------------------------------
 
 type Suggestion struct {
-	ID           int64
-	Type         string
-	SourceDocID  string
-	TargetDocID  string
-	SourcePath   string
-	TargetTitle  string
-	Similarity   float64
-	Context      string
-	Status       string
-	CreatedAt    time.Time
+	ID            int64
+	Type          string
+	SourceDocID   string
+	TargetDocID   string
+	SourcePath    string
+	TargetTitle   string
+	Similarity    float64
+	Context       string
+	Status        string
+	ActionSurface string
+	CreatedAt     time.Time
 }
 
 func (d *DB) UpsertSuggestion(ctx context.Context, sourceID, targetID string, similarity float64, context string) error {
@@ -189,7 +190,7 @@ func (d *DB) UpsertSuggestion(ctx context.Context, sourceID, targetID string, si
 func (d *DB) ListSuggestions(ctx context.Context, status string) ([]Suggestion, error) {
 	rows, err := d.pool.Query(ctx, `
 		SELECT s.id, s.type, s.source_doc_id, s.target_doc_id,
-		       src.path, tgt.title, s.similarity, s.context, s.status, s.created_at
+		       src.path, tgt.title, s.similarity, s.context, s.status, s.action_surface, s.created_at
 		FROM suggestions s
 		JOIN documents src ON src.id = s.source_doc_id
 		JOIN documents tgt ON tgt.id = s.target_doc_id
@@ -206,7 +207,7 @@ func (d *DB) ListSuggestions(ctx context.Context, status string) ([]Suggestion, 
 	for rows.Next() {
 		var s Suggestion
 		if err := rows.Scan(&s.ID, &s.Type, &s.SourceDocID, &s.TargetDocID,
-			&s.SourcePath, &s.TargetTitle, &s.Similarity, &s.Context, &s.Status, &s.CreatedAt); err != nil {
+			&s.SourcePath, &s.TargetTitle, &s.Similarity, &s.Context, &s.Status, &s.ActionSurface, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		suggestions = append(suggestions, s)
@@ -229,4 +230,24 @@ func (d *DB) GetApprovedSuggestions(ctx context.Context) ([]Suggestion, error) {
 
 func (d *DB) MarkSuggestionApplied(ctx context.Context, id int64) error {
 	return d.UpdateSuggestionStatus(ctx, id, "applied")
+}
+
+// SuggestionCounts holds the count of suggestions in each status bucket.
+type SuggestionCounts struct {
+	Pending  int `json:"pending"`
+	Approved int `json:"approved"`
+	Rejected int `json:"rejected"`
+}
+
+// CountSuggestions returns the number of suggestions in each major status.
+func (d *DB) CountSuggestions(ctx context.Context) (SuggestionCounts, error) {
+	const q = `
+		SELECT
+			COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
+			COUNT(*) FILTER (WHERE status = 'approved') AS approved,
+			COUNT(*) FILTER (WHERE status = 'rejected') AS rejected
+		FROM suggestions`
+	var c SuggestionCounts
+	err := d.pool.QueryRow(ctx, q).Scan(&c.Pending, &c.Approved, &c.Rejected)
+	return c, err
 }
