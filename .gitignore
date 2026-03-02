@@ -11,3 +11,6 @@ clara-server
 apple/Clara.xcodeproj/
 apple/Clara.xcworkspace/
 apple/DerivedData/
+
+# System files
+.DS_Store
