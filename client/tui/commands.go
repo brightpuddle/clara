@@ -29,6 +29,39 @@ type findReadyMsg struct {
 	files []string
 }
 
+// notesReadyMsg carries the note file list; triggers fzf+editor launch in the model.
+type notesReadyMsg struct {
+	files   []string
+	newFile string // non-empty when /notes new was requested (pre-created path)
+}
+
+// reminderItem is a parsed Apple Reminder.
+type reminderItem struct {
+	ExternalID  string `json:"externalId"`
+	IsCompleted bool   `json:"isCompleted"`
+	List        string `json:"list"`
+	Priority    int    `json:"priority"`
+	Title       string `json:"title"`
+	DueDate     string `json:"dueDate,omitempty"`
+	Notes       string `json:"notes,omitempty"`
+}
+
+// remindersReadyMsg carries the reminder list; triggers fzf launch in the model.
+type remindersReadyMsg struct {
+	items    []reminderItem
+	editMode bool // if true, fzf selection opens $EDITOR instead of viewport display
+}
+
+// reminderSelectedMsg is sent after fzf selects a reminder (for display in viewport).
+type reminderSelectedMsg struct {
+	item reminderItem
+}
+
+// reminderEditSelectedMsg is sent after fzf selects a reminder for $EDITOR editing.
+type reminderEditSelectedMsg struct {
+	item reminderItem
+}
+
 // cmdEntry describes a dispatchable command.
 // Exactly one of run or runCmd must be set.
 // hidden      — omit from /help output.
@@ -67,6 +100,20 @@ var registry = []cmdEntry{
 		desc:    "Search files with Spotlight and open: find <query>",
 		tuiOnly: true,
 		runCmd:  launchFind,
+	},
+	{
+		name:        "notes",
+		desc:        "Browse and edit notes: notes [query] (alias: notes list)",
+		tuiOnly:     true,
+		subcommands: []string{"list", "new", "edit"},
+		runCmd:      launchNotes,
+	},
+	{
+		name:        "reminders",
+		desc:        "Browse Apple Reminders: reminders [list]",
+		tuiOnly:     true,
+		subcommands: []string{"complete", "edit", "lists", "new"},
+		runCmd:      launchReminders,
 	},
 	{
 		name:    "edit",
@@ -128,7 +175,7 @@ func matchCmd(name string) (*cmdEntry, error) {
 	default:
 		names := make([]string, len(hits))
 		for i, idx := range hits {
-			names[i] = "/" + registry[idx].name
+			names[i] = registry[idx].name
 		}
 		sort.Strings(names)
 		return nil, fmt.Errorf("ambiguous: %q matches %s", name, strings.Join(names, ", "))
@@ -257,18 +304,27 @@ func runReject(ctx context.Context, args []string, api *APIClient) (string, erro
 
 func runHelp(_ context.Context, _ []string, _ *APIClient) (string, error) {
 	var sb strings.Builder
-	sb.WriteString("Available commands (prefix-matched, e.g. /s = /suggest):\n")
-	sb.WriteString("\n  /suggest              List pending backlink suggestions")
-	sb.WriteString("\n  /approve <id>         Approve a suggestion by ID")
-	sb.WriteString("\n  /reject <id>          Reject a suggestion by ID")
-	sb.WriteString("\n  /find <query>         Search files with Spotlight and open")
-	sb.WriteString("\n  /edit <n>             Edit today item n in $EDITOR")
-	sb.WriteString("\n  /today                Return to today view")
-	sb.WriteString("\n  /server status        Show server uptime and suggestion counts")
-	sb.WriteString("\n  /agent status         Show local agent status")
-	sb.WriteString("\n  /agent start          Start the local agent")
-	sb.WriteString("\n  /agent stop           Stop the local agent")
-	sb.WriteString("\n  /help                 Show this help")
+	sb.WriteString("Available commands (prefix-matched, e.g. 'su' = 'suggest'):\n")
+	sb.WriteString("\n  suggest              List pending backlink suggestions")
+	sb.WriteString("\n  approve <id>         Approve a suggestion by ID")
+	sb.WriteString("\n  reject <id>          Reject a suggestion by ID")
+	sb.WriteString("\n  find <query>         Search files with Spotlight and open")
+	sb.WriteString("\n  notes [query]        Browse and edit notes (fzf + $EDITOR)")
+	sb.WriteString("\n    notes new          Create a new note in $EDITOR")
+	sb.WriteString("\n    notes list         Browse and edit notes (same as notes)")
+	sb.WriteString("\n    notes edit         Browse and edit notes (same as notes)")
+	sb.WriteString("\n  reminders [list]     Browse Apple Reminders via fzf")
+	sb.WriteString("\n    reminders edit     Browse and edit a reminder in $EDITOR")
+	sb.WriteString("\n    reminders complete <id>  Complete a reminder by index")
+	sb.WriteString("\n    reminders new <list> <text>  Add a new reminder")
+	sb.WriteString("\n    reminders lists    Show all reminder lists")
+	sb.WriteString("\n  edit <n>             Edit today item n in $EDITOR")
+	sb.WriteString("\n  today                Return to today view")
+	sb.WriteString("\n  server status        Show server uptime and suggestion counts")
+	sb.WriteString("\n  agent status         Show local agent status")
+	sb.WriteString("\n  agent start          Start the local agent")
+	sb.WriteString("\n  agent stop           Stop the local agent")
+	sb.WriteString("\n  help                 Show this help")
 	return sb.String(), nil
 }
 
@@ -311,7 +367,245 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// ---- edit command -----------------------------------------------------------
+// ---- notes command ----------------------------------------------------------
+
+// launchNotes discovers notes files and hands off to fzf+editor via notesReadyMsg.
+func launchNotes(args []string, _ *APIClient) tea.Cmd {
+	// Strip 'list' or 'edit' — both are aliases for the browse+edit flow.
+	if len(args) > 0 && (strings.HasPrefix("list", args[0]) || strings.HasPrefix("edit", args[0])) {
+		args = args[1:]
+	}
+
+	// notes new — create a timestamped file and open immediately.
+	if len(args) > 0 && strings.HasPrefix("new", args[0]) {
+		return func() tea.Msg {
+			cfg := readLocalConfig()
+			ts := time.Now().Format("2006-01-02")
+			name := ts + ".md"
+			if len(args) > 1 {
+				// Use remaining args as slug.
+				slug := strings.Join(args[1:], "-")
+				slug = strings.Map(func(r rune) rune {
+					if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+						(r >= '0' && r <= '9') || r == '-' || r == '_' {
+						return r
+					}
+					if r == ' ' {
+						return '-'
+					}
+					return -1
+				}, slug)
+				name = ts + "-" + slug + ".md"
+			}
+			path := filepath.Join(cfg.NotesDir, name)
+			return notesReadyMsg{newFile: path}
+		}
+	}
+
+	// /notes [query] — find files, launch fzf.
+	return func() tea.Msg {
+		cfg := readLocalConfig()
+		// -L follows symlinks (notes dir may itself be a symlink or contain symlinked subdirs).
+		findArgs := []string{"-L", cfg.NotesDir,
+			"(", "-name", "*.md", "-o", "-name", "*.markdown", ")",
+			"-not", "-path", "*/.git/*",
+		}
+		out, err := exec.Command("find", findArgs...).Output()
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("find notes: %w", err)}
+		}
+		files := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if len(files) == 0 || (len(files) == 1 && files[0] == "") {
+			return inputResultMsg{output: "No notes found in " + cfg.NotesDir}
+		}
+		sort.Strings(files)
+		return notesReadyMsg{files: files}
+	}
+}
+
+// ---- reminders command ------------------------------------------------------
+
+// launchReminders fetches reminders and hands off via remindersReadyMsg.
+func launchReminders(args []string, _ *APIClient) tea.Cmd {
+	if len(args) > 0 {
+		sub := args[0]
+		switch {
+		case strings.HasPrefix("edit", sub):
+			return launchRemindersEdit(args[1:])
+		case strings.HasPrefix("complete", sub):
+			return remindersComplete(args[1:])
+		case strings.HasPrefix("new", sub):
+			return remindersNew(args[1:])
+		case strings.HasPrefix("lists", sub):
+			return func() tea.Msg {
+				out, err := exec.Command("reminders", "show-lists").Output()
+				if err != nil {
+					return inputResultMsg{err: fmt.Errorf("show-lists: %w", err)}
+				}
+				return inputResultMsg{output: "Reminder lists:\n" + strings.TrimSpace(string(out))}
+			}
+		}
+	}
+
+	// /reminders [list] — fetch all (or specific list) and launch fzf.
+	listArg := strings.Join(args, " ")
+	return func() tea.Msg {
+		var out []byte
+		var err error
+		if listArg == "" {
+			out, err = exec.Command("reminders", "show-all", "--format", "json").Output()
+		} else {
+			out, err = exec.Command("reminders", "show", listArg, "--format", "json").Output()
+		}
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("reminders: %w", err)}
+		}
+		var items []reminderItem
+		if jsonErr := json.Unmarshal(out, &items); jsonErr != nil {
+			return inputResultMsg{err: fmt.Errorf("parse reminders: %w", jsonErr)}
+		}
+		// Filter to incomplete only by default.
+		var pending []reminderItem
+		for _, it := range items {
+			if !it.IsCompleted {
+				pending = append(pending, it)
+			}
+		}
+		if len(pending) == 0 {
+			return inputResultMsg{output: "No pending reminders."}
+		}
+		return remindersReadyMsg{items: pending}
+	}
+}
+
+// remindersComplete runs `reminders complete <list> <index>` where index comes
+// from show-all's sequential numbering.
+func remindersComplete(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return func() tea.Msg {
+			return inputResultMsg{err: fmt.Errorf("usage: /reminders complete <list> <index>")}
+		}
+	}
+	list := args[0]
+	idx := args[1]
+	return func() tea.Msg {
+		out, err := exec.Command("reminders", "complete", list, idx).Output()
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("complete reminder: %w", err)}
+		}
+		return inputResultMsg{output: strings.TrimSpace(string(out))}
+	}
+}
+
+// remindersNew runs `reminders add <list> "<text>"`.
+func remindersNew(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return func() tea.Msg {
+			return inputResultMsg{err: fmt.Errorf("usage: /reminders new <list> <text>")}
+		}
+	}
+	list := args[0]
+	text := strings.Join(args[1:], " ")
+	return func() tea.Msg {
+		out, err := exec.Command("reminders", "add", list, text).Output()
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("add reminder: %w", err)}
+		}
+		return inputResultMsg{output: strings.TrimSpace(string(out))}
+	}
+}
+
+// launchRemindersEdit fetches reminders, opens fzf, and on select returns
+// reminderEditSelectedMsg so the model can open the item in $EDITOR.
+func launchRemindersEdit(_ []string) tea.Cmd {
+	return func() tea.Msg {
+		out, err := exec.Command("reminders", "show-all", "--format", "json").Output()
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("reminders: %w", err)}
+		}
+		var items []reminderItem
+		if jsonErr := json.Unmarshal(out, &items); jsonErr != nil {
+			return inputResultMsg{err: fmt.Errorf("parse reminders: %w", jsonErr)}
+		}
+		var pending []reminderItem
+		for _, it := range items {
+			if !it.IsCompleted {
+				pending = append(pending, it)
+			}
+		}
+		if len(pending) == 0 {
+			return inputResultMsg{output: "No pending reminders."}
+		}
+		return remindersReadyMsg{items: pending, editMode: true}
+	}
+}
+
+// execReminderEditor opens a reminder as YAML in $EDITOR via tea.ExecProcess.
+func execReminderEditor(item reminderItem) tea.Cmd {
+	content := reminderToClaraItem(item)
+	tmp, err := os.CreateTemp("", "clara-reminder-*.yaml")
+	if err != nil {
+		e := err
+		return func() tea.Msg { return inputResultMsg{err: e} }
+	}
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		e := err
+		return func() tea.Msg { return inputResultMsg{err: e} }
+	}
+	tmp.Close()
+
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+	cmd := exec.Command(editor, tmp.Name())
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		defer os.Remove(tmp.Name())
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("editor: %w", err)}
+		}
+		return inputResultMsg{output: "Reminder saved (note: changes are display-only and not written back to Reminders.app)"}
+	})
+}
+
+
+func reminderToClaraItem(r reminderItem) string {
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	sb.WriteString(fmt.Sprintf("id:     %s\n", r.ExternalID))
+	sb.WriteString("type:   reminder\n")
+	sb.WriteString("source: reminders\n")
+	sb.WriteString(fmt.Sprintf("source_ref: %s\n", r.ExternalID))
+	sb.WriteString(fmt.Sprintf("status: %s\n", func() string {
+		if r.IsCompleted {
+			return "done"
+		}
+		return "pending"
+	}()))
+	if r.DueDate != "" {
+		sb.WriteString(fmt.Sprintf("due:    %s\n", r.DueDate))
+	}
+	if r.Priority > 0 {
+		priorities := []string{"", "high", "medium", "low"}
+		p := "medium"
+		if r.Priority < len(priorities) {
+			p = priorities[r.Priority]
+		}
+		sb.WriteString(fmt.Sprintf("priority: %s\n", p))
+	}
+	sb.WriteString("action_surface: cloud\n")
+	sb.WriteString("---\n")
+	sb.WriteString(r.Title)
+	if r.Notes != "" {
+		sb.WriteString("\n\n" + r.Notes)
+	}
+	sb.WriteString(fmt.Sprintf("\n\nList: %s", r.List))
+	return sb.String()
+}
+
+
 
 // editDoneMsg is sent when the user saves and exits $EDITOR after editing an item.
 type editDoneMsg struct {
@@ -368,8 +662,8 @@ func runServer(ctx context.Context, args []string, api *APIClient) (string, erro
 			return "", fmt.Errorf("server unreachable: %w", err)
 		}
 		return fmt.Sprintf(
-			"Server status: %s\nUptime:         %s\nSuggestions:    %d pending  %d approved  %d rejected",
-			s.Status, s.Uptime,
+			"Server status: %s\nUptime:         %s\nDocuments:      %d ingested\nSuggestions:    %d pending  %d approved  %d rejected",
+			s.Status, s.Uptime, s.Documents,
 			s.Suggestions.Pending, s.Suggestions.Approved, s.Suggestions.Rejected,
 		), nil
 	default:
@@ -450,9 +744,13 @@ func agentSocketStatus(ctx context.Context) (string, error) {
 	if v, ok := resp["actions_applied"].(float64); ok {
 		applied = int64(v)
 	}
+	ingested := int64(0)
+	if v, ok := resp["files_ingested"].(float64); ok {
+		ingested = int64(v)
+	}
 	return fmt.Sprintf(
-		"Agent: running (pid %d)\nUptime:          %s\nNotes directory: %s\nServer:          %s\nActions applied: %d",
-		pid, uptime, notesDir, serverAddr, applied,
+		"Agent: running (pid %d)\nUptime:          %s\nNotes directory: %s\nServer:          %s\nFiles ingested:  %d\nActions applied: %d",
+		pid, uptime, notesDir, serverAddr, ingested, applied,
 	), nil
 }
 

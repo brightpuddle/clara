@@ -38,6 +38,7 @@ func main() {
 		slog.Error("failed to create watcher", "err", err)
 		os.Exit(1)
 	}
+	w.OnIngest = func() { stats.filesIngested.Add(1) }
 
 	go func() {
 		if err := w.Run(ctx); err != nil && ctx.Err() == nil {

@@ -92,14 +92,17 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	docCount, _ := h.db.CountDocuments(r.Context()) // non-fatal if fails
 	type statusResp struct {
-		Status      string               `json:"status"`
-		Uptime      string               `json:"uptime"`
-		Suggestions db.SuggestionCounts  `json:"suggestions"`
+		Status      string              `json:"status"`
+		Uptime      string              `json:"uptime"`
+		Documents   int                 `json:"documents"`
+		Suggestions db.SuggestionCounts `json:"suggestions"`
 	}
 	writeJSON(w, http.StatusOK, statusResp{
 		Status:      "ok",
 		Uptime:      time.Since(h.startTime).Round(time.Second).String(),
+		Documents:   docCount,
 		Suggestions: counts,
 	})
 }

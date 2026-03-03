@@ -251,3 +251,10 @@ func (d *DB) CountSuggestions(ctx context.Context) (SuggestionCounts, error) {
 	err := d.pool.QueryRow(ctx, q).Scan(&c.Pending, &c.Approved, &c.Rejected)
 	return c, err
 }
+
+// CountDocuments returns the total number of ingested documents.
+func (d *DB) CountDocuments(ctx context.Context) (int, error) {
+	var n int
+	err := d.pool.QueryRow(ctx, `SELECT COUNT(*) FROM documents`).Scan(&n)
+	return n, err
+}

@@ -18,8 +18,7 @@ import (
 // All colors use the ANSI 16-color palette so they adapt to any terminal theme.
 
 var (
-	promptStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))                 // blue ❯
-	modeStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                 // dim [N]/[I]
+	promptStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))                 // blue ❯/❮
 	separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                 // dim rule
 	echoStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                 // dim > echo
 	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)      // red errors
@@ -61,6 +60,7 @@ type todaySection struct {
 
 type todayLoadedMsg struct{ sections []todaySection }
 type showTodayMsg struct{}
+type noteSelectedMsg struct{ path string } // fzf selected a note; open in editor
 
 // ---- Chat history -----------------------------------------------------------
 
@@ -134,36 +134,33 @@ func (m Model) viewportHeight() int {
 }
 
 // inputCompletionBase returns the fixed prefix to preserve when tab-completing.
-// For top-level completion it is "/"; for subcommand completion it is "/cmd ".
+// For top-level completion it is ""; for subcommand completion it is "cmd ".
 func (m Model) inputCompletionBase() string {
-	val := strings.TrimLeft(m.input.value(), " \t") // keep trailing space
-	if !strings.HasPrefix(val, "/") {
-		return "/"
-	}
-	withoutSlash := val[1:]
-	idx := strings.IndexAny(withoutSlash, " \t")
+	val := strings.TrimLeft(m.input.value(), " \t")
+	val = strings.TrimPrefix(val, "/") // tolerate optional leading slash
+	idx := strings.IndexAny(val, " \t")
 	if idx < 0 {
-		return "/"
+		return ""
 	}
-	return "/" + withoutSlash[:idx] + " "
+	return val[:idx] + " "
 }
 
 // inputCandidates returns completable names matching the current input prefix.
 // For top-level it returns command names; for subcommands it returns sub-names.
 func (m Model) inputCandidates() []string {
-	val := strings.TrimLeft(m.input.value(), " \t") // keep trailing space
-	if !strings.HasPrefix(val, "/") {
+	val := strings.TrimLeft(m.input.value(), " \t")
+	val = strings.TrimPrefix(val, "/") // tolerate optional leading slash
+	if val == "" {
 		return nil
 	}
-	withoutSlash := val[1:]
-	idx := strings.IndexAny(withoutSlash, " \t")
+	idx := strings.IndexAny(val, " \t")
 	if idx < 0 {
 		// Top-level: no space yet.
-		return candidatesFor(withoutSlash)
+		return candidatesFor(val)
 	}
 	// Subcommand: text after the first space (must be a single word).
-	cmdName := withoutSlash[:idx]
-	rest := strings.TrimLeft(withoutSlash[idx+1:], " \t")
+	cmdName := val[:idx]
+	rest := strings.TrimLeft(val[idx+1:], " \t")
 	if strings.ContainsAny(rest, " \t") {
 		return nil // second space — nothing to complete
 	}
@@ -327,6 +324,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case findReadyMsg:
 		cmd = execFzf(msg.files)
 
+	case notesReadyMsg:
+		if msg.newFile != "" {
+			cmd = execEditor(msg.newFile)
+		} else {
+			cmd = execFzfNotes(msg.files)
+		}
+
+	case noteSelectedMsg:
+		cmd = execEditor(msg.path)
+
+	case remindersReadyMsg:
+		cmd = execFzfReminders(msg.items, msg.editMode)
+
+	case reminderSelectedMsg:
+		m.screen = screenChat
+		text := reminderToClaraItem(msg.item)
+		m.history = append(m.history, chatEntry{kindResult, text})
+		m.vp.SetContent(m.renderHistory())
+		m.vp.GotoBottom()
+
+	case reminderEditSelectedMsg:
+		cmd = execReminderEditor(msg.item)
+
 	case editDoneMsg:
 		if msg.err != nil {
 			m.history = append(m.history, chatEntry{kindError, "Edit error: " + msg.err.Error()})
@@ -388,25 +408,6 @@ func (m Model) handleTodayKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 
 	case "esc", "q":
 		m.screen = screenChat
-		if m.ready {
-			m.vp.Height = m.viewportHeight()
-			m.vp.SetContent(m.renderHistory())
-			m.vp.GotoBottom()
-		}
-
-	case "/":
-		m.screen = screenChat
-		m.input.enterInsertEnd()
-		m.input.insertChar('/')
-		m.tabIndex = -1
-		if m.ready {
-			m.vp.Height = m.viewportHeight()
-			m.vp.SetContent(m.renderHistory())
-			m.vp.GotoBottom()
-		}
-
-	case "i":
-		m.screen = screenChat
 		m.input.enterInsert()
 		if m.ready {
 			m.vp.Height = m.viewportHeight()
@@ -428,6 +429,18 @@ func (m Model) handleTodayKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
 			n := int(s[0] - '0')
 			return m.selectTodayItem(n)
+		}
+		// Any printable char: switch to chat/insert and start typing.
+		if len(msg.Runes) == 1 {
+			m.screen = screenChat
+			m.input.enterInsert()
+			m.input.insertChar(msg.Runes[0])
+			m.tabIndex = -1
+			if m.ready {
+				m.vp.Height = m.viewportHeight()
+				m.vp.SetContent(m.renderHistory())
+				m.vp.GotoBottom()
+			}
 		}
 	}
 	return m, nil
@@ -482,10 +495,6 @@ func (m Model) handleNormalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.input.enterInsertEnd()
 	case "I":
 		m.input.enterInsertBeginning()
-	case "/":
-		m.input.enterInsertEnd()
-		m.input.insertChar('/')
-		m.tabIndex = -1
 	case "h", "left":
 		m.input.moveCursorLeft()
 	case "l", "right":
@@ -512,7 +521,7 @@ func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		m.input.exitInsert()
 		m.tabIndex = -1
 
-	case "ctrl+c":
+	case "ctrl+c", "ctrl+d":
 		return m, tea.Quit
 
 	case "enter":
@@ -520,11 +529,10 @@ func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		if line == "" {
 			return m, nil
 		}
-		// Handle /edit <n> specially: needs access to today items.
+		// Handle edit <n> specially: needs access to today items.
 		if cmd, handled := m.handleEditCommand(line); handled {
 			m.history = append(m.history, chatEntry{kindEcho, line})
 			m.input.clear()
-			m.input.mode = modeNormal
 			m.tabIndex = -1
 			m.vp.SetContent(m.renderHistory())
 			m.vp.GotoBottom()
@@ -532,7 +540,6 @@ func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
 		}
 		m.history = append(m.history, chatEntry{kindEcho, line})
 		m.input.clear()
-		m.input.mode = modeNormal
 		m.tabIndex = -1
 		cmd := dispatch(line, m.api)
 		m.vp.SetContent(m.renderHistory())
@@ -590,7 +597,7 @@ func (m *Model) setInputTo(s string) {
 // handleEditCommand detects "/edit <n>" and returns the editor tea.Cmd.
 // Returns (nil, false) if the line is not an edit command.
 func (m Model) handleEditCommand(line string) (tea.Cmd, bool) {
-	bare := strings.TrimPrefix(line, "/")
+	bare := strings.TrimPrefix(line, "/") // tolerate optional leading slash
 	name, args := parseLine(bare)
 	if !strings.HasPrefix("edit", name) || name == "" {
 		return nil, false
@@ -725,26 +732,19 @@ func (m Model) statusView() string {
 	if len(candidates) == 0 {
 		return ""
 	}
-	isSubcmd := m.inputCompletionBase() != "/"
 	parts := make([]string, len(candidates))
 	for i, name := range candidates {
-		var label string
-		if isSubcmd {
-			label = name // no slash for subcommand options
-		} else {
-			label = "/" + name
-		}
 		if i == m.tabIndex {
-			parts[i] = tabSelStyle.Render(label)
+			parts[i] = tabSelStyle.Render(name)
 		} else {
-			parts[i] = tabDimStyle.Render(label)
+			parts[i] = tabDimStyle.Render(name)
 		}
 	}
 	return "  " + strings.Join(parts, "  ")
 }
 
 func welcomeText() string {
-	return echoStyle.Render("Type /help for available commands. Press i or / to begin.")
+	return echoStyle.Render("Type a command or 'help'. Press esc for normal mode.")
 }
 
 func (m Model) View() string {
@@ -755,18 +755,17 @@ func (m Model) View() string {
 	sep := separatorStyle.Render(strings.Repeat("─", m.width))
 
 	if m.screen == screenToday {
-		hint := hintStyle.Render("  1-9 select  ·  esc chat  ·  / command")
+		hint := hintStyle.Render("  1-9 select  ·  esc chat")
 		return strings.Join([]string{m.vp.View(), sep, hint}, "\n")
 	}
 
-	// Chat mode
-	modeLabel := "[N]"
-	if m.input.mode == modeInsert {
-		modeLabel = "[I]"
+	// Chat mode: prompt arrow points right (insert) or left (normal)
+	promptChar := "❯"
+	if m.input.mode == modeNormal {
+		promptChar = "❮"
 	}
-	inputLine := fmt.Sprintf("%s %s %s",
-		modeStyle.Render(modeLabel),
-		promptStyle.Render("❯"),
+	inputLine := fmt.Sprintf("%s %s",
+		promptStyle.Render(promptChar),
 		m.input.view(),
 	)
 	parts := []string{m.vp.View(), sep, inputLine, m.statusView()}
@@ -813,4 +812,119 @@ func execFzf(files []string) tea.Cmd {
 
 func shellEscape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// execEditor opens a file path in $EDITOR via tea.ExecProcess.
+func execEditor(path string) tea.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vi"
+	}
+	cmd := exec.Command(editor, path)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		if err != nil {
+			return inputResultMsg{err: fmt.Errorf("editor: %w", err)}
+		}
+		return inputResultMsg{output: "Saved: " + path}
+	})
+}
+
+// execFzfNotes opens fzf with a file list; on select, sends noteSelectedMsg to
+// open the file in $EDITOR via a proper tea.ExecProcess chain.
+func execFzfNotes(files []string) tea.Cmd {
+	tmpIn, err := os.CreateTemp("", "clara-notes-in-*")
+	if err != nil {
+		e := err
+		return func() tea.Msg { return inputResultMsg{err: e} }
+	}
+	fmt.Fprint(tmpIn, strings.Join(files, "\n"))
+	tmpIn.Close()
+
+	tmpOut, err := os.CreateTemp("", "clara-notes-out-*")
+	if err != nil {
+		os.Remove(tmpIn.Name())
+		e := err
+		return func() tea.Msg { return inputResultMsg{err: e} }
+	}
+	tmpOut.Close()
+
+	// fzf with bat/cat preview, preview window on right.
+	shellCmd := fmt.Sprintf(
+		"fzf --preview %s --preview-window=right:60%% < %s > %s",
+		shellEscape("cat {}"),
+		shellEscape(tmpIn.Name()),
+		shellEscape(tmpOut.Name()),
+	)
+	cmd := exec.Command("sh", "-c", shellCmd)
+
+	return tea.ExecProcess(cmd, func(_ error) tea.Msg {
+		defer os.Remove(tmpIn.Name())
+		defer os.Remove(tmpOut.Name())
+
+		selBytes, readErr := os.ReadFile(tmpOut.Name())
+		path := strings.TrimSpace(string(selBytes))
+		if readErr != nil || path == "" {
+			return inputResultMsg{output: "Notes: cancelled."}
+		}
+		// Return a message; model.Update will chain to execEditor.
+		return noteSelectedMsg{path: path}
+	})
+}
+
+// execFzfReminders opens fzf with formatted reminder lines.
+// In normal mode, selection returns reminderSelectedMsg for viewport display.
+// In editMode, selection returns reminderEditSelectedMsg to open in $EDITOR.
+func execFzfReminders(items []reminderItem, editMode bool) tea.Cmd {
+	// Build display lines: "<index>  [list] title"
+	lines := make([]string, len(items))
+	for i, it := range items {
+		lines[i] = fmt.Sprintf("%d\t[%s] %s", i, it.List, it.Title)
+	}
+
+	tmpIn, err := os.CreateTemp("", "clara-rem-in-*")
+	if err != nil {
+		e := err
+		return func() tea.Msg { return inputResultMsg{err: e} }
+	}
+	fmt.Fprint(tmpIn, strings.Join(lines, "\n"))
+	tmpIn.Close()
+
+	tmpOut, err := os.CreateTemp("", "clara-rem-out-*")
+	if err != nil {
+		os.Remove(tmpIn.Name())
+		e := err
+		return func() tea.Msg { return inputResultMsg{err: e} }
+	}
+	tmpOut.Close()
+
+	shellCmd := fmt.Sprintf(
+		"fzf --with-nth=2.. --delimiter='\t' < %s > %s",
+		shellEscape(tmpIn.Name()),
+		shellEscape(tmpOut.Name()),
+	)
+	cmd := exec.Command("sh", "-c", shellCmd)
+
+	return tea.ExecProcess(cmd, func(_ error) tea.Msg {
+		defer os.Remove(tmpIn.Name())
+		defer os.Remove(tmpOut.Name())
+
+		selBytes, readErr := os.ReadFile(tmpOut.Name())
+		line := strings.TrimSpace(string(selBytes))
+		if readErr != nil || line == "" {
+			return inputResultMsg{output: "Reminders: cancelled."}
+		}
+		// Parse the index from the first tab-delimited field.
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 0 {
+			return inputResultMsg{output: "Reminders: cancelled."}
+		}
+		idx, parseErr := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if parseErr != nil || idx < 0 || idx >= len(items) {
+			return inputResultMsg{err: fmt.Errorf("reminders: invalid selection")}
+		}
+		if editMode {
+			return reminderEditSelectedMsg{item: items[idx]}
+		}
+		return reminderSelectedMsg{item: items[idx]}
+	})
 }

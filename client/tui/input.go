@@ -15,7 +15,7 @@ const (
 
 var (
 	normalCursorStyle = lipgloss.NewStyle().Reverse(true)
-	insertCursorStyle = lipgloss.NewStyle().Underline(true)
+	insertCursorStyle = lipgloss.NewStyle().Reverse(true) // block cursor in both modes
 )
 
 // vimInput is a minimal vim-modal text input with cursor tracking.
@@ -27,7 +27,7 @@ type vimInput struct {
 }
 
 func newVimInput() vimInput {
-	return vimInput{mode: modeNormal}
+	return vimInput{mode: modeInsert}
 }
 
 func (v vimInput) value() string { return string(v.buf) }

@@ -15,8 +15,9 @@ import (
 
 // Watcher monitors a directory for markdown file changes and ingests them.
 type Watcher struct {
-	dir    string
-	client *ingest.Client
+	dir      string
+	client   *ingest.Client
+	OnIngest func() // called after each successful file ingest (may be nil)
 }
 
 func New(dir string, client *ingest.Client) (*Watcher, error) {
@@ -31,11 +32,8 @@ func (w *Watcher) Run(ctx context.Context) error {
 	}
 	defer fw.Close()
 
-	// Watch the directory and all subdirectories
-	if err := filepath.WalkDir(w.dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip errors (e.g. permission denied)
-		}
+	// Watch the directory and all subdirectories, following symlinks safely.
+	if err := walkFollowSymlinks(w.dir, func(path string, d os.DirEntry) error {
 		if d.IsDir() {
 			return fw.Add(path)
 		}
@@ -84,8 +82,8 @@ func (w *Watcher) Run(ctx context.Context) error {
 
 // Scan does a one-time walk of the notes directory and ingests all .md files.
 func (w *Watcher) Scan(ctx context.Context) error {
-	return filepath.WalkDir(w.dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !isMarkdown(path) {
+	return walkFollowSymlinks(w.dir, func(path string, d os.DirEntry) error {
+		if d.IsDir() || !isMarkdown(path) {
 			return nil
 		}
 		if ctx.Err() != nil {
@@ -93,6 +91,104 @@ func (w *Watcher) Scan(ctx context.Context) error {
 		}
 		return w.ingestFile(ctx, path)
 	})
+}
+
+// walkFollowSymlinks walks root recursively, following symlinked directories.
+// It tracks real (resolved) directory paths to prevent infinite loops from
+// circular symlinks.
+func walkFollowSymlinks(root string, fn func(path string, d os.DirEntry) error) error {
+	// Resolve root itself in case it is a symlink.
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return err
+	}
+	visited := map[string]struct{}{realRoot: {}}
+	return walkDir(realRoot, visited, fn)
+}
+
+func walkDir(dir string, visited map[string]struct{}, fn func(string, os.DirEntry) error) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		slog.Warn("walkDir: read error", "dir", dir, "err", err)
+		return nil // skip unreadable directories
+	}
+
+	// Call fn for the directory entry itself (synthetic, using the dir path).
+	dirEntry := dirEntryForPath(dir)
+	if dirEntry != nil {
+		if err := fn(dir, dirEntry); err != nil {
+			return err
+		}
+	}
+
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+
+		if entry.Type()&os.ModeSymlink != 0 {
+			// Resolve the symlink target.
+			real, resolveErr := filepath.EvalSymlinks(path)
+			if resolveErr != nil {
+				slog.Warn("walkDir: cannot resolve symlink", "path", path, "err", resolveErr)
+				continue
+			}
+			info, statErr := os.Stat(real)
+			if statErr != nil {
+				continue
+			}
+			if info.IsDir() {
+				// Guard against cycles.
+				if _, seen := visited[real]; seen {
+					slog.Debug("walkDir: skipping cyclic symlink", "path", path, "real", real)
+					continue
+				}
+				visited[real] = struct{}{}
+				if err := walkDir(real, visited, fn); err != nil {
+					return err
+				}
+			} else {
+				// Symlink to a file — treat as a regular file entry.
+				if err := fn(path, entry); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		if entry.IsDir() {
+			real, resolveErr := filepath.EvalSymlinks(path)
+			if resolveErr != nil {
+				real = path
+			}
+			if _, seen := visited[real]; seen {
+				continue
+			}
+			visited[real] = struct{}{}
+			if err := walkDir(path, visited, fn); err != nil {
+				return err
+			}
+		} else {
+			if err := fn(path, entry); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// dirEntryForPath returns a synthetic os.DirEntry representing a directory.
+// Returns nil on error (directory will still be descended into).
+func dirEntryForPath(path string) os.DirEntry {
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		return nil
+	}
+	name := filepath.Base(path)
+	for _, e := range entries {
+		if e.Name() == name {
+			return e
+		}
+	}
+	return nil
 }
 
 func (w *Watcher) ingestFile(ctx context.Context, path string) error {
@@ -116,7 +212,13 @@ func (w *Watcher) ingestFile(ctx context.Context, path string) error {
 	}
 
 	slog.Debug("ingesting", "path", path)
-	return w.client.IngestNote(ctx, req)
+	if err := w.client.IngestNote(ctx, req); err != nil {
+		return err
+	}
+	if w.OnIngest != nil {
+		w.OnIngest()
+	}
+	return nil
 }
 
 func isMarkdown(path string) bool {

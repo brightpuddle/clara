@@ -26,6 +26,7 @@ func AgentSocketPath() (string, error) {
 type agentStats struct {
 	startTime      time.Time
 	actionsApplied atomic.Int64
+	filesIngested  atomic.Int64
 	notesDir       string
 	serverAddr     string
 	pid            int
@@ -48,6 +49,7 @@ type statusResponse struct {
 	NotesDir       string `json:"notes_dir"`
 	ServerAddr     string `json:"server_addr"`
 	ActionsApplied int64  `json:"actions_applied"`
+	FilesIngested  int64  `json:"files_ingested"`
 }
 
 // serveSocket opens a Unix domain socket and handles control connections until
@@ -114,6 +116,7 @@ func handleSocketConn(conn net.Conn, stats *agentStats, cancel context.CancelFun
 			NotesDir:       stats.notesDir,
 			ServerAddr:     stats.serverAddr,
 			ActionsApplied: stats.actionsApplied.Load(),
+			FilesIngested:  stats.filesIngested.Load(),
 		}
 	case "stop":
 		resp = map[string]bool{"ok": true}
