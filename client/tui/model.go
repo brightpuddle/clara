@@ -1,930 +1,697 @@
 package tui
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"os/exec"
-	"strconv"
-	"strings"
-	"time"
+"context"
+"encoding/json"
+"fmt"
+"os"
+"os/exec"
+"path/filepath"
+"sort"
+"strconv"
+"strings"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+"github.com/charmbracelet/bubbles/viewport"
+tea "github.com/charmbracelet/bubbletea"
+"github.com/charmbracelet/lipgloss"
 )
 
 // ---- Styles -----------------------------------------------------------------
-// All colors use the ANSI 16-color palette so they adapt to any terminal theme.
 
 var (
-	promptStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))                 // blue ❯/❮
-	separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                 // dim rule
-	echoStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                 // dim > echo
-	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)      // red errors
-	successStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))                 // green success
-	tabDimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))                 // dim candidates
-	tabSelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Underline(true) // selected candidate
+tabActiveStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+tabSepStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
-	// Today view styles
-	greetStyle   = lipgloss.NewStyle().Bold(true)
-	dateStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	numStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
-	hintStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+itemCursorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+itemSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
+itemNormalStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+
+loadingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
+errStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+divStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+statusStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+searchStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 )
 
-// ---- Screen mode ------------------------------------------------------------
+// ---- Views ------------------------------------------------------------------
 
-type screenMode int
+type viewMode int
 
 const (
-	screenToday screenMode = iota
-	screenChat
+viewSuggestions viewMode = iota
+viewNotes
+viewTasks
+viewStatus
 )
 
-// ---- Today data -------------------------------------------------------------
+var viewNames = []string{"Suggestions", "Notes", "Tasks", "Status"}
 
-type todayItem struct {
-	title      string       // short display line, e.g. "meeting-notes  →  [[Project Alpha]]"
-	detail     string       // secondary info, e.g. "85% match"
-	expandText string       // shown in chat viewport when item is selected
-	prefill    string       // input pre-fill, e.g. "/approve 42"
-	proposal   *ClaraItemJSON // underlying proposal (nil for non-proposal items)
+// ---- Data -------------------------------------------------------------------
+
+// listItem is an entry in the left pane.
+type listItem struct {
+title   string // short display label
+preview string // YAML/markdown content for the right pane
+ref     any    // underlying typed value (for editing)
 }
 
-type todaySection struct {
-	name  string
-	items []todayItem
-}
-
-type todayLoadedMsg struct{ sections []todaySection }
-type showTodayMsg struct{}
-type noteSelectedMsg struct{ path string } // fzf selected a note; open in editor
-
-// ---- Chat history -----------------------------------------------------------
-
-type entryKind int
-
-const (
-	kindEcho    entryKind = iota
-	kindResult
-	kindError
-	kindSuccess
-)
-
-type chatEntry struct {
-	kind    entryKind
-	content string
+// itemsLoadedMsg is delivered when a view's data finishes loading.
+type itemsLoadedMsg struct {
+view  viewMode
+items []listItem
+err   error
 }
 
 // ---- Model ------------------------------------------------------------------
 
+// Model is the root Bubbletea model for the 2-pane TUI.
 type Model struct {
-	api           *APIClient
-	vp            viewport.Model
-	input         vimInput
-	history       []chatEntry
-	ready         bool
-	width         int
-	height        int
-	tabIndex      int
-	screen        screenMode
-	todaySections []todaySection
-	todayLoading  bool
+api           *APIClient
+cfg           localConfig
+width, height int
+ready         bool
+
+view     viewMode
+items    []listItem // all loaded items for current view
+filtered []listItem // subset after search filter
+selected int
+
+loading bool
+loadErr string
+
+searching   bool
+searchQuery string
+
+preview viewport.Model
 }
 
 func New(api *APIClient) Model {
-	return Model{
-		api:          api,
-		input:        newVimInput(),
-		tabIndex:     -1,
-		screen:       screenToday,
-		todayLoading: true,
-	}
+return Model{
+api:     api,
+cfg:     readLocalConfig(),
+view:    viewSuggestions,
+loading: true,
+}
 }
 
 func (m Model) Init() tea.Cmd {
-	return m.loadToday()
+return m.loadView(m.view)
 }
 
-// ---- Layout -----------------------------------------------------------------
+// ---- Layout helpers ---------------------------------------------------------
 
-func (m Model) inputAreaHeight() int {
-	n := strings.Count(m.input.value(), "\n") + 1
-	if n < 1 {
-		n = 1
-	}
-	return n
+const (
+headerLines = 1
+footerLines = 1
+divWidth    = 1
+)
+
+func (m Model) bodyHeight() int {
+h := m.height - headerLines - footerLines
+if h < 1 {
+h = 1
+}
+return h
 }
 
-func (m Model) viewportHeight() int {
-	// Today mode: separator(1) + hint(1); Chat mode: separator(1) + input(n) + status(1, always reserved)
-	var bottomHeight int
-	if m.screen == screenToday {
-		bottomHeight = 2 // separator + hint line
-	} else {
-		bottomHeight = 1 + m.inputAreaHeight() + 1 // separator + input + status (always 1 line)
-	}
-	h := m.height - bottomHeight
-	if h < 1 {
-		h = 1
-	}
-	return h
+func (m Model) leftWidth() int {
+w := m.width * 30 / 100
+if w < 22 {
+w = 22
+}
+if w > 48 {
+w = 48
+}
+return w
 }
 
-// inputCompletionBase returns the fixed prefix to preserve when tab-completing.
-// For top-level completion it is ""; for subcommand completion it is "cmd ".
-func (m Model) inputCompletionBase() string {
-	val := strings.TrimLeft(m.input.value(), " \t")
-	val = strings.TrimPrefix(val, "/") // tolerate optional leading slash
-	idx := strings.IndexAny(val, " \t")
-	if idx < 0 {
-		return ""
-	}
-	return val[:idx] + " "
+func (m Model) rightWidth() int {
+rw := m.width - m.leftWidth() - divWidth
+if rw < 1 {
+rw = 1
+}
+return rw
 }
 
-// inputCandidates returns completable names matching the current input prefix.
-// For top-level it returns command names; for subcommands it returns sub-names.
-func (m Model) inputCandidates() []string {
-	val := strings.TrimLeft(m.input.value(), " \t")
-	val = strings.TrimPrefix(val, "/") // tolerate optional leading slash
-	if val == "" {
-		return nil
-	}
-	idx := strings.IndexAny(val, " \t")
-	if idx < 0 {
-		// Top-level: no space yet.
-		return candidatesFor(val)
-	}
-	// Subcommand: text after the first space (must be a single word).
-	cmdName := val[:idx]
-	rest := strings.TrimLeft(val[idx+1:], " \t")
-	if strings.ContainsAny(rest, " \t") {
-		return nil // second space — nothing to complete
-	}
-	return subCandidatesFor(cmdName, rest)
+// ---- Fuzzy filter -----------------------------------------------------------
+
+// fuzzyMatch reports whether all runes in query appear in s in order (case-insensitive).
+func fuzzyMatch(s, query string) bool {
+if query == "" {
+return true
+}
+s = strings.ToLower(s)
+q := strings.ToLower(query)
+si := 0
+for _, qr := range q {
+found := false
+for si < len(s) {
+if rune(s[si]) == qr {
+si++
+found = true
+break
+}
+si++
+}
+if !found {
+return false
+}
+}
+return true
 }
 
-// updateViewportContent refreshes the viewport based on current screen.
-func (m *Model) updateViewportContent() {
-	if m.screen == screenToday {
-		m.vp.SetContent(m.todayView())
-	} else {
-		m.vp.SetContent(m.renderHistory())
-	}
+func (m *Model) applyFilter() {
+if m.searchQuery == "" {
+m.filtered = m.items
+return
 }
-
-// flatTodayItems returns all today items in order across all sections.
-func (m Model) flatTodayItems() []todayItem {
-	var out []todayItem
-	for _, s := range m.todaySections {
-		out = append(out, s.items...)
-	}
-	return out
+result := make([]listItem, 0, len(m.items))
+for _, item := range m.items {
+if fuzzyMatch(item.title, m.searchQuery) {
+result = append(result, item)
+}
+}
+m.filtered = result
+if m.selected >= len(m.filtered) {
+m.selected = 0
+}
 }
 
 // ---- Data loading -----------------------------------------------------------
 
-func (m Model) loadToday() tea.Cmd {
-	return func() tea.Msg {
-		proposals, err := m.api.GetProposals(context.Background())
-		if err != nil {
-			// Return empty today on API error so startup is not blocked.
-			return todayLoadedMsg{}
-		}
-
-		var items []todayItem
-		for i := range proposals {
-			p := &proposals[i]
-			title, detail := proposalSummary(p)
-			expandText := proposalExpandText(p)
-			// Extract numeric ID from "suggestion-<n>"
-			prefill := fmt.Sprintf("/approve %s", p.ID)
-			if numID := extractNumericID(p.ID); numID != "" {
-				prefill = fmt.Sprintf("/approve %s", numID)
-			}
-			items = append(items, todayItem{
-				title:      title,
-				detail:     detail,
-				expandText: expandText,
-				prefill:    prefill,
-				proposal:   p,
-			})
-		}
-
-		var sections []todaySection
-		if len(items) > 0 {
-			sections = append(sections, todaySection{name: "Backlink Suggestions", items: items})
-		}
-		return todayLoadedMsg{sections: sections}
-	}
+func (m Model) loadView(v viewMode) tea.Cmd {
+switch v {
+case viewSuggestions:
+return m.loadSuggestions()
+case viewNotes:
+return loadNotes(m.cfg)
+case viewTasks:
+return loadTasks()
+case viewStatus:
+return m.loadStatus()
+}
+return nil
 }
 
-// proposalSummary returns the one-line title and detail for the today list.
-func proposalSummary(p *ClaraItemJSON) (title, detail string) {
-	if p.Body == "" {
-		return p.ID, ""
-	}
-	// First non-empty line of the body is the title.
-	lines := strings.SplitN(p.Body, "\n", 2)
-	title = strings.TrimSpace(lines[0])
-	if len(lines) > 1 {
-		// Find the similarity line for detail.
-		for _, line := range strings.Split(lines[1], "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "Similarity:") {
-				detail = line
-				break
-			}
-		}
-	}
-	return title, detail
+func (m Model) loadSuggestions() tea.Cmd {
+return func() tea.Msg {
+proposals, err := m.api.GetProposals(context.Background())
+if err != nil {
+return itemsLoadedMsg{view: viewSuggestions, err: err}
+}
+items := make([]listItem, 0, len(proposals))
+for i := range proposals {
+p := &proposals[i]
+items = append(items, listItem{
+title:   proposalTitle(p),
+preview: proposalPreview(p),
+ref:     p,
+})
+}
+return itemsLoadedMsg{view: viewSuggestions, items: items}
+}
 }
 
-// proposalExpandText renders the proposal as YAML frontmatter + markdown for
-// display in the chat viewport when the user selects it.
+func (m Model) loadStatus() tea.Cmd {
+return func() tea.Msg {
+s, err := m.api.GetStatus(context.Background())
+if err != nil {
+return itemsLoadedMsg{view: viewStatus, err: err}
+}
+preview := fmt.Sprintf(
+"---\nstatus: %s\nuptime: %s\n---\n\nDocuments:   %d\n\nSuggestions:\n  pending:  %d\n  approved: %d\n  rejected: %d\n",
+s.Status, s.Uptime, s.Documents,
+s.Suggestions.Pending, s.Suggestions.Approved, s.Suggestions.Rejected,
+)
+items := []listItem{{title: "Server", preview: preview}}
+return itemsLoadedMsg{view: viewStatus, items: items}
+}
+}
+
+func loadNotes(cfg localConfig) tea.Cmd {
+return func() tea.Msg {
+findArgs := []string{
+"-L", cfg.NotesDir,
+"(", "-name", "*.md", "-o", "-name", "*.markdown", ")",
+"-not", "-path", "*/.git/*",
+}
+out, err := exec.Command("find", findArgs...).Output()
+if err != nil {
+return itemsLoadedMsg{view: viewNotes, err: fmt.Errorf("find notes: %w", err)}
+}
+files := strings.Split(strings.TrimSpace(string(out)), "\n")
+if len(files) == 0 || (len(files) == 1 && files[0] == "") {
+return itemsLoadedMsg{view: viewNotes}
+}
+sort.Strings(files)
+items := make([]listItem, 0, len(files))
+for _, f := range files {
+name := filepath.Base(f)
+var preview string
+if content, readErr := os.ReadFile(f); readErr != nil {
+preview = fmt.Sprintf("(error reading file: %v)", readErr)
+} else {
+preview = string(content)
+}
+items = append(items, listItem{title: name, preview: preview, ref: f})
+}
+return itemsLoadedMsg{view: viewNotes, items: items}
+}
+}
+
+func loadTasks() tea.Cmd {
+return func() tea.Msg {
+out, err := exec.Command("reminders", "show-all", "--format", "json").Output()
+if err != nil {
+return itemsLoadedMsg{view: viewTasks, err: fmt.Errorf("reminders: %w", err)}
+}
+var all []taskItem
+if err := json.Unmarshal(out, &all); err != nil {
+return itemsLoadedMsg{view: viewTasks, err: fmt.Errorf("parse tasks: %w", err)}
+}
+items := make([]listItem, 0, len(all))
+for _, t := range all {
+if !t.IsCompleted {
+ti := t
+items = append(items, listItem{
+title:   fmt.Sprintf("[%s] %s", t.List, t.Title),
+preview: taskToClaraItem(ti),
+ref:     ti,
+})
+}
+}
+return itemsLoadedMsg{view: viewTasks, items: items}
+}
+}
+
+// ---- Formatting helpers -----------------------------------------------------
+
+func proposalTitle(p *ClaraItemJSON) string {
+src := filepath.Base(p.Source)
+src = strings.TrimSuffix(src, filepath.Ext(src))
+if p.SourceRef != "" {
+return fmt.Sprintf("%s → [[%s]]", src, p.SourceRef)
+}
+// Fall back to first non-empty line of body.
+if p.Body != "" {
+for _, line := range strings.Split(p.Body, "\n") {
+if t := strings.TrimSpace(line); t != "" {
+return t
+}
+}
+}
+return p.ID
+}
+
+func proposalPreview(p *ClaraItemJSON) string {
+var sb strings.Builder
+sb.WriteString("---\n")
+sb.WriteString(fmt.Sprintf("id:             %s\n", p.ID))
+sb.WriteString(fmt.Sprintf("type:           %s\n", p.Type))
+sb.WriteString(fmt.Sprintf("source:         %s\n", p.Source))
+if p.SourceRef != "" {
+sb.WriteString(fmt.Sprintf("source_ref:     %s\n", p.SourceRef))
+}
+sb.WriteString(fmt.Sprintf("status:         %s\n", p.Status))
+sb.WriteString(fmt.Sprintf("action_surface: %s\n", p.ActionSurface))
+sb.WriteString("---\n")
+if p.Body != "" {
+sb.WriteByte('\n')
+sb.WriteString(p.Body)
+if !strings.HasSuffix(p.Body, "\n") {
+sb.WriteByte('\n')
+}
+}
+return sb.String()
+}
+
+// proposalExpandText renders a proposal for editing in $EDITOR (alias for proposalPreview).
 func proposalExpandText(p *ClaraItemJSON) string {
-	var sb strings.Builder
-	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("id:             %s\n", p.ID))
-	sb.WriteString(fmt.Sprintf("type:           %s\n", p.Type))
-	sb.WriteString(fmt.Sprintf("source:         %s\n", p.Source))
-	if p.SourceRef != "" {
-		sb.WriteString(fmt.Sprintf("source_ref:     %s\n", p.SourceRef))
-	}
-	sb.WriteString(fmt.Sprintf("status:         %s\n", p.Status))
-	sb.WriteString(fmt.Sprintf("action_surface: %s\n", p.ActionSurface))
-	sb.WriteString("---\n")
-	if p.Body != "" {
-		sb.WriteString(p.Body)
-		if !strings.HasSuffix(p.Body, "\n") {
-			sb.WriteByte('\n')
-		}
-	}
-	return sb.String()
+return proposalPreview(p)
 }
 
-// extractNumericID extracts the numeric part from "suggestion-42" → "42".
+// extractNumericID returns the numeric part of "suggestion-42" → "42".
 func extractNumericID(id string) string {
-	parts := strings.SplitN(id, "-", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return id
+parts := strings.SplitN(id, "-", 2)
+if len(parts) == 2 {
+return parts[1]
+}
+return id
+}
+
+// parseEditedStatus extracts the status field value from YAML frontmatter.
+func parseEditedStatus(content []byte) string {
+for _, line := range strings.Split(string(content), "\n") {
+line = strings.TrimSpace(line)
+if strings.HasPrefix(line, "status:") {
+return strings.TrimSpace(strings.TrimPrefix(line, "status:"))
+}
+}
+return ""
 }
 
 // ---- Update -----------------------------------------------------------------
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+switch msg := msg.(type) {
+case tea.WindowSizeMsg:
+m.width, m.height = msg.Width, msg.Height
+if !m.ready {
+m.preview = viewport.New(m.rightWidth(), m.bodyHeight())
+m.ready = true
+} else {
+m.preview.Width = m.rightWidth()
+m.preview.Height = m.bodyHeight()
+}
+m.updatePreview()
+return m, nil
 
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-		if !m.ready {
-			m.vp = viewport.New(m.width, m.viewportHeight())
-			m.ready = true
-			m.updateViewportContent()
-		} else {
-			m.vp.Width = m.width
-			m.vp.Height = m.viewportHeight()
-		}
+case itemsLoadedMsg:
+if msg.view != m.view {
+return m, nil // stale result for a view we've left
+}
+m.loading = false
+if msg.err != nil {
+m.loadErr = msg.err.Error()
+m.items = nil
+m.filtered = nil
+} else {
+m.loadErr = ""
+m.items = msg.items
+m.filtered = msg.items
+}
+m.selected = 0
+m.searchQuery = ""
+m.searching = false
+if m.ready {
+m.preview.Width = m.rightWidth()
+m.preview.Height = m.bodyHeight()
+}
+m.updatePreview()
+return m, nil
 
-	case todayLoadedMsg:
-		m.todaySections = msg.sections
-		m.todayLoading = false
-		if m.ready && m.screen == screenToday {
-			m.vp.SetContent(m.todayView())
-			m.vp.GotoTop()
-		}
+case editDoneMsg:
+// After editing a suggestion, optionally apply an approve/dismiss action.
+if msg.err == nil && msg.original != nil {
+api := m.api
+view := m.view
+numID := extractNumericID(msg.original.ID)
+action := parseEditedStatus(msg.content)
+return m, func() tea.Msg {
+switch action {
+case "approved":
+if id, err := strconv.ParseInt(numID, 10, 64); err == nil {
+api.Approve(context.Background(), id) //nolint:errcheck
+}
+case "dismissed":
+if id, err := strconv.ParseInt(numID, 10, 64); err == nil {
+api.Dismiss(context.Background(), id) //nolint:errcheck
+}
+}
+// Reload suggestions after the action.
+proposals, err := api.GetProposals(context.Background())
+if err != nil {
+return itemsLoadedMsg{view: view, err: err}
+}
+items := make([]listItem, 0, len(proposals))
+for i := range proposals {
+p := &proposals[i]
+items = append(items, listItem{
+title:   proposalTitle(p),
+preview: proposalPreview(p),
+ref:     p,
+})
+}
+return itemsLoadedMsg{view: view, items: items}
+}
+}
+// For note/task edits or errors, simply reload.
+m.loading = true
+return m, m.loadView(m.view)
 
-	case showTodayMsg:
-		m.screen = screenToday
-		m.todayLoading = true
-		if m.ready {
-			m.vp.Height = m.viewportHeight()
-			m.vp.SetContent(m.todayView())
-			m.vp.GotoTop()
-		}
-		return m, m.loadToday()
-
-	case inputResultMsg:
-		kind := kindResult
-		if msg.err != nil {
-			kind = kindError
-			m.history = append(m.history, chatEntry{kind, "Error: " + msg.err.Error()})
-		} else {
-			m.history = append(m.history, chatEntry{kind, msg.output})
-		}
-		m.vp.SetContent(m.renderHistory())
-		m.vp.GotoBottom()
-
-	case findReadyMsg:
-		cmd = execFzf(msg.files)
-
-	case notesReadyMsg:
-		if msg.newFile != "" {
-			cmd = execEditor(msg.newFile)
-		} else {
-			cmd = execFzfNotes(msg.files)
-		}
-
-	case noteSelectedMsg:
-		cmd = execEditor(msg.path)
-
-	case remindersReadyMsg:
-		cmd = execFzfReminders(msg.items, msg.editMode)
-
-	case reminderSelectedMsg:
-		m.screen = screenChat
-		text := reminderToClaraItem(msg.item)
-		m.history = append(m.history, chatEntry{kindResult, text})
-		m.vp.SetContent(m.renderHistory())
-		m.vp.GotoBottom()
-
-	case reminderEditSelectedMsg:
-		cmd = execReminderEditor(msg.item)
-
-	case editDoneMsg:
-		if msg.err != nil {
-			m.history = append(m.history, chatEntry{kindError, "Edit error: " + msg.err.Error()})
-		} else if msg.original != nil && len(msg.content) > 0 {
-			// Parse status from edited YAML frontmatter; apply approve/dismiss accordingly.
-			edited := parseEditedStatus(msg.content)
-			var result string
-			var apiErr error
-			switch edited {
-			case "approved":
-				if numID := extractNumericID(msg.original.ID); numID != "" {
-					result, apiErr = runApproveByID(numID, m.api)
-				}
-			case "dismissed":
-				if numID := extractNumericID(msg.original.ID); numID != "" {
-					if n, convErr := strconv.ParseInt(numID, 10, 64); convErr == nil {
-						apiErr = m.api.Dismiss(context.Background(), n)
-						if apiErr == nil {
-							result = "Dismissed: " + msg.original.ID
-						}
-					}
-				}
-			default:
-				result = "Saved (no status change)"
-			}
-			if apiErr != nil {
-				m.history = append(m.history, chatEntry{kindError, "Apply error: " + apiErr.Error()})
-			} else if result != "" {
-				m.history = append(m.history, chatEntry{kindResult, result})
-			}
-		}
-		m.screen = screenChat
-		m.vp.SetContent(m.renderHistory())
-		m.vp.GotoBottom()
-
-	case tea.KeyMsg:
-		if m.screen == screenToday {
-			m, cmd = m.handleTodayKey(msg)
-		} else if m.input.mode == modeNormal {
-			m, cmd = m.handleNormalKey(msg)
-		} else {
-			m, cmd = m.handleInsertKey(msg)
-		}
-		if m.ready {
-			m.vp.Height = m.viewportHeight()
-		}
-		return m, cmd
-	}
-
-	return m, cmd
+case tea.KeyMsg:
+if m.searching {
+return m.handleSearchKey(msg)
+}
+return m.handleNormalKey(msg)
 }
 
-// ---- Today key handler ------------------------------------------------------
-
-func (m Model) handleTodayKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-
-	case "esc", "q":
-		m.screen = screenChat
-		m.input.enterInsert()
-		if m.ready {
-			m.vp.Height = m.viewportHeight()
-			m.vp.SetContent(m.renderHistory())
-			m.vp.GotoBottom()
-		}
-
-	case "j", "down":
-		m.vp.LineDown(1)
-	case "k", "up":
-		m.vp.LineUp(1)
-	case "ctrl+d":
-		m.vp.HalfViewDown()
-	case "ctrl+u":
-		m.vp.HalfViewUp()
-
-	default:
-		// Number key: 1–9 selects the corresponding item.
-		if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
-			n := int(s[0] - '0')
-			return m.selectTodayItem(n)
-		}
-		// Any printable char: switch to chat/insert and start typing.
-		if len(msg.Runes) == 1 {
-			m.screen = screenChat
-			m.input.enterInsert()
-			m.input.insertChar(msg.Runes[0])
-			m.tabIndex = -1
-			if m.ready {
-				m.vp.Height = m.viewportHeight()
-				m.vp.SetContent(m.renderHistory())
-				m.vp.GotoBottom()
-			}
-		}
-	}
-	return m, nil
+// Pass other messages (mouse, etc.) to the preview viewport.
+var cmd tea.Cmd
+m.preview, cmd = m.preview.Update(msg)
+return m, cmd
 }
 
-// selectTodayItem switches to chat mode, shows the item, and pre-fills the input.
-func (m Model) selectTodayItem(n int) (Model, tea.Cmd) {
-	items := m.flatTodayItems()
-	if n < 1 || n > len(items) {
-		return m, nil
-	}
-	item := items[n-1]
-
-	m.screen = screenChat
-	m.history = append(m.history, chatEntry{kindResult, item.expandText})
-	if m.ready {
-		m.vp.Height = m.viewportHeight()
-		m.vp.SetContent(m.renderHistory())
-		m.vp.GotoBottom()
-	}
-
-	// Pre-fill the input prompt with the suggested action.
-	m.input.clear()
-	m.input.enterInsert()
-	for _, r := range item.prefill {
-		m.input.insertChar(r)
-	}
-	return m, nil
+func (m *Model) updatePreview() {
+if len(m.filtered) == 0 {
+m.preview.SetContent("")
+return
+}
+if m.selected < 0 {
+m.selected = 0
+}
+if m.selected >= len(m.filtered) {
+m.selected = len(m.filtered) - 1
+}
+m.preview.SetContent(m.filtered[m.selected].preview)
+m.preview.GotoTop()
 }
 
-// ---- Chat key handlers ------------------------------------------------------
+// ---- Key handlers -----------------------------------------------------------
 
 func (m Model) handleNormalKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
-	case "j", "down":
-		m.vp.LineDown(1)
-	case "k", "up":
-		m.vp.LineUp(1)
-	case "ctrl+d":
-		m.vp.HalfViewDown()
-	case "ctrl+u":
-		m.vp.HalfViewUp()
-	case "G":
-		m.vp.GotoBottom()
-	case "i":
-		m.input.enterInsert()
-	case "a":
-		m.input.enterInsertAfter()
-	case "A":
-		m.input.enterInsertEnd()
-	case "I":
-		m.input.enterInsertBeginning()
-	case "h", "left":
-		m.input.moveCursorLeft()
-	case "l", "right":
-		m.input.moveCursorRight()
-	case "w":
-		m.input.moveWordForward()
-	case "b":
-		m.input.moveWordBackward()
-	case "0":
-		m.input.moveCursorBeginning()
-	case "$":
-		m.input.moveCursorEnd()
-	case "x":
-		m.input.deleteAtCursor()
-	case "D":
-		m.input.deleteToEnd()
-	}
-	return m, nil
+switch msg.String() {
+case "q", "ctrl+c":
+return m, tea.Quit
+
+case "j", "down":
+if m.selected < len(m.filtered)-1 {
+m.selected++
+m.updatePreview()
 }
 
-func (m Model) handleInsertKey(msg tea.KeyMsg) (Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.input.exitInsert()
-		m.tabIndex = -1
-
-	case "ctrl+c", "ctrl+d":
-		return m, tea.Quit
-
-	case "enter":
-		line := strings.TrimSpace(m.input.value())
-		if line == "" {
-			return m, nil
-		}
-		// Handle edit <n> specially: needs access to today items.
-		if cmd, handled := m.handleEditCommand(line); handled {
-			m.history = append(m.history, chatEntry{kindEcho, line})
-			m.input.clear()
-			m.tabIndex = -1
-			m.vp.SetContent(m.renderHistory())
-			m.vp.GotoBottom()
-			return m, cmd
-		}
-		m.history = append(m.history, chatEntry{kindEcho, line})
-		m.input.clear()
-		m.tabIndex = -1
-		cmd := dispatch(line, m.api)
-		m.vp.SetContent(m.renderHistory())
-		m.vp.GotoBottom()
-		return m, cmd
-
-	case "tab":
-		candidates := m.inputCandidates()
-		if len(candidates) == 0 {
-			return m, nil
-		}
-		base := m.inputCompletionBase() // capture before input is modified
-		if len(candidates) == 1 {
-			m.setInputTo(base + candidates[0] + " ")
-			m.tabIndex = -1
-		} else {
-			m.tabIndex = (m.tabIndex + 1) % len(candidates)
-			m.setInputTo(base + candidates[m.tabIndex])
-		}
-		return m, nil
-
-	case "alt+enter":
-		m.input.insertChar('\n')
-		m.tabIndex = -1
-
-	case "backspace":
-		m.input.backspace()
-		m.tabIndex = -1
-
-	case "delete":
-		m.input.deleteAtCursor()
-		m.tabIndex = -1
-
-	case "left":
-		m.input.moveCursorLeft()
-	case "right":
-		m.input.moveCursorRight()
-
-	default:
-		if len(msg.Runes) == 1 {
-			m.input.insertChar(msg.Runes[0])
-			m.tabIndex = -1
-		}
-	}
-	return m, nil
+case "k", "up":
+if m.selected > 0 {
+m.selected--
+m.updatePreview()
 }
 
-func (m *Model) setInputTo(s string) {
-	m.input.clear()
-	for _, r := range s {
-		m.input.insertChar(r)
-	}
+case "ctrl+d":
+if len(m.filtered) > 0 {
+m.selected = min(m.selected+m.bodyHeight()/2, len(m.filtered)-1)
+m.updatePreview()
 }
 
-// handleEditCommand detects "/edit <n>" and returns the editor tea.Cmd.
-// Returns (nil, false) if the line is not an edit command.
-func (m Model) handleEditCommand(line string) (tea.Cmd, bool) {
-	bare := strings.TrimPrefix(line, "/") // tolerate optional leading slash
-	name, args := parseLine(bare)
-	if !strings.HasPrefix("edit", name) || name == "" {
-		return nil, false
-	}
-	if len(args) == 0 {
-		return func() tea.Msg {
-			return inputResultMsg{err: fmt.Errorf("usage: /edit <number>")}
-		}, true
-	}
-	n, err := strconv.Atoi(args[0])
-	if err != nil || n < 1 {
-		return func() tea.Msg {
-			return inputResultMsg{err: fmt.Errorf("invalid item number: %s", args[0])}
-		}, true
-	}
-	items := m.flatTodayItems()
-	if n > len(items) {
-		return func() tea.Msg {
-			return inputResultMsg{err: fmt.Errorf("item %d not found", n)}
-		}, true
-	}
-	item := items[n-1]
-	if item.proposal == nil {
-		return func() tea.Msg {
-			return inputResultMsg{err: fmt.Errorf("item %d is not editable", n)}
-		}, true
-	}
-	return editItemCmd(item.proposal), true
+case "ctrl+u":
+m.selected = max(m.selected-m.bodyHeight()/2, 0)
+m.updatePreview()
+
+case "g":
+m.selected = 0
+m.updatePreview()
+
+case "G":
+if len(m.filtered) > 0 {
+m.selected = len(m.filtered) - 1
+m.updatePreview()
 }
 
-// parseEditedStatus extracts the status value from YAML+md content bytes.
-func parseEditedStatus(content []byte) string {
-	for _, line := range strings.Split(string(content), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "status:") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "status:"))
-		}
-	}
-	return ""
+case "[":
+m.view = viewMode((int(m.view) - 1 + len(viewNames)) % len(viewNames))
+m.loading = true
+m.items = nil
+m.filtered = nil
+m.selected = 0
+m.searchQuery = ""
+return m, m.loadView(m.view)
+
+case "]":
+m.view = viewMode((int(m.view) + 1) % len(viewNames))
+m.loading = true
+m.items = nil
+m.filtered = nil
+m.selected = 0
+m.searchQuery = ""
+return m, m.loadView(m.view)
+
+case "/":
+m.searching = true
+m.searchQuery = ""
+
+case "esc":
+if m.searchQuery != "" || m.searching {
+m.searching = false
+m.searchQuery = ""
+m.filtered = m.items
+m.selected = 0
+m.updatePreview()
 }
 
-// runApproveByID calls the approve endpoint for a numeric-string ID.
-func runApproveByID(numID string, api *APIClient) (string, error) {
-	id, err := strconv.Atoi(numID)
-	if err != nil {
-		return "", fmt.Errorf("invalid id: %s", numID)
-	}
-	return runApprove(context.Background(), []string{strconv.Itoa(id)}, api)
+case "enter":
+return m.editSelected()
+
+case "r":
+m.loading = true
+m.loadErr = ""
+return m, m.loadView(m.view)
+
+// Preview pane scrolling
+case "ctrl+f":
+m.preview.HalfViewDown()
+case "ctrl+b":
+m.preview.HalfViewUp()
+}
+return m, nil
+}
+
+func (m Model) handleSearchKey(msg tea.KeyMsg) (Model, tea.Cmd) {
+switch msg.String() {
+case "esc":
+m.searching = false
+m.searchQuery = ""
+m.filtered = m.items
+m.selected = 0
+m.updatePreview()
+
+case "enter":
+m.searching = false
+// Keep current filter active.
+
+case "backspace":
+if len(m.searchQuery) > 0 {
+runes := []rune(m.searchQuery)
+m.searchQuery = string(runes[:len(runes)-1])
+m.applyFilter()
+m.updatePreview()
+}
+
+default:
+if len(msg.Runes) == 1 {
+m.searchQuery += string(msg.Runes)
+m.applyFilter()
+m.updatePreview()
+}
+}
+return m, nil
+}
+
+func (m Model) editSelected() (Model, tea.Cmd) {
+if len(m.filtered) == 0 || m.selected >= len(m.filtered) {
+return m, nil
+}
+item := m.filtered[m.selected]
+switch m.view {
+case viewNotes:
+if path, ok := item.ref.(string); ok {
+return m, execEditor(path)
+}
+case viewTasks:
+if task, ok := item.ref.(taskItem); ok {
+return m, execTaskEditor(task)
+}
+case viewSuggestions:
+if p, ok := item.ref.(*ClaraItemJSON); ok {
+return m, editItemCmd(p)
+}
+}
+return m, nil
+}
+
+// execEditor opens path in $EDITOR via tea.ExecProcess.
+func execEditor(path string) tea.Cmd {
+editor := os.Getenv("EDITOR")
+if editor == "" {
+editor = "vi"
+}
+cmd := exec.Command(editor, path)
+return tea.ExecProcess(cmd, func(err error) tea.Msg {
+return editDoneMsg{err: err}
+})
 }
 
 // ---- Rendering --------------------------------------------------------------
 
-func (m Model) todayView() string {
-	var sb strings.Builder
-
-	now := time.Now()
-	var greet string
-	switch h := now.Hour(); {
-	case h >= 5 && h < 12:
-		greet = "Good morning!"
-	case h >= 12 && h < 17:
-		greet = "Good afternoon!"
-	case h >= 17 && h < 21:
-		greet = "Good evening!"
-	default:
-		greet = "Good night!"
-	}
-
-	sb.WriteString("\n  ")
-	sb.WriteString(greetStyle.Render(greet))
-	sb.WriteString("\n  ")
-	sb.WriteString(dateStyle.Render(now.Format("Monday, January 2")))
-	sb.WriteString("\n")
-
-	if m.todayLoading {
-		sb.WriteString("\n  ")
-		sb.WriteString(echoStyle.Render("Loading…"))
-		return sb.String()
-	}
-
-	if len(m.todaySections) == 0 {
-		sb.WriteString("\n  ")
-		sb.WriteString(echoStyle.Render("Nothing needs your attention right now."))
-		return sb.String()
-	}
-
-	num := 1
-	for _, section := range m.todaySections {
-		sb.WriteString("\n  ")
-		sb.WriteString(sectionStyle.Render("── " + section.name))
-		sb.WriteString("\n\n")
-		for _, item := range section.items {
-			sb.WriteString(fmt.Sprintf("  %s  %s\n",
-				numStyle.Render(fmt.Sprintf("%d.", num)),
-				item.title,
-			))
-			if item.detail != "" {
-				sb.WriteString(fmt.Sprintf("      %s\n", echoStyle.Render(item.detail)))
-			}
-			sb.WriteString("\n")
-			num++
-		}
-	}
-	return sb.String()
-}
-
-func (m Model) renderHistory() string {
-	var sb strings.Builder
-	sb.WriteString(welcomeText())
-	sb.WriteString("\n")
-	for i, entry := range m.history {
-		if i > 0 {
-			sb.WriteString("\n")
-		}
-		switch entry.kind {
-		case kindEcho:
-			sb.WriteString(echoStyle.Render("> " + entry.content))
-		case kindResult:
-			sb.WriteString(entry.content)
-		case kindError:
-			sb.WriteString(errorStyle.Render(entry.content))
-		case kindSuccess:
-			sb.WriteString(successStyle.Render(entry.content))
-		}
-		sb.WriteString("\n")
-	}
-	return sb.String()
-}
-
-func (m Model) statusView() string {
-	candidates := m.inputCandidates()
-	if len(candidates) == 0 {
-		return ""
-	}
-	parts := make([]string, len(candidates))
-	for i, name := range candidates {
-		if i == m.tabIndex {
-			parts[i] = tabSelStyle.Render(name)
-		} else {
-			parts[i] = tabDimStyle.Render(name)
-		}
-	}
-	return "  " + strings.Join(parts, "  ")
-}
-
-func welcomeText() string {
-	return echoStyle.Render("Type a command or 'help'. Press esc for normal mode.")
-}
-
 func (m Model) View() string {
-	if !m.ready {
-		return ""
-	}
-
-	sep := separatorStyle.Render(strings.Repeat("─", m.width))
-
-	if m.screen == screenToday {
-		hint := hintStyle.Render("  1-9 select  ·  esc chat")
-		return strings.Join([]string{m.vp.View(), sep, hint}, "\n")
-	}
-
-	// Chat mode: prompt arrow points right (insert) or left (normal)
-	promptChar := "❯"
-	if m.input.mode == modeNormal {
-		promptChar = "❮"
-	}
-	inputLine := fmt.Sprintf("%s %s",
-		promptStyle.Render(promptChar),
-		m.input.view(),
-	)
-	parts := []string{m.vp.View(), sep, inputLine, m.statusView()}
-	return strings.Join(parts, "\n")
+if !m.ready {
+return ""
+}
+return m.renderHeader() + "\n" + m.renderBody() + "\n" + m.renderFooter()
 }
 
-// ---- fzf integration --------------------------------------------------------
-
-func execFzf(files []string) tea.Cmd {
-	tmpIn, err := os.CreateTemp("", "clara-find-in-*")
-	if err != nil {
-		e := fmt.Errorf("create temp file: %w", err)
-		return func() tea.Msg { return inputResultMsg{err: e} }
-	}
-	fmt.Fprint(tmpIn, strings.Join(files, "\n"))
-	tmpIn.Close()
-
-	tmpOut, err := os.CreateTemp("", "clara-find-out-*")
-	if err != nil {
-		os.Remove(tmpIn.Name())
-		e := fmt.Errorf("create temp file: %w", err)
-		return func() tea.Msg { return inputResultMsg{err: e} }
-	}
-	tmpOut.Close()
-
-	shellCmd := fmt.Sprintf("fzf < %s > %s", shellEscape(tmpIn.Name()), shellEscape(tmpOut.Name()))
-	cmd := exec.Command("sh", "-c", shellCmd)
-
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		defer os.Remove(tmpIn.Name())
-		defer os.Remove(tmpOut.Name())
-
-		selBytes, readErr := os.ReadFile(tmpOut.Name())
-		path := strings.TrimSpace(string(selBytes))
-		if readErr != nil || path == "" {
-			return inputResultMsg{output: "Find cancelled."}
-		}
-		if openErr := exec.Command("open", path).Start(); openErr != nil {
-			return inputResultMsg{err: fmt.Errorf("open %s: %w", path, openErr)}
-		}
-		return inputResultMsg{output: "Opened: " + path}
-	})
+func (m Model) renderHeader() string {
+sep := tabSepStyle.Render("  ")
+var parts []string
+for i, name := range viewNames {
+if viewMode(i) == m.view {
+parts = append(parts, tabActiveStyle.Render(name))
+} else {
+parts = append(parts, tabInactiveStyle.Render(name))
+}
+}
+line := "  " + strings.Join(parts, sep)
+return lipgloss.NewStyle().Width(m.width).Render(line)
 }
 
-func shellEscape(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+func (m Model) renderBody() string {
+lw := m.leftWidth()
+bh := m.bodyHeight()
+leftLines := m.buildLeftLines()
+rightContent := m.preview.View()
+rightLines := strings.Split(rightContent, "\n")
+
+div := divStyle.Render("│")
+var sb strings.Builder
+for i := 0; i < bh; i++ {
+if i > 0 {
+sb.WriteByte('\n')
+}
+var ll string
+if i < len(leftLines) {
+ll = leftLines[i]
+}
+// Pad left line to exact width (lipgloss handles ANSI-aware padding).
+sb.WriteString(lipgloss.NewStyle().Width(lw).MaxWidth(lw).Render(ll))
+sb.WriteString(div)
+if i < len(rightLines) {
+sb.WriteString(rightLines[i])
+}
+}
+return sb.String()
 }
 
-// execEditor opens a file path in $EDITOR via tea.ExecProcess.
-func execEditor(path string) tea.Cmd {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vi"
-	}
-	cmd := exec.Command(editor, path)
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		if err != nil {
-			return inputResultMsg{err: fmt.Errorf("editor: %w", err)}
-		}
-		return inputResultMsg{output: "Saved: " + path}
-	})
+func (m Model) buildLeftLines() []string {
+if m.loading {
+return []string{loadingStyle.Render("  Loading…")}
+}
+if m.loadErr != "" {
+return []string{errStyle.Render("  Error: " + m.loadErr)}
+}
+if len(m.filtered) == 0 {
+if m.searchQuery != "" {
+return []string{loadingStyle.Render("  (no matches)")}
+}
+return []string{loadingStyle.Render("  (no items)")}
+}
+lw := m.leftWidth()
+lines := make([]string, 0, len(m.filtered))
+for i, item := range m.filtered {
+title := truncate(item.title, lw-4)
+if i == m.selected {
+lines = append(lines, itemCursorStyle.Render("▶")+" "+itemSelectedStyle.Render(title))
+} else {
+lines = append(lines, "  "+itemNormalStyle.Render(title))
+}
+}
+return lines
 }
 
-// execFzfNotes opens fzf with a file list; on select, sends noteSelectedMsg to
-// open the file in $EDITOR via a proper tea.ExecProcess chain.
-func execFzfNotes(files []string) tea.Cmd {
-	tmpIn, err := os.CreateTemp("", "clara-notes-in-*")
-	if err != nil {
-		e := err
-		return func() tea.Msg { return inputResultMsg{err: e} }
-	}
-	fmt.Fprint(tmpIn, strings.Join(files, "\n"))
-	tmpIn.Close()
-
-	tmpOut, err := os.CreateTemp("", "clara-notes-out-*")
-	if err != nil {
-		os.Remove(tmpIn.Name())
-		e := err
-		return func() tea.Msg { return inputResultMsg{err: e} }
-	}
-	tmpOut.Close()
-
-	// fzf with bat/cat preview, preview window on right.
-	shellCmd := fmt.Sprintf(
-		"fzf --preview %s --preview-window=right:60%% < %s > %s",
-		shellEscape("cat {}"),
-		shellEscape(tmpIn.Name()),
-		shellEscape(tmpOut.Name()),
-	)
-	cmd := exec.Command("sh", "-c", shellCmd)
-
-	return tea.ExecProcess(cmd, func(_ error) tea.Msg {
-		defer os.Remove(tmpIn.Name())
-		defer os.Remove(tmpOut.Name())
-
-		selBytes, readErr := os.ReadFile(tmpOut.Name())
-		path := strings.TrimSpace(string(selBytes))
-		if readErr != nil || path == "" {
-			return inputResultMsg{output: "Notes: cancelled."}
-		}
-		// Return a message; model.Update will chain to execEditor.
-		return noteSelectedMsg{path: path}
-	})
+func (m Model) renderFooter() string {
+if m.searching {
+cursor := searchStyle.Render("█")
+prompt := searchStyle.Render("/ ")
+return lipgloss.NewStyle().Width(m.width).Render(prompt + m.searchQuery + cursor)
 }
-
-// execFzfReminders opens fzf with formatted reminder lines.
-// In normal mode, selection returns reminderSelectedMsg for viewport display.
-// In editMode, selection returns reminderEditSelectedMsg to open in $EDITOR.
-func execFzfReminders(items []reminderItem, editMode bool) tea.Cmd {
-	// Build display lines: "<index>  [list] title"
-	lines := make([]string, len(items))
-	for i, it := range items {
-		lines[i] = fmt.Sprintf("%d\t[%s] %s", i, it.List, it.Title)
-	}
-
-	tmpIn, err := os.CreateTemp("", "clara-rem-in-*")
-	if err != nil {
-		e := err
-		return func() tea.Msg { return inputResultMsg{err: e} }
-	}
-	fmt.Fprint(tmpIn, strings.Join(lines, "\n"))
-	tmpIn.Close()
-
-	tmpOut, err := os.CreateTemp("", "clara-rem-out-*")
-	if err != nil {
-		os.Remove(tmpIn.Name())
-		e := err
-		return func() tea.Msg { return inputResultMsg{err: e} }
-	}
-	tmpOut.Close()
-
-	shellCmd := fmt.Sprintf(
-		"fzf --with-nth=2.. --delimiter='\t' < %s > %s",
-		shellEscape(tmpIn.Name()),
-		shellEscape(tmpOut.Name()),
-	)
-	cmd := exec.Command("sh", "-c", shellCmd)
-
-	return tea.ExecProcess(cmd, func(_ error) tea.Msg {
-		defer os.Remove(tmpIn.Name())
-		defer os.Remove(tmpOut.Name())
-
-		selBytes, readErr := os.ReadFile(tmpOut.Name())
-		line := strings.TrimSpace(string(selBytes))
-		if readErr != nil || line == "" {
-			return inputResultMsg{output: "Reminders: cancelled."}
-		}
-		// Parse the index from the first tab-delimited field.
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) == 0 {
-			return inputResultMsg{output: "Reminders: cancelled."}
-		}
-		idx, parseErr := strconv.Atoi(strings.TrimSpace(parts[0]))
-		if parseErr != nil || idx < 0 || idx >= len(items) {
-			return inputResultMsg{err: fmt.Errorf("reminders: invalid selection")}
-		}
-		if editMode {
-			return reminderEditSelectedMsg{item: items[idx]}
-		}
-		return reminderSelectedMsg{item: items[idx]}
-	})
+hints := "  j/k navigate  ·  enter edit  ·  [ ] cycle views  ·  / search  ·  r reload  ·  q quit"
+return statusStyle.Render(lipgloss.NewStyle().Width(m.width).Render(hints))
 }

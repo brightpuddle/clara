@@ -29,14 +29,15 @@ type findReadyMsg struct {
 	files []string
 }
 
-// notesReadyMsg carries the note file list; triggers fzf+editor launch in the model.
-type notesReadyMsg struct {
-	files   []string
-	newFile string // non-empty when /notes new was requested (pre-created path)
+// noteReadyMsg carries the note file list; triggers fzf+display/editor launch in the model.
+type noteReadyMsg struct {
+	files    []string
+	newFile  string // non-empty when 'note new' was requested (pre-created path)
+	editMode bool   // if true, fzf selection opens $EDITOR; otherwise displays in viewport
 }
 
-// reminderItem is a parsed Apple Reminder.
-type reminderItem struct {
+// taskItem is a parsed Apple Reminder/Task.
+type taskItem struct {
 	ExternalID  string `json:"externalId"`
 	IsCompleted bool   `json:"isCompleted"`
 	List        string `json:"list"`
@@ -46,30 +47,32 @@ type reminderItem struct {
 	Notes       string `json:"notes,omitempty"`
 }
 
-// remindersReadyMsg carries the reminder list; triggers fzf launch in the model.
-type remindersReadyMsg struct {
-	items    []reminderItem
+// taskReadyMsg carries the task list; triggers fzf launch in the model.
+type taskReadyMsg struct {
+	items    []taskItem
 	editMode bool // if true, fzf selection opens $EDITOR instead of viewport display
 }
 
-// reminderSelectedMsg is sent after fzf selects a reminder (for display in viewport).
-type reminderSelectedMsg struct {
-	item reminderItem
+// taskSelectedMsg is sent after fzf selects a task (for display in viewport).
+type taskSelectedMsg struct {
+	item taskItem
 }
 
-// reminderEditSelectedMsg is sent after fzf selects a reminder for $EDITOR editing.
-type reminderEditSelectedMsg struct {
-	item reminderItem
+// taskEditSelectedMsg is sent after fzf selects a task for $EDITOR editing.
+type taskEditSelectedMsg struct {
+	item taskItem
 }
 
 // cmdEntry describes a dispatchable command.
 // Exactly one of run or runCmd must be set.
-// hidden      — omit from /help output.
+// hidden      — omit from help output.
 // tuiOnly     — refuse to run in non-interactive CLI mode.
 // subcommands — optional list of sub-args shown during tab completion.
+// detail      — extended help shown by 'help <command>'.
 type cmdEntry struct {
 	name        string
 	desc        string
+	detail      string
 	hidden      bool
 	tuiOnly     bool
 	subcommands []string
@@ -81,66 +84,70 @@ type cmdEntry struct {
 
 var registry = []cmdEntry{
 	{
-		name: "suggest",
-		desc: "List pending backlink suggestions",
-		run:  runSuggest,
+		name:   "suggest",
+		desc:   "List pending backlink suggestions",
+		detail: "Fetches pending backlink suggestions from the server and displays them with their ID, source, target, and similarity score.\n\nUsage: suggest\n\nSee also: approve, reject",
+		run:    runSuggest,
 	},
 	{
-		name: "approve",
-		desc: "Approve a suggestion by ID: approve <id>",
-		run:  runApprove,
+		name:   "approve",
+		desc:   "Approve a suggestion by ID",
+		detail: "Approves a backlink suggestion by its numeric ID. The agent will apply the link to the source document on its next poll.\n\nUsage: approve <id>\nExample: approve 42",
+		run:    runApprove,
 	},
 	{
-		name: "reject",
-		desc: "Reject a suggestion by ID: reject <id>",
-		run:  runReject,
+		name:   "reject",
+		desc:   "Reject a suggestion by ID",
+		detail: "Rejects a backlink suggestion by its numeric ID. The suggestion will not be shown again.\n\nUsage: reject <id>\nExample: reject 42",
+		run:    runReject,
 	},
 	{
 		name:    "find",
-		desc:    "Search files with Spotlight and open: find <query>",
+		desc:    "Search files with Spotlight and open",
+		detail:  "Runs mdfind with your query, presents results in fzf, and opens the selected file with the default macOS app (open).\n\nUsage: find <spotlight query>\nExample: find project alpha meeting",
 		tuiOnly: true,
 		runCmd:  launchFind,
 	},
 	{
-		name:        "notes",
-		desc:        "Browse and edit notes: notes [query] (alias: notes list)",
+		name:        "note",
+		desc:        "Browse notes (display in viewport; 'note edit' opens $EDITOR)",
+		detail:      "Finds all markdown notes in your notes directory, presents them in fzf with a preview, and displays the selected note in the viewport.\n\nSubcommands:\n  note            Browse and display a note\n  note edit       Browse and open a note in $EDITOR\n  note new [slug] Create a new timestamped note in $EDITOR\n\nThe notes directory is read from agent.yaml (notes.dir), CLARA_NOTES_DIR env, or ~/notes.",
 		tuiOnly:     true,
-		subcommands: []string{"list", "new", "edit"},
-		runCmd:      launchNotes,
+		subcommands: []string{"edit", "new"},
+		runCmd:      launchNote,
 	},
 	{
-		name:        "reminders",
-		desc:        "Browse Apple Reminders: reminders [list]",
+		name:        "task",
+		desc:        "Browse Apple Reminders/tasks",
+		detail:      "Fetches pending tasks from Apple Reminders via reminders-cli, presents them in fzf, and displays the selected task in the viewport.\n\nSubcommands:\n  task              Browse and display a task\n  task edit         Browse and open a task in $EDITOR (with YAML schema)\n  task complete <list> <index>  Mark a task complete\n  task new <list> <text>        Add a new task\n  task lists        Show all reminder lists",
 		tuiOnly:     true,
 		subcommands: []string{"complete", "edit", "lists", "new"},
-		runCmd:      launchReminders,
+		runCmd:      launchTask,
 	},
 	{
 		name:    "edit",
-		desc:    "Edit a today item in $EDITOR: edit <number>",
+		desc:    "Edit a today item in $EDITOR",
+		detail:  "Opens a today-view item by number in $EDITOR as YAML+markdown. On save and exit, the status field is parsed and approve/dismiss is applied if changed.\n\nUsage: edit <number>\nExample: edit 1",
 		tuiOnly: true,
 		runCmd:  nil, // handled specially in model.go via editItemCmd
 	},
 	{
-		name:    "today",
-		desc:    "Show today view",
-		tuiOnly: true,
-		runCmd:  func(_ []string, _ *APIClient) tea.Cmd { return func() tea.Msg { return showTodayMsg{} } },
-	},
-	{
-		name: "help",
-		desc: "Show available commands",
-		run:  runHelp,
+		name:   "help",
+		desc:   "Show available commands",
+		detail: "Shows all available commands with descriptions.\n\nUsage: help [command]\nExample: help suggest",
+		// run: assigned in init() to break the initialization cycle
 	},
 	{
 		name:        "server",
-		desc:        "Server commands: server status",
+		desc:        "Server commands",
+		detail:      "Queries the clara-server for status information.\n\nSubcommands:\n  server status   Show uptime, ingested document count, and suggestion counts",
 		subcommands: []string{"status"},
 		run:         runServer,
 	},
 	{
 		name:        "agent",
-		desc:        "Agent commands: agent status|start|stop",
+		desc:        "Local agent commands",
+		detail:      "Controls the local clara-agent process via its Unix socket.\n\nSubcommands:\n  agent status   Show agent uptime, notes dir, files ingested, actions applied\n  agent start    Start the local agent in the background\n  agent stop     Stop the running local agent",
 		subcommands: []string{"start", "status", "stop"},
 		run:         runAgent,
 	},
@@ -156,6 +163,15 @@ var registry = []cmdEntry{
 		tuiOnly: true,
 		runCmd:  func(_ []string, _ *APIClient) tea.Cmd { return tea.Quit },
 	},
+}
+func init() {
+	// Break the initialization cycle: assign help's run handler after registry is initialized.
+	for i := range registry {
+		if registry[i].name == "help" {
+			registry[i].run = runHelp
+			break
+		}
+	}
 }
 
 // matchCmd finds the unique command whose name starts with `name`.
@@ -197,7 +213,21 @@ func candidatesFor(prefix string) []string {
 // subCandidatesFor returns subcommand names for cmd that have prefix as a prefix.
 func subCandidatesFor(cmdName, prefix string) []string {
 	cmd, err := matchCmd(cmdName)
-	if err != nil || len(cmd.subcommands) == 0 {
+	if err != nil {
+		return nil
+	}
+	// 'help' tab-completes to all visible command names.
+	if cmd.name == "help" {
+		prefix = strings.ToLower(strings.TrimSpace(prefix))
+		var out []string
+		for _, c := range registry {
+			if !c.hidden && strings.HasPrefix(c.name, prefix) {
+				out = append(out, c.name)
+			}
+		}
+		return out
+	}
+	if len(cmd.subcommands) == 0 {
 		return nil
 	}
 	prefix = strings.ToLower(strings.TrimSpace(prefix))
@@ -302,29 +332,30 @@ func runReject(ctx context.Context, args []string, api *APIClient) (string, erro
 	return fmt.Sprintf("✗ Rejected #%d.", id), nil
 }
 
-func runHelp(_ context.Context, _ []string, _ *APIClient) (string, error) {
+func runHelp(_ context.Context, args []string, _ *APIClient) (string, error) {
+	// 'help <command>' — show detailed help for one command.
+	if len(args) > 0 {
+		cmd, err := matchCmd(strings.TrimPrefix(args[0], "/"))
+		if err != nil {
+			return "", err
+		}
+		detail := cmd.detail
+		if detail == "" {
+			detail = cmd.desc
+		}
+		return fmt.Sprintf("%s — %s\n\n%s", cmd.name, cmd.desc, detail), nil
+	}
+
+	// Generic listing.
 	var sb strings.Builder
 	sb.WriteString("Available commands (prefix-matched, e.g. 'su' = 'suggest'):\n")
-	sb.WriteString("\n  suggest              List pending backlink suggestions")
-	sb.WriteString("\n  approve <id>         Approve a suggestion by ID")
-	sb.WriteString("\n  reject <id>          Reject a suggestion by ID")
-	sb.WriteString("\n  find <query>         Search files with Spotlight and open")
-	sb.WriteString("\n  notes [query]        Browse and edit notes (fzf + $EDITOR)")
-	sb.WriteString("\n    notes new          Create a new note in $EDITOR")
-	sb.WriteString("\n    notes list         Browse and edit notes (same as notes)")
-	sb.WriteString("\n    notes edit         Browse and edit notes (same as notes)")
-	sb.WriteString("\n  reminders [list]     Browse Apple Reminders via fzf")
-	sb.WriteString("\n    reminders edit     Browse and edit a reminder in $EDITOR")
-	sb.WriteString("\n    reminders complete <id>  Complete a reminder by index")
-	sb.WriteString("\n    reminders new <list> <text>  Add a new reminder")
-	sb.WriteString("\n    reminders lists    Show all reminder lists")
-	sb.WriteString("\n  edit <n>             Edit today item n in $EDITOR")
-	sb.WriteString("\n  today                Return to today view")
-	sb.WriteString("\n  server status        Show server uptime and suggestion counts")
-	sb.WriteString("\n  agent status         Show local agent status")
-	sb.WriteString("\n  agent start          Start the local agent")
-	sb.WriteString("\n  agent stop           Stop the local agent")
-	sb.WriteString("\n  help                 Show this help")
+	for _, c := range registry {
+		if c.hidden {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("\n  %-22s %s", c.name, c.desc))
+	}
+	sb.WriteString("\n\nType 'help <command>' for details, e.g. 'help note'")
 	return sb.String(), nil
 }
 
@@ -367,23 +398,26 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// ---- notes command ----------------------------------------------------------
+// ---- note command ----------------------------------------------------------
 
-// launchNotes discovers notes files and hands off to fzf+editor via notesReadyMsg.
-func launchNotes(args []string, _ *APIClient) tea.Cmd {
-	// Strip 'list' or 'edit' — both are aliases for the browse+edit flow.
-	if len(args) > 0 && (strings.HasPrefix("list", args[0]) || strings.HasPrefix("edit", args[0])) {
+// launchNote discovers notes files and hands off to fzf via noteReadyMsg.
+// bare note → display in viewport; note edit → open in $EDITOR.
+func launchNote(args []string, _ *APIClient) tea.Cmd {
+	editMode := false
+
+	// note edit — browse and open in $EDITOR.
+	if len(args) > 0 && strings.HasPrefix("edit", args[0]) {
+		editMode = true
 		args = args[1:]
 	}
 
-	// notes new — create a timestamped file and open immediately.
+	// note new — create a timestamped file and open immediately.
 	if len(args) > 0 && strings.HasPrefix("new", args[0]) {
 		return func() tea.Msg {
 			cfg := readLocalConfig()
 			ts := time.Now().Format("2006-01-02")
 			name := ts + ".md"
 			if len(args) > 1 {
-				// Use remaining args as slug.
 				slug := strings.Join(args[1:], "-")
 				slug = strings.Map(func(r rune) rune {
 					if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
@@ -398,11 +432,11 @@ func launchNotes(args []string, _ *APIClient) tea.Cmd {
 				name = ts + "-" + slug + ".md"
 			}
 			path := filepath.Join(cfg.NotesDir, name)
-			return notesReadyMsg{newFile: path}
+			return noteReadyMsg{newFile: path}
 		}
 	}
 
-	// /notes [query] — find files, launch fzf.
+	// note [query] — find files, launch fzf.
 	return func() tea.Msg {
 		cfg := readLocalConfig()
 		// -L follows symlinks (notes dir may itself be a symlink or contain symlinked subdirs).
@@ -419,23 +453,23 @@ func launchNotes(args []string, _ *APIClient) tea.Cmd {
 			return inputResultMsg{output: "No notes found in " + cfg.NotesDir}
 		}
 		sort.Strings(files)
-		return notesReadyMsg{files: files}
+		return noteReadyMsg{files: files, editMode: editMode}
 	}
 }
 
-// ---- reminders command ------------------------------------------------------
+// ---- task command ------------------------------------------------------
 
-// launchReminders fetches reminders and hands off via remindersReadyMsg.
-func launchReminders(args []string, _ *APIClient) tea.Cmd {
+// launchTask fetches tasks (Apple Reminders) and hands off via taskReadyMsg.
+func launchTask(args []string, _ *APIClient) tea.Cmd {
 	if len(args) > 0 {
 		sub := args[0]
 		switch {
 		case strings.HasPrefix("edit", sub):
-			return launchRemindersEdit(args[1:])
+			return launchTaskEdit(args[1:])
 		case strings.HasPrefix("complete", sub):
-			return remindersComplete(args[1:])
+			return taskComplete(args[1:])
 		case strings.HasPrefix("new", sub):
-			return remindersNew(args[1:])
+			return taskNew(args[1:])
 		case strings.HasPrefix("lists", sub):
 			return func() tea.Msg {
 				out, err := exec.Command("reminders", "show-lists").Output()
@@ -447,7 +481,7 @@ func launchReminders(args []string, _ *APIClient) tea.Cmd {
 		}
 	}
 
-	// /reminders [list] — fetch all (or specific list) and launch fzf.
+	// task [list] — fetch all (or specific list) and launch fzf for display.
 	listArg := strings.Join(args, " ")
 	return func() tea.Msg {
 		var out []byte
@@ -460,30 +494,29 @@ func launchReminders(args []string, _ *APIClient) tea.Cmd {
 		if err != nil {
 			return inputResultMsg{err: fmt.Errorf("reminders: %w", err)}
 		}
-		var items []reminderItem
+		var items []taskItem
 		if jsonErr := json.Unmarshal(out, &items); jsonErr != nil {
-			return inputResultMsg{err: fmt.Errorf("parse reminders: %w", jsonErr)}
+			return inputResultMsg{err: fmt.Errorf("parse tasks: %w", jsonErr)}
 		}
 		// Filter to incomplete only by default.
-		var pending []reminderItem
+		var pending []taskItem
 		for _, it := range items {
 			if !it.IsCompleted {
 				pending = append(pending, it)
 			}
 		}
 		if len(pending) == 0 {
-			return inputResultMsg{output: "No pending reminders."}
+			return inputResultMsg{output: "No pending tasks."}
 		}
-		return remindersReadyMsg{items: pending}
+		return taskReadyMsg{items: pending}
 	}
 }
 
-// remindersComplete runs `reminders complete <list> <index>` where index comes
-// from show-all's sequential numbering.
-func remindersComplete(args []string) tea.Cmd {
+// taskComplete runs `reminders complete <list> <index>`.
+func taskComplete(args []string) tea.Cmd {
 	if len(args) < 2 {
 		return func() tea.Msg {
-			return inputResultMsg{err: fmt.Errorf("usage: /reminders complete <list> <index>")}
+			return inputResultMsg{err: fmt.Errorf("usage: task complete <list> <index>")}
 		}
 	}
 	list := args[0]
@@ -491,17 +524,17 @@ func remindersComplete(args []string) tea.Cmd {
 	return func() tea.Msg {
 		out, err := exec.Command("reminders", "complete", list, idx).Output()
 		if err != nil {
-			return inputResultMsg{err: fmt.Errorf("complete reminder: %w", err)}
+			return inputResultMsg{err: fmt.Errorf("complete task: %w", err)}
 		}
 		return inputResultMsg{output: strings.TrimSpace(string(out))}
 	}
 }
 
-// remindersNew runs `reminders add <list> "<text>"`.
-func remindersNew(args []string) tea.Cmd {
+// taskNew runs `reminders add <list> "<text>"`.
+func taskNew(args []string) tea.Cmd {
 	if len(args) < 2 {
 		return func() tea.Msg {
-			return inputResultMsg{err: fmt.Errorf("usage: /reminders new <list> <text>")}
+			return inputResultMsg{err: fmt.Errorf("usage: task new <list> <text>")}
 		}
 	}
 	list := args[0]
@@ -509,50 +542,56 @@ func remindersNew(args []string) tea.Cmd {
 	return func() tea.Msg {
 		out, err := exec.Command("reminders", "add", list, text).Output()
 		if err != nil {
-			return inputResultMsg{err: fmt.Errorf("add reminder: %w", err)}
+			return inputResultMsg{err: fmt.Errorf("add task: %w", err)}
 		}
 		return inputResultMsg{output: strings.TrimSpace(string(out))}
 	}
 }
 
-// launchRemindersEdit fetches reminders, opens fzf, and on select returns
-// reminderEditSelectedMsg so the model can open the item in $EDITOR.
-func launchRemindersEdit(_ []string) tea.Cmd {
+// launchTaskEdit fetches tasks, opens fzf, and on select returns taskEditSelectedMsg.
+func launchTaskEdit(_ []string) tea.Cmd {
 	return func() tea.Msg {
 		out, err := exec.Command("reminders", "show-all", "--format", "json").Output()
 		if err != nil {
 			return inputResultMsg{err: fmt.Errorf("reminders: %w", err)}
 		}
-		var items []reminderItem
+		var items []taskItem
 		if jsonErr := json.Unmarshal(out, &items); jsonErr != nil {
-			return inputResultMsg{err: fmt.Errorf("parse reminders: %w", jsonErr)}
+			return inputResultMsg{err: fmt.Errorf("parse tasks: %w", jsonErr)}
 		}
-		var pending []reminderItem
+		var pending []taskItem
 		for _, it := range items {
 			if !it.IsCompleted {
 				pending = append(pending, it)
 			}
 		}
 		if len(pending) == 0 {
-			return inputResultMsg{output: "No pending reminders."}
+			return inputResultMsg{output: "No pending tasks."}
 		}
-		return remindersReadyMsg{items: pending, editMode: true}
+		return taskReadyMsg{items: pending, editMode: true}
 	}
 }
 
-// execReminderEditor opens a reminder as YAML in $EDITOR via tea.ExecProcess.
-func execReminderEditor(item reminderItem) tea.Cmd {
-	content := reminderToClaraItem(item)
-	tmp, err := os.CreateTemp("", "clara-reminder-*.yaml")
+// execTaskEditor opens a task as YAML in $EDITOR with a yaml-language-server schema modeline.
+func execTaskEditor(item taskItem) tea.Cmd {
+	schemaPath, schemaErr := ensureTaskSchema()
+	content := taskToClaraItem(item)
+
+	// Prepend yaml-language-server modeline if we have a schema.
+	if schemaErr == nil && schemaPath != "" {
+		content = "# yaml-language-server: $schema=" + schemaPath + "\n" + content
+	}
+
+	tmp, err := os.CreateTemp("", "clara-task-*.yaml")
 	if err != nil {
 		e := err
-		return func() tea.Msg { return inputResultMsg{err: e} }
+		return func() tea.Msg { return editDoneMsg{err: e} }
 	}
 	if _, err := tmp.WriteString(content); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
 		e := err
-		return func() tea.Msg { return inputResultMsg{err: e} }
+		return func() tea.Msg { return editDoneMsg{err: e} }
 	}
 	tmp.Close()
 
@@ -563,19 +602,16 @@ func execReminderEditor(item reminderItem) tea.Cmd {
 	cmd := exec.Command(editor, tmp.Name())
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
 		defer os.Remove(tmp.Name())
-		if err != nil {
-			return inputResultMsg{err: fmt.Errorf("editor: %w", err)}
-		}
-		return inputResultMsg{output: "Reminder saved (note: changes are display-only and not written back to Reminders.app)"}
+		return editDoneMsg{err: err}
 	})
 }
 
-
-func reminderToClaraItem(r reminderItem) string {
+// taskToClaraItem renders a taskItem as ClaraItem YAML+md for display/editing.
+func taskToClaraItem(r taskItem) string {
 	var sb strings.Builder
 	sb.WriteString("---\n")
 	sb.WriteString(fmt.Sprintf("id:     %s\n", r.ExternalID))
-	sb.WriteString("type:   reminder\n")
+	sb.WriteString("type:   task\n")
 	sb.WriteString("source: reminders\n")
 	sb.WriteString(fmt.Sprintf("source_ref: %s\n", r.ExternalID))
 	sb.WriteString(fmt.Sprintf("status: %s\n", func() string {
@@ -596,13 +632,91 @@ func reminderToClaraItem(r reminderItem) string {
 		sb.WriteString(fmt.Sprintf("priority: %s\n", p))
 	}
 	sb.WriteString("action_surface: cloud\n")
+	sb.WriteString(fmt.Sprintf("list:   %s\n", r.List))
 	sb.WriteString("---\n")
 	sb.WriteString(r.Title)
 	if r.Notes != "" {
 		sb.WriteString("\n\n" + r.Notes)
 	}
-	sb.WriteString(fmt.Sprintf("\n\nList: %s", r.List))
 	return sb.String()
+}
+
+// ensureTaskSchema writes the task YAML JSON Schema to ~/.config/clara/schemas/task.schema.json
+// and returns its path. The schema enables yaml-language-server to provide completions and validation.
+func ensureTaskSchema() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, ".config", "clara", "schemas")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "task.schema.json")
+
+	schema := `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://clara.local/schemas/task.schema.json",
+  "title": "ClaraTask",
+  "description": "A Clara task item sourced from Apple Reminders or another task system.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier (e.g. Apple Reminders externalId)"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["task", "reminder", "note", "suggestion"],
+      "description": "Item type"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["reminders", "notes", "taskwarrior", "email", "manual"],
+      "description": "System this item was sourced from"
+    },
+    "source_ref": {
+      "type": "string",
+      "description": "Source-system reference (e.g. Apple externalId UUID)"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "done", "cancelled"],
+      "description": "Current status of the task"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "Task priority (maps to Apple Reminders priority 1=high, 2=medium, 3=low)"
+    },
+    "due": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Due date/time (ISO 8601)"
+    },
+    "action_surface": {
+      "type": "string",
+      "enum": ["cloud", "local"],
+      "description": "Where this item is actionable: cloud (synced via iCloud) or local"
+    },
+    "list": {
+      "type": "string",
+      "description": "Apple Reminders list name"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional tags"
+    }
+  },
+  "required": ["type", "source", "status"],
+  "additionalProperties": false
+}
+`
+	if err := os.WriteFile(path, []byte(schema), 0644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 
