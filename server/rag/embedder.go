@@ -202,4 +202,3 @@ func (e *OpenAIEmbedder) EmbedChunks(ctx context.Context, chunks []string) ([][]
 	// TODO: use the batch endpoint (/embeddings with input as []string) for efficiency.
 	return embedChunks(e, ctx, chunks)
 }
-

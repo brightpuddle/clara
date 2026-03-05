@@ -30,8 +30,8 @@ type serverConfig struct {
 
 type aiConfig struct {
 	// Provider selects the embedding backend: "ollama" (default) or "openai".
-	Provider string      `yaml:"provider"`
-	Ollama   ollamaAI    `yaml:"ollama"`
+	Provider string       `yaml:"provider"`
+	Ollama   ollamaAI     `yaml:"ollama"`
 	OpenAI   openAIConfig `yaml:"openai"`
 }
 

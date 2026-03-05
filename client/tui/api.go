@@ -81,9 +81,9 @@ func (c *APIClient) postAction(ctx context.Context, path string) error {
 
 // ServerStatus is the response from GET /api/v1/status.
 type ServerStatus struct {
-	Status    string `json:"status"`
-	Uptime    string `json:"uptime"`
-	Documents int    `json:"documents"`
+	Status      string `json:"status"`
+	Uptime      string `json:"uptime"`
+	Documents   int    `json:"documents"`
 	Suggestions struct {
 		Pending  int `json:"pending"`
 		Approved int `json:"approved"`

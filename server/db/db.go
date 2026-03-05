@@ -47,7 +47,6 @@ func (d *DB) QueryRow(ctx context.Context, sql string, args ...any) interface{ S
 	return d.pool.QueryRow(ctx, sql, args...)
 }
 
-
 // ---- Document ---------------------------------------------------------------
 
 type Document struct {
@@ -113,10 +112,10 @@ func (d *DB) InsertChunk(ctx context.Context, documentID string, index int, cont
 // ---- Similarity search ------------------------------------------------------
 
 type SimilarDoc struct {
-	DocumentID string
-	Path       string
-	Title      string
-	Similarity float64
+	DocumentID   string
+	Path         string
+	Title        string
+	Similarity   float64
 	ChunkContent string // the matching chunk text (for context)
 }
 

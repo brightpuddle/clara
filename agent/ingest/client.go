@@ -11,8 +11,8 @@ import (
 
 // Client wraps the gRPC IngestService client.
 type Client struct {
-	conn   *grpc.ClientConn
-	client pb.IngestServiceClient
+	conn    *grpc.ClientConn
+	client  pb.IngestServiceClient
 	agentID string
 }
 

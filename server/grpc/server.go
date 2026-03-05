@@ -76,8 +76,8 @@ func (s *Server) IngestNote(ctx context.Context, req *pb.IngestRequest) (*pb.Ing
 	if s.temporal != nil {
 		_, err = s.temporal.ExecuteWorkflow(ctx,
 			client.StartWorkflowOptions{
-				ID:        "link-analysis-" + req.DocumentId,
-				TaskQueue: LinkAnalysisQueue,
+				ID:          "link-analysis-" + req.DocumentId,
+				TaskQueue:   LinkAnalysisQueue,
 				RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 3},
 			},
 			workers.LinkAnalysisWorkflow,

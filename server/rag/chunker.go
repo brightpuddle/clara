@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	defaultChunkSize    = 512  // target tokens (approx chars/4)
-	defaultChunkOverlap = 64   // overlap between consecutive chunks
+	defaultChunkSize    = 512 // target tokens (approx chars/4)
+	defaultChunkOverlap = 64  // overlap between consecutive chunks
 )
 
 var (

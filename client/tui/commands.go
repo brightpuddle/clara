@@ -164,6 +164,7 @@ var registry = []cmdEntry{
 		runCmd:  func(_ []string, _ *APIClient) tea.Cmd { return tea.Quit },
 	},
 }
+
 func init() {
 	// Break the initialization cycle: assign help's run handler after registry is initialized.
 	for i := range registry {
@@ -719,8 +720,6 @@ func ensureTaskSchema() (string, error) {
 	return path, nil
 }
 
-
-
 // editDoneMsg is sent when the user saves and exits $EDITOR after editing an item.
 type editDoneMsg struct {
 	original *ClaraItemJSON
@@ -921,4 +920,3 @@ func agentStart(ctx context.Context) (string, error) {
 	}
 	return fmt.Sprintf("Agent started (pid %d) — socket not yet ready.", cmd.Process.Pid), nil
 }
-
