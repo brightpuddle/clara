@@ -2,10 +2,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/rs/zerolog"
@@ -21,13 +24,20 @@ import (
 )
 
 func main() {
+	debugFlag := flag.Bool("debug", false, "write logs to both file and stderr (console)")
+	flag.Parse()
+
+	if err := config.WriteDefaultConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not write default config: %v\n", err)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
 		os.Exit(1)
 	}
 
-	logger := buildLogger(cfg)
+	logger := buildLogger(cfg, *debugFlag)
 	log.Logger = logger
 
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
@@ -66,22 +76,35 @@ func main() {
 	grpcServer.GracefulStop()
 }
 
-func buildLogger(cfg *config.Config) zerolog.Logger {
+func buildLogger(cfg *config.Config, debug bool) zerolog.Logger {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	level, err := zerolog.ParseLevel(cfg.LogLevel)
 	if err != nil {
 		level = zerolog.InfoLevel
 	}
-
-	if cfg.LogFile == "" {
-		return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(level).With().Timestamp().Logger()
+	if debug {
+		level = zerolog.DebugLevel
 	}
 
-	if err := os.MkdirAll(cfg.DataDir+"/logs", 0o755); err == nil {
-		if f, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-			return zerolog.New(f).Level(level).With().Timestamp().Logger()
+	console := zerolog.ConsoleWriter{Out: os.Stderr}
+
+	if cfg.LogFile != "" {
+		logDir := filepath.Dir(cfg.LogFile)
+		if mkErr := os.MkdirAll(logDir, 0o755); mkErr == nil {
+			if f, openErr := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); openErr == nil {
+				if debug {
+					// Write to both file and console when --debug.
+					multi := zerolog.MultiLevelWriter(console, f)
+					return zerolog.New(multi).Level(level).With().Timestamp().Logger()
+				}
+				return zerolog.New(f).Level(level).With().Timestamp().Logger()
+			}
 		}
 	}
-	return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(level).With().Timestamp().Logger()
+
+	return zerolog.New(console).Level(level).With().Timestamp().Logger()
 }
+
+// ensure io is used (MultiLevelWriter needs io.Writer).
+var _ io.Writer = os.Stderr

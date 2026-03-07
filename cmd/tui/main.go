@@ -9,11 +9,16 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/brightpuddle/clara/internal/config"
+	"github.com/brightpuddle/clara/internal/theme"
 	"github.com/brightpuddle/clara/tui"
 	tuigrpc "github.com/brightpuddle/clara/tui/grpc"
 )
 
 func main() {
+	if err := config.WriteDefaultConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not write default config: %v\n", err)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
@@ -24,6 +29,8 @@ func main() {
 		Level(zerolog.WarnLevel).
 		With().Timestamp().Logger()
 
+	mgr := theme.New(&cfg.TUI)
+
 	client, err := tuigrpc.New(cfg.AgentSocketPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "connect to agent at %s: %v\n", cfg.AgentSocketPath(), err)
@@ -32,7 +39,7 @@ func main() {
 	}
 	defer client.Close()
 
-	model := tui.New(client, logger)
+	model := tui.New(client, logger, mgr)
 
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),

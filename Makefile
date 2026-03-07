@@ -8,6 +8,7 @@ TUI_BIN       := $(BINARY_DIR)/clara-tui
 GO            := go
 BUF           := buf
 AIR           := air
+GOREMAN       := goreman
 
 .PHONY: help
 help: ## Display available make targets
@@ -16,13 +17,15 @@ help: ## Display available make targets
 		sort
 
 .PHONY: setup
-setup: ## Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, air)
+setup: ## Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, air, goreman)
 	@echo "Installing protoc-gen-go..."
 	$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	@echo "Installing protoc-gen-go-grpc..."
 	$(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 	@echo "Installing air..."
 	$(GO) install github.com/air-verse/air@latest
+	@echo "Installing goreman..."
+	$(GO) install github.com/mattn/goreman@latest
 	@echo "Setup complete."
 
 .PHONY: proto
@@ -37,12 +40,16 @@ build: proto ## Compile all Go binaries
 	$(GO) build -o $(TUI_BIN)    ./cmd/tui
 	@echo "Built: $(SERVER_BIN), $(AGENT_BIN), $(TUI_BIN)"
 
+.PHONY: dev
+dev: ## Run server, agent, and native worker together via goreman
+	$(GOREMAN) start
+
 .PHONY: dev-server
-dev-server: ## Run server with air hot-reload
+dev-server: ## Run server with air hot-reload (--debug enabled)
 	$(AIR) -c .air.server.toml
 
 .PHONY: dev-agent
-dev-agent: ## Run agent with air hot-reload
+dev-agent: ## Run agent with air hot-reload (--debug enabled)
 	$(AIR) -c .air.agent.toml
 
 .PHONY: dev-tui

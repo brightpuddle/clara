@@ -2,12 +2,14 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
-	"syscall"
-	"context"
 	"path/filepath"
+	"syscall"
 
 	"github.com/rs/zerolog"
 
@@ -16,13 +18,20 @@ import (
 )
 
 func main() {
+	debugFlag := flag.Bool("debug", false, "write logs to both file and stderr (console)")
+	flag.Parse()
+
+	if err := config.WriteDefaultConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not write default config: %v\n", err)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
 		os.Exit(1)
 	}
 
-	logger := buildLogger(cfg)
+	logger := buildLogger(cfg, *debugFlag)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -41,21 +50,33 @@ func main() {
 	}
 }
 
-func buildLogger(cfg *config.Config) zerolog.Logger {
+func buildLogger(cfg *config.Config, debug bool) zerolog.Logger {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	level, err := zerolog.ParseLevel(cfg.LogLevel)
 	if err != nil {
 		level = zerolog.InfoLevel
 	}
+	if debug {
+		level = zerolog.DebugLevel
+	}
+
+	console := zerolog.ConsoleWriter{Out: os.Stderr}
 
 	if cfg.LogFile != "" {
 		logDir := filepath.Dir(cfg.LogFile)
-		if err := os.MkdirAll(logDir, 0o755); err == nil {
-			if f, err := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		if mkErr := os.MkdirAll(logDir, 0o755); mkErr == nil {
+			if f, openErr := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); openErr == nil {
+				if debug {
+					multi := zerolog.MultiLevelWriter(console, f)
+					return zerolog.New(multi).Level(level).With().Timestamp().Logger()
+				}
 				return zerolog.New(f).Level(level).With().Timestamp().Logger()
 			}
 		}
 	}
-	return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).Level(level).With().Timestamp().Logger()
+
+	return zerolog.New(console).Level(level).With().Timestamp().Logger()
 }
+
+var _ io.Writer = os.Stderr
