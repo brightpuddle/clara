@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package agent.v1;
+
+option go_package = "github.com/brightpuddle/clara/gen/agent/v1;agentv1";
+
+import "artifact/v1/artifact.proto";
+
+// AgentService is the gRPC interface between the TUI and the Agent daemon.
+// Served over a Unix Domain Socket at $DATA_DIR/agent.sock.
+service AgentService {
+  // ListArtifacts returns all tracked artifacts sorted by heat score descending.
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse);
+
+  // GetArtifact returns a single artifact by ID.
+  rpc GetArtifact(GetArtifactRequest) returns (GetArtifactResponse);
+
+  // MarkDone marks an artifact as done/archived and writes back to the source
+  // (e.g. completes a Reminder via the native worker).
+  rpc MarkDone(MarkDoneRequest) returns (MarkDoneResponse);
+
+  // Search performs a hybrid (text + vector) search across all artifacts.
+  rpc Search(SearchRequest) returns (SearchResponse);
+
+  // Subscribe opens a server-streaming RPC that pushes ArtifactEvent messages
+  // whenever the artifact list changes.
+  rpc Subscribe(SubscribeRequest) returns (stream ArtifactEvent);
+}
+
+message ListArtifactsRequest {
+  int32 limit  = 1; // 0 = no limit
+  int32 offset = 2;
+  repeated artifact.v1.ArtifactKind kinds = 3; // empty = all kinds
+}
+
+message ListArtifactsResponse {
+  repeated artifact.v1.Artifact artifacts = 1;
+}
+
+message GetArtifactRequest {
+  string id = 1;
+}
+
+message GetArtifactResponse {
+  artifact.v1.Artifact artifact = 1;
+  repeated artifact.v1.Artifact related = 2; // top-k related by vector similarity
+}
+
+message MarkDoneRequest {
+  string id = 1;
+}
+
+message MarkDoneResponse {
+  bool ok = 1;
+}
+
+message SearchRequest {
+  string query    = 1;
+  int32  limit    = 2; // default 20
+  repeated artifact.v1.ArtifactKind kinds = 3;
+}
+
+message SearchResponse {
+  repeated artifact.v1.Artifact artifacts = 1;
+}
+
+message SubscribeRequest {}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_CREATED     = 1;
+  EVENT_TYPE_UPDATED     = 2;
+  EVENT_TYPE_DELETED     = 3;
+}
+
+message ArtifactEvent {
+  EventType            type     = 1;
+  artifact.v1.Artifact artifact = 2;
+}

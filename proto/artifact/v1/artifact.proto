@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package artifact.v1;
+
+option go_package = "github.com/brightpuddle/clara/gen/artifact/v1;artifactv1";
+
+import "google/protobuf/timestamp.proto";
+
+// ArtifactKind enumerates the source types of artifacts Clara tracks.
+enum ArtifactKind {
+  ARTIFACT_KIND_UNSPECIFIED = 0;
+  ARTIFACT_KIND_FILE        = 1;
+  ARTIFACT_KIND_NOTE        = 2;
+  ARTIFACT_KIND_REMINDER    = 3;
+  ARTIFACT_KIND_EMAIL       = 4;
+  ARTIFACT_KIND_BOOKMARK    = 5;
+  ARTIFACT_KIND_LOG         = 6;   // terminal process log / copilot status
+  ARTIFACT_KIND_SUGGESTION  = 7;   // internal Clara suggestions (backlinks, tags, etc.)
+}
+
+// Artifact is the universal data unit in Clara.
+message Artifact {
+  string        id          = 1;
+  ArtifactKind  kind        = 2;
+  string        title       = 3;
+  string        content     = 4;  // markdown or plain text body
+  string        source_path = 5;  // filesystem path, URL, or native ID
+  string        source_app  = 6;  // "reminders", "mail", "filesystem", etc.
+  double        heat_score  = 7;  // computed priority/urgency score
+  bool          done        = 8;
+  repeated string tags      = 9;
+  map<string, string> metadata = 10; // extensible key-value metadata
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp due_at     = 13; // for reminders
+}

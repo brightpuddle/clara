@@ -1,0 +1,20 @@
+# Compiled binaries
+bin/
+tmp/
+
+# Go
+*.test
+*.out
+
+# macOS
+.DS_Store
+
+# Swift
+native/.build/
+native/*.resolved
+
+# Logs
+*.log
+
+# Config (user-specific)
+config.local.yaml
