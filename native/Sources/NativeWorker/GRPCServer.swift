@@ -39,6 +39,26 @@ struct NativeWorkerServiceImpl: Native_V1_NativeWorkerService.SimpleServiceProto
         return resp
     }
 
+    func updateReminder(
+        request: Native_V1_UpdateReminderRequest,
+        context: GRPCCore.ServerContext
+    ) async throws -> Native_V1_UpdateReminderResponse {
+        var resp = Native_V1_UpdateReminderResponse()
+        do {
+            try await reminders.updateReminder(
+                id: request.id,
+                title: request.hasTitle ? request.title : nil,
+                notes: request.hasNotes ? request.notes : nil,
+                dueDate: request.hasDueDate ? request.dueDate.date : nil
+            )
+            resp.ok = true
+        } catch {
+            resp.ok = false
+            resp.error = error.localizedDescription
+        }
+        return resp
+    }
+
     func spotlightSearch(
         request: Native_V1_SpotlightSearchRequest,
         context: GRPCCore.ServerContext

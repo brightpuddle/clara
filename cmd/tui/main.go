@@ -39,7 +39,7 @@ func main() {
 	}
 	defer client.Close()
 
-	model := tui.New(client, logger, mgr)
+	model := tui.New(client, logger, mgr, cfg)
 
 	p := tea.NewProgram(model,
 		tea.WithAltScreen(),

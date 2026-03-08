@@ -68,12 +68,25 @@ internal enum Native_V1_NativeWorkerService: Sendable {
                 method: "GetSystemTheme"
             )
         }
+        /// Namespace for "UpdateReminder" metadata.
+        internal enum UpdateReminder: Sendable {
+            /// Request type for "UpdateReminder".
+            internal typealias Input = Native_V1_UpdateReminderRequest
+            /// Response type for "UpdateReminder".
+            internal typealias Output = Native_V1_UpdateReminderResponse
+            /// Descriptor for "UpdateReminder".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "native.v1.NativeWorkerService"),
+                method: "UpdateReminder"
+            )
+        }
         /// Descriptors for all methods in the "native.v1.NativeWorkerService" service.
         internal static let descriptors: [GRPCCore.MethodDescriptor] = [
             ListReminders.descriptor,
             MarkReminderDone.descriptor,
             SpotlightSearch.descriptor,
-            GetSystemTheme.descriptor
+            GetSystemTheme.descriptor,
+            UpdateReminder.descriptor
         ]
     }
 }
@@ -175,9 +188,13 @@ extension Native_V1_NativeWorkerService {
             request: GRPCCore.StreamingServerRequest<Native_V1_GetSystemThemeRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_GetSystemThemeResponse>
-    }
 
-    /// Service protocol for the "native.v1.NativeWorkerService" service.
+        /// Handle the "UpdateReminder" method.
+        func updateReminder(
+            request: GRPCCore.StreamingServerRequest<Native_V1_UpdateReminderRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_UpdateReminderResponse>
+    }
     ///
     /// This protocol is higher level than ``StreamingServiceProtocol`` but lower level than
     /// the ``SimpleServiceProtocol``, it provides access to request and response metadata and
@@ -261,6 +278,12 @@ extension Native_V1_NativeWorkerService {
             request: GRPCCore.ServerRequest<Native_V1_GetSystemThemeRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Native_V1_GetSystemThemeResponse>
+
+        /// Handle the "UpdateReminder" method.
+        func updateReminder(
+            request: GRPCCore.ServerRequest<Native_V1_UpdateReminderRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Native_V1_UpdateReminderResponse>
     }
 
     /// Simple service protocol for the "native.v1.NativeWorkerService" service.
@@ -345,6 +368,12 @@ extension Native_V1_NativeWorkerService {
             request: Native_V1_GetSystemThemeRequest,
             context: GRPCCore.ServerContext
         ) async throws -> Native_V1_GetSystemThemeResponse
+
+        /// Handle the "UpdateReminder" method.
+        func updateReminder(
+            request: Native_V1_UpdateReminderRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Native_V1_UpdateReminderResponse
     }
 }
 
@@ -396,6 +425,17 @@ extension Native_V1_NativeWorkerService.StreamingServiceProtocol {
                 )
             }
         )
+        router.registerHandler(
+            forMethod: Native_V1_NativeWorkerService.Method.UpdateReminder.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Native_V1_UpdateReminderRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_UpdateReminderResponse>(),
+            handler: { request, context in
+                try await self.updateReminder(
+                    request: request,
+                    context: context
+                )
+            }
+        )
     }
 }
 
@@ -440,6 +480,17 @@ extension Native_V1_NativeWorkerService.ServiceProtocol {
         context: GRPCCore.ServerContext
     ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_GetSystemThemeResponse> {
         let response = try await self.getSystemTheme(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
+
+    internal func updateReminder(
+        request: GRPCCore.StreamingServerRequest<Native_V1_UpdateReminderRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_UpdateReminderResponse> {
+        let response = try await self.updateReminder(
             request: GRPCCore.ServerRequest(stream: request),
             context: context
         )
@@ -495,6 +546,19 @@ extension Native_V1_NativeWorkerService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<Native_V1_GetSystemThemeResponse> {
         return GRPCCore.ServerResponse<Native_V1_GetSystemThemeResponse>(
             message: try await self.getSystemTheme(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func updateReminder(
+        request: GRPCCore.ServerRequest<Native_V1_UpdateReminderRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Native_V1_UpdateReminderResponse> {
+        return GRPCCore.ServerResponse<Native_V1_UpdateReminderResponse>(
+            message: try await self.updateReminder(
                 request: request.message,
                 context: context
             ),
@@ -607,6 +671,15 @@ extension Native_V1_NativeWorkerService {
             deserializer: some GRPCCore.MessageDeserializer<Native_V1_GetSystemThemeResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_GetSystemThemeResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "UpdateReminder" method.
+        func updateReminder<Result>(
+            request: GRPCCore.ClientRequest<Native_V1_UpdateReminderRequest>,
+            serializer: some GRPCCore.MessageSerializer<Native_V1_UpdateReminderRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Native_V1_UpdateReminderResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_UpdateReminderResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
     }
 
@@ -766,6 +839,25 @@ extension Native_V1_NativeWorkerService {
                 onResponse: handleResponse
             )
         }
+
+        internal func updateReminder<Result>(
+            request: GRPCCore.ClientRequest<Native_V1_UpdateReminderRequest>,
+            serializer: some GRPCCore.MessageSerializer<Native_V1_UpdateReminderRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Native_V1_UpdateReminderResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_UpdateReminderResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Native_V1_NativeWorkerService.Method.UpdateReminder.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
     }
 }
 
@@ -883,6 +975,22 @@ extension Native_V1_NativeWorkerService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_GetSystemThemeRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Native_V1_GetSystemThemeResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    internal func updateReminder<Result>(
+        request: GRPCCore.ClientRequest<Native_V1_UpdateReminderRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_UpdateReminderResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.updateReminder(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_UpdateReminderRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Native_V1_UpdateReminderResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -1018,6 +1126,28 @@ extension Native_V1_NativeWorkerService.ClientProtocol {
             metadata: metadata
         )
         return try await self.getSystemTheme(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+}
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Native_V1_NativeWorkerService.ClientProtocol {
+    /// Call the "UpdateReminder" method.
+    internal func updateReminder<Result>(
+        _ message: Native_V1_UpdateReminderRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_UpdateReminderResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Native_V1_UpdateReminderRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.updateReminder(
             request: request,
             options: options,
             onResponse: handleResponse

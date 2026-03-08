@@ -2,215 +2,247 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
+"encoding/json"
+"os"
+"path/filepath"
+"strings"
 
-	"github.com/spf13/viper"
+"github.com/spf13/viper"
 )
+
 // Config holds the full Clara configuration.
 type Config struct {
-	// DataDir is the directory used for the SQLite database and Unix sockets.
-	DataDir string `mapstructure:"data_dir"`
-
-	// LogFile is the path to the log file. Empty means stderr.
-	LogFile string `mapstructure:"log_file"`
-
-	// LogLevel is one of: trace, debug, info, warn, error.
-	LogLevel string `mapstructure:"log_level"`
-
-	// Server holds configuration for the Clara server component.
-	Server ServerConfig `mapstructure:"server"`
-
-	// Agent holds configuration for the Clara agent component.
-	Agent AgentConfig `mapstructure:"agent"`
-
-	// Ollama holds Ollama inference configuration.
-	Ollama OllamaConfig `mapstructure:"ollama"`
-
-	// TUI holds terminal UI configuration.
-	TUI TUIConfig `mapstructure:"tui"`
+DataDir      string             `mapstructure:"data_dir"`
+LogFile      string             `mapstructure:"log_file"`
+LogLevel     string             `mapstructure:"log_level"`
+Server       ServerConfig       `mapstructure:"server"`
+Ollama       OllamaConfig       `mapstructure:"ollama"`
+TUI          TUIConfig          `mapstructure:"tui"`
+Integrations IntegrationsConfig `mapstructure:"integrations"`
 }
 
 type ServerConfig struct {
-	// Addr is the TCP address the server listens on.
-	Addr string `mapstructure:"addr"`
+Addr string `mapstructure:"addr"`
 }
 
-type AgentConfig struct {
-	// WatchDirs is the list of directories the agent monitors for new files.
-	WatchDirs []string `mapstructure:"watch_dirs"`
+type IntegrationsConfig struct {
+Filesystem  FilesystemConfig  `mapstructure:"filesystem"`
+Reminders   RemindersConfig   `mapstructure:"reminders"`
+Taskwarrior TaskwarriorConfig `mapstructure:"taskwarrior"`
+}
 
-	// IngestConcurrency controls the number of parallel ingestion workers.
-	IngestConcurrency int `mapstructure:"ingest_concurrency"`
+type FilesystemConfig struct {
+Enabled           bool     `mapstructure:"enabled"`
+WatchDirs         []string `mapstructure:"watch_dirs"`
+IngestConcurrency int      `mapstructure:"ingest_concurrency"`
+}
+
+type RemindersConfig struct {
+Enabled bool `mapstructure:"enabled"`
+}
+
+type TaskwarriorConfig struct {
+Enabled    bool   `mapstructure:"enabled"`
+BinaryPath string `mapstructure:"binary_path"`
+DataDir    string `mapstructure:"data_dir"`
 }
 
 type OllamaConfig struct {
-	// URL is the base URL of the Ollama API.
-	URL string `mapstructure:"url"`
-
-	// EmbedModel is the model used for generating embeddings.
-	EmbedModel string `mapstructure:"embed_model"`
+URL        string `mapstructure:"url"`
+EmbedModel string `mapstructure:"embed_model"`
 }
 
-// TUIConfig holds theme and display settings for the terminal UI.
 type TUIConfig struct {
-	// ThemeMode controls which theme is active: "dark", "light", or "system".
-	// When "system", the native macOS appearance is used via the native worker.
-	// Falls back to dark theme if the native worker is unavailable.
-	ThemeMode string `mapstructure:"theme_mode"`
-
-	// DarkTheme is the bubbletint theme ID to use in dark mode.
-	// Leave empty (or "native") to use the terminal's native 16 ANSI colors.
-	DarkTheme string `mapstructure:"dark_theme"`
-
-	// LightTheme is the bubbletint theme ID to use in light mode.
-	// Leave empty (or "native") to use the terminal's native 16 ANSI colors.
-	LightTheme string `mapstructure:"light_theme"`
+ThemeMode  string `mapstructure:"theme_mode"`
+DarkTheme  string `mapstructure:"dark_theme"`
+LightTheme string `mapstructure:"light_theme"`
 }
 
 // Load reads configuration from config.yaml and environment.
-// Environment variables are prefixed with CLARA_ and override file values.
 func Load() (*Config, error) {
-	v := viper.New()
+v := viper.New()
 
-	// Defaults
-	dataDir := defaultDataDir()
-	v.SetDefault("data_dir", dataDir)
-	v.SetDefault("log_level", "info")
-	v.SetDefault("log_file", filepath.Join(dataDir, "logs", "clara.log"))
-	v.SetDefault("server.addr", "localhost:50051")
-	v.SetDefault("agent.ingest_concurrency", 4)
-	v.SetDefault("ollama.url", "http://localhost:11434")
-	v.SetDefault("ollama.embed_model", "nomic-embed-text")
-	v.SetDefault("tui.theme_mode", "system")
-	v.SetDefault("tui.dark_theme", "")
-	v.SetDefault("tui.light_theme", "")
+dataDir := defaultDataDir()
+home, _ := os.UserHomeDir()
 
-	v.SetConfigName("config")
-	v.SetConfigType("yaml")
-	v.AddConfigPath(defaultConfigDir())
-	v.AddConfigPath(dataDir)
-	v.AddConfigPath(".")
+v.SetDefault("data_dir", dataDir)
+v.SetDefault("log_level", "info")
+v.SetDefault("log_file", filepath.Join(dataDir, "logs", "clara.log"))
+v.SetDefault("server.addr", "localhost:50051")
+v.SetDefault("ollama.url", "http://localhost:11434")
+v.SetDefault("ollama.embed_model", "nomic-embed-text")
+v.SetDefault("tui.theme_mode", "system")
+v.SetDefault("tui.dark_theme", "")
+v.SetDefault("tui.light_theme", "")
+v.SetDefault("integrations.filesystem.enabled", true)
+v.SetDefault("integrations.filesystem.ingest_concurrency", 4)
+v.SetDefault("integrations.reminders.enabled", true)
+v.SetDefault("integrations.taskwarrior.enabled", true)
+v.SetDefault("integrations.taskwarrior.binary_path", "task")
 
-	v.SetEnvPrefix("CLARA")
-	v.AutomaticEnv()
+v.SetConfigName("config")
+v.SetConfigType("yaml")
+v.AddConfigPath(defaultConfigDir())
+v.AddConfigPath(dataDir)
+v.AddConfigPath(".")
 
-	// Ignore missing config file; use defaults + env vars.
-	_ = v.ReadInConfig()
+v.SetEnvPrefix("CLARA")
+v.AutomaticEnv()
 
-	cfg := &Config{}
-	if err := v.Unmarshal(cfg); err != nil {
-		return nil, err
-	}
-	// Expand ~ in all path-type fields that may come from user config.
-	cfg.DataDir = expandHome(cfg.DataDir)
-	cfg.LogFile = expandHome(cfg.LogFile)
-	for i, d := range cfg.Agent.WatchDirs {
-		cfg.Agent.WatchDirs[i] = expandHome(d)
-	}
-	return cfg, nil
+_ = v.ReadInConfig()
+
+cfg := &Config{}
+if err := v.Unmarshal(cfg); err != nil {
+return nil, err
+}
+
+// Backward compatibility: copy legacy agent.watch_dirs if new field is empty.
+if legacy := v.GetStringSlice("agent.watch_dirs"); len(legacy) > 0 && len(cfg.Integrations.Filesystem.WatchDirs) == 0 {
+cfg.Integrations.Filesystem.WatchDirs = legacy
+}
+
+// Set taskwarrior data_dir default after unmarshal.
+if cfg.Integrations.Taskwarrior.DataDir == "" && home != "" {
+cfg.Integrations.Taskwarrior.DataDir = filepath.Join(home, ".task")
+}
+
+// Expand ~ in path fields.
+cfg.DataDir = expandHome(cfg.DataDir)
+cfg.LogFile = expandHome(cfg.LogFile)
+for i, d := range cfg.Integrations.Filesystem.WatchDirs {
+cfg.Integrations.Filesystem.WatchDirs[i] = expandHome(d)
+}
+cfg.Integrations.Taskwarrior.DataDir = expandHome(cfg.Integrations.Taskwarrior.DataDir)
+
+return cfg, nil
 }
 
 // expandHome replaces a leading "~/" with the user's home directory.
 func expandHome(path string) string {
-	if path == "~" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return path
-		}
-		return home
-	}
-	if strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return path
-		}
-		return filepath.Join(home, path[2:])
-	}
-	return path
+if path == "~" {
+home, err := os.UserHomeDir()
+if err != nil {
+return path
+}
+return home
+}
+if strings.HasPrefix(path, "~/") {
+home, err := os.UserHomeDir()
+if err != nil {
+return path
+}
+return filepath.Join(home, path[2:])
+}
+return path
 }
 
 // WriteDefaultConfig writes a commented default config.yaml to ~/.config/clara/
-// if one does not already exist. It is safe to call on every startup.
+// if one does not already exist.
 func WriteDefaultConfig() error {
-	cfgDir := defaultConfigDir()
-	cfgPath := filepath.Join(cfgDir, "config.yaml")
+cfgDir := defaultConfigDir()
+cfgPath := filepath.Join(cfgDir, "config.yaml")
 
-	if _, err := os.Stat(cfgPath); err == nil {
-		return nil // already exists
-	}
-
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		return err
-	}
-
-	dataDir := defaultDataDir()
-	content := strings.Join([]string{
-		"# Clara configuration",
-		"# All values below show the built-in defaults.",
-		"# Uncomment and modify any setting to override it.",
-		"# Environment variables prefixed CLARA_ also override these values.",
-		"",
-		"# data_dir: " + dataDir,
-		"# log_level: info",
-		"# log_file: " + filepath.Join(dataDir, "logs", "clara.log"),
-		"",
-		"# server:",
-		"#   addr: localhost:50051",
-		"",
-		"# agent:",
-		"#   # Directories to watch for new/changed files.",
-		"#   watch_dirs:",
-		"#     - ~/Documents",
-		"#     - ~/Notes",
-		"#   ingest_concurrency: 4",
-		"",
-		"# ollama:",
-		"#   url: http://localhost:11434",
-		"#   embed_model: nomic-embed-text",
-		"",
-		"# tui:",
-		"#   # Theme mode: dark, light, or system (follows macOS dark-notify if installed).",
-		"#   theme_mode: system",
-		"#   # Bubbletint theme ID for dark mode. Leave empty for native 16-color terminal theme.",
-		"#   # See https://lrstanley.github.io/bubbletint/ for all available IDs.",
-		"#   dark_theme: \"\"",
-		"#   # Bubbletint theme ID for light mode. Leave empty for native 16-color terminal theme.",
-		"#   light_theme: \"\"",
-		"",
-	}, "\n")
-
-	return os.WriteFile(cfgPath, []byte(content), 0o644)
+if _, err := os.Stat(cfgPath); err == nil {
+return nil
 }
 
-// AgentSocketPath returns the Unix socket path for the Agent gRPC server.
+if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+return err
+}
+
+dataDir := defaultDataDir()
+content := strings.Join([]string{
+"# Clara configuration",
+"# All values below show the built-in defaults.",
+"# Uncomment and modify any setting to override it.",
+"# Environment variables prefixed CLARA_ also override these values.",
+"",
+"# data_dir: " + dataDir,
+"# log_level: info",
+"# log_file: " + filepath.Join(dataDir, "logs", "clara.log"),
+"",
+"# server:",
+"#   addr: localhost:50051",
+"",
+"# integrations:",
+"#   filesystem:",
+"#     enabled: true",
+"#     watch_dirs:",
+"#       - ~/Documents",
+"#       - ~/Notes",
+"#     ingest_concurrency: 4",
+"#   reminders:",
+"#     enabled: true",
+"#   taskwarrior:",
+"#     enabled: true",
+"#     binary_path: task",
+"#     data_dir: ~/.task",
+"",
+"# ollama:",
+"#   url: http://localhost:11434",
+"#   embed_model: nomic-embed-text",
+"",
+"# tui:",
+"#   theme_mode: system",
+"#   dark_theme: \"\"",
+"#   light_theme: \"\"",
+"",
+}, "\n")
+
+if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+return err
+}
+
+return writeSchemaFile(cfgDir)
+}
+
+// SchemaPath returns the path to the JSON schema for config.yaml.
+func SchemaPath() string {
+return filepath.Join(defaultConfigDir(), "config.schema.json")
+}
+
+// ConfigPath returns the path to the config.yaml file.
+func ConfigPath() string {
+return filepath.Join(defaultConfigDir(), "config.yaml")
+}
+
+func writeSchemaFile(cfgDir string) error {
+schemaPath := filepath.Join(cfgDir, "config.schema.json")
+if _, err := os.Stat(schemaPath); err == nil {
+return nil
+}
+schema := configSchema()
+data, err := json.MarshalIndent(schema, "", "  ")
+if err != nil {
+return err
+}
+return os.WriteFile(schemaPath, data, 0o644)
+}
+
 func (c *Config) AgentSocketPath() string {
-	return filepath.Join(c.DataDir, "agent.sock")
+return filepath.Join(c.DataDir, "agent.sock")
 }
 
-// NativeSocketPath returns the Unix socket path for the Swift native worker.
 func (c *Config) NativeSocketPath() string {
-	return filepath.Join(c.DataDir, "native.sock")
+return filepath.Join(c.DataDir, "native.sock")
 }
 
-// DBPath returns the path to the SQLite database file.
 func (c *Config) DBPath() string {
-	return filepath.Join(c.DataDir, "clara.db")
+return filepath.Join(c.DataDir, "clara.db")
 }
 
 func defaultDataDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".clara"
-	}
-	return filepath.Join(home, ".local", "share", "clara")
+home, err := os.UserHomeDir()
+if err != nil {
+return ".clara"
+}
+return filepath.Join(home, ".local", "share", "clara")
 }
 
 func defaultConfigDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".config/clara"
-	}
-	return filepath.Join(home, ".config", "clara")
+home, err := os.UserHomeDir()
+if err != nil {
+return ".config/clara"
+}
+return filepath.Join(home, ".config", "clara")
 }

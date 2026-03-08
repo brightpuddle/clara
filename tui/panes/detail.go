@@ -1,173 +1,403 @@
 package panes
 
 import (
-	"fmt"
-	"strings"
+"fmt"
+"strings"
 
-	"github.com/charmbracelet/lipgloss"
+"github.com/charmbracelet/lipgloss"
 
-	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
-	"github.com/brightpuddle/clara/internal/artifact"
-	"github.com/brightpuddle/clara/tui/styles"
+agentv1 "github.com/brightpuddle/clara/gen/agent/v1"
+artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
+"github.com/brightpuddle/clara/internal/artifact"
+configpkg "github.com/brightpuddle/clara/internal/config"
+"github.com/brightpuddle/clara/tui/styles"
 )
 
-// DetailPane renders the preview and metadata for the selected artifact.
+// DetailPane renders the preview and metadata for the selected artifact,
+// or a settings view when a settings category is active.
 type DetailPane struct {
-	artifact *artifactv1.Artifact
-	focused  bool
-	width    int
-	height   int
-	scrollY  int
+artifact         *artifactv1.Artifact
+focused          bool
+width            int
+height           int
+scrollY          int
+settingsCategory string
+statusData       *agentv1.GetStatusResponse
+config           *configpkg.Config
 }
 
 // NewDetailPane creates an empty DetailPane.
 func NewDetailPane() DetailPane {
-	return DetailPane{}
+return DetailPane{}
 }
 
-// SetArtifact sets the artifact to display.
+// SetArtifact sets the artifact to display and clears any settings view.
 func (p *DetailPane) SetArtifact(a *artifactv1.Artifact) {
-	p.artifact = a
-	p.scrollY = 0
+p.artifact = a
+p.scrollY = 0
+p.settingsCategory = ""
+}
+
+// SetSettingsView switches the pane to show the named settings category.
+func (p *DetailPane) SetSettingsView(category string, statusData *agentv1.GetStatusResponse, cfg *configpkg.Config) {
+p.settingsCategory = category
+p.statusData = statusData
+p.config = cfg
+p.scrollY = 0
 }
 
 // SetSize sets the pane dimensions.
 func (p *DetailPane) SetSize(w, h int) {
-	p.width = w
-	p.height = h
+p.width = w
+p.height = h
 }
 
 // SetFocused sets whether this pane has focus.
 func (p *DetailPane) SetFocused(f bool) {
-	p.focused = f
+p.focused = f
 }
 
 // ScrollDown scrolls the detail view down.
 func (p *DetailPane) ScrollDown() {
-	p.scrollY++
+p.scrollY++
 }
 
 // ScrollUp scrolls the detail view up.
 func (p *DetailPane) ScrollUp() {
-	if p.scrollY > 0 {
-		p.scrollY--
-	}
+if p.scrollY > 0 {
+p.scrollY--
+}
 }
 
 // View renders the detail pane.
 func (p *DetailPane) View() string {
-	if p.width <= 0 || p.height <= 0 {
-		return ""
-	}
+if p.width <= 0 || p.height <= 0 {
+return ""
+}
 
-	borderStyle := styles.UnfocusedBorder
-	titleStyle := styles.PaneTitle
-	if p.focused {
-		borderStyle = styles.FocusedBorder
-		titleStyle = styles.PaneTitleFocused
-	}
+if p.settingsCategory != "" {
+return p.renderSettings()
+}
 
-	header := titleStyle.Render(" Detail ")
+return p.renderArtifact()
+}
 
-	if p.artifact == nil {
-		empty := styles.Muted.Render("  Select an artifact to preview")
-		inner := lipgloss.JoinVertical(lipgloss.Left, header, empty)
-		return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
-	}
+func (p *DetailPane) renderSettings() string {
+switch p.settingsCategory {
+case "status":
+return p.renderStatusView()
+case "tui":
+return p.renderTUIView()
+case "integrations":
+return p.renderIntegrationsView()
+default:
+return p.renderEmptySettings(p.settingsCategory)
+}
+}
 
-	a := p.artifact
-	icon := artifact.KindIcon(a.Kind)
-	color := kindColor(a.Kind)
+func (p *DetailPane) border() lipgloss.Style {
+if p.focused {
+return styles.FocusedBorder
+}
+return styles.UnfocusedBorder
+}
 
-	// Metadata section.
-	titleLine := lipgloss.NewStyle().Foreground(color).Bold(true).
-		Render(fmt.Sprintf("%s  %s", icon, a.Title))
+func (p *DetailPane) titleStyle() lipgloss.Style {
+if p.focused {
+return styles.PaneTitleFocused
+}
+return styles.PaneTitle
+}
 
-	var meta []string
-	meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("kind:   %s", kindName(a.Kind))))
-	meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("heat:   %s %.2f", styles.HeatBar(a.HeatScore), a.HeatScore)))
-	if a.SourcePath != "" {
-		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("source: %s", truncateStr(a.SourcePath, p.width-12))))
-	}
-	if a.SourceApp != "" {
-		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("app:    %s", a.SourceApp)))
-	}
-	if a.DueAt != nil {
-		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("due:    %s", a.DueAt.AsTime().Format("2006-01-02 15:04"))))
-	}
-	if len(a.Tags) > 0 {
-		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("tags:   %s", strings.Join(a.Tags, ", "))))
-	}
-	if a.Kind == artifactv1.ArtifactKind_ARTIFACT_KIND_REMINDER {
-		if list, ok := a.Metadata["list"]; ok && list != "" {
-			meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("list:   %s", list)))
-		}
-		if pri, ok := a.Metadata["priority"]; ok {
-			priNames := map[string]string{"0": "none", "1": "high", "5": "medium", "9": "low"}
-			if name, ok := priNames[pri]; ok {
-				meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", name)))
-			} else {
-				meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", pri)))
-			}
-		}
-	}
+func (p *DetailPane) renderStatusView() string {
+header := p.titleStyle().Render(" Status ")
+innerW := p.width - 4
+if innerW < 1 {
+innerW = 1
+}
 
-	separator := strings.Repeat("─", p.width-4)
+var lines []string
+lines = append(lines, styles.Bold.Render("Components"))
+lines = append(lines, "")
 
-	// Content section with scrolling.
-	contentLines := strings.Split(a.Content, "\n")
-	innerH := p.height - 4 - len(meta) - 3 // header + meta + separators
-	if innerH < 1 {
-		innerH = 1
-	}
+if p.statusData == nil {
+lines = append(lines, styles.Muted.Render("  loading…"))
+} else {
+renderComp := func(name string, c *agentv1.ComponentStatus) {
+if c == nil {
+return
+}
+connStr := "✗ disconnected"
+connColor := styles.Muted
+if c.Connected {
+connStr = "✓ " + c.State
+connColor = styles.ItemNormal
+}
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-10s %s", name+":", connColor.Render(connStr))))
+if c.Connected && c.UptimeSeconds > 0 {
+lines = append(lines, styles.Muted.Render(fmt.Sprintf("  %-10s %s", "", formatUptime(c.UptimeSeconds))))
+}
+if c.Fault != "" {
+lines = append(lines, styles.Muted.Render(fmt.Sprintf("  %-10s %s", "", c.Fault)))
+}
+}
+renderComp("agent", p.statusData.Agent)
+renderComp("server", p.statusData.Server)
+renderComp("native", p.statusData.Native)
 
-	start := p.scrollY
-	if start >= len(contentLines) {
-		start = max(0, len(contentLines)-1)
-	}
-	end := start + innerH
-	if end > len(contentLines) {
-		end = len(contentLines)
-	}
+if len(p.statusData.ArtifactCounts) > 0 {
+lines = append(lines, "")
+lines = append(lines, styles.Bold.Render("Artifact Counts"))
+lines = append(lines, "")
+for kind, count := range p.statusData.ArtifactCounts {
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %d", kind+":", count)))
+}
+}
+}
 
-	var contentRows []string
-	for _, line := range contentLines[start:end] {
-		contentRows = append(contentRows, styles.ItemNormal.Width(p.width-4).Render(truncateStr(line, p.width-4)))
-	}
+return p.wrapInBorder(header, lines, innerW)
+}
 
-	parts := []string{header, titleLine, ""}
-	parts = append(parts, meta...)
-	parts = append(parts, styles.Muted.Render(separator))
-	parts = append(parts, contentRows...)
+func (p *DetailPane) renderTUIView() string {
+header := p.titleStyle().Render(" TUI Settings ")
+innerW := p.width - 4
+if innerW < 1 {
+innerW = 1
+}
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, parts...)
-	return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+var lines []string
+lines = append(lines, styles.Bold.Render("Theme"))
+lines = append(lines, "")
+
+if p.config == nil {
+lines = append(lines, styles.Muted.Render("  config not available"))
+} else {
+cfg := p.config.TUI
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %s", "theme_mode:", cfg.ThemeMode)))
+dark := cfg.DarkTheme
+if dark == "" {
+dark = "(native 16-color)"
+}
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %s", "dark_theme:", dark)))
+light := cfg.LightTheme
+if light == "" {
+light = "(native 16-color)"
+}
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %s", "light_theme:", light)))
+lines = append(lines, "")
+lines = append(lines, styles.Bold.Render("Config File"))
+lines = append(lines, "")
+lines = append(lines, styles.Muted.Render("  "+truncateStr(configpkg.ConfigPath(), innerW-2)))
+}
+
+return p.wrapInBorder(header, lines, innerW)
+}
+
+func (p *DetailPane) renderIntegrationsView() string {
+header := p.titleStyle().Render(" Integrations ")
+innerW := p.width - 4
+if innerW < 1 {
+innerW = 1
+}
+
+var lines []string
+
+if p.config == nil {
+lines = append(lines, styles.Muted.Render("  config not available"))
+} else {
+cfg := p.config.Integrations
+
+// Filesystem
+lines = append(lines, styles.Bold.Render("Filesystem"))
+lines = append(lines, "")
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %v", "enabled:", cfg.Filesystem.Enabled)))
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %d", "ingest_concurrency:", cfg.Filesystem.IngestConcurrency)))
+if len(cfg.Filesystem.WatchDirs) > 0 {
+lines = append(lines, styles.ItemNormal.Render("  watch_dirs:"))
+for _, d := range cfg.Filesystem.WatchDirs {
+lines = append(lines, styles.Muted.Render("    - "+truncateStr(d, innerW-6)))
+}
+} else {
+lines = append(lines, styles.Muted.Render("  watch_dirs: (none configured)"))
+}
+lines = append(lines, "")
+
+// Reminders
+lines = append(lines, styles.Bold.Render("Reminders"))
+lines = append(lines, "")
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %v", "enabled:", cfg.Reminders.Enabled)))
+lines = append(lines, "")
+
+// Taskwarrior
+lines = append(lines, styles.Bold.Render("Taskwarrior"))
+lines = append(lines, "")
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %v", "enabled:", cfg.Taskwarrior.Enabled)))
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %s", "binary_path:", cfg.Taskwarrior.BinaryPath)))
+lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %s", "data_dir:", truncateStr(cfg.Taskwarrior.DataDir, innerW-22))))
+}
+
+return p.wrapInBorder(header, lines, innerW)
+}
+
+func (p *DetailPane) renderEmptySettings(category string) string {
+header := p.titleStyle().Render(" Settings ")
+innerW := p.width - 4
+lines := []string{styles.Muted.Render("  unknown category: " + category)}
+return p.wrapInBorder(header, lines, innerW)
+}
+
+func (p *DetailPane) wrapInBorder(header string, lines []string, innerW int) string {
+innerH := p.height - 4 - 1
+if innerH < 1 {
+innerH = 1
+}
+
+start := p.scrollY
+if start >= len(lines) && len(lines) > 0 {
+start = len(lines) - 1
+}
+end := start + innerH
+if end > len(lines) {
+end = len(lines)
+}
+
+var visLines []string
+for _, line := range lines[start:end] {
+visLines = append(visLines, styles.ItemNormal.Width(innerW).Render(truncateStr(line, innerW)))
+}
+
+body := strings.Join(visLines, "\n")
+inner := lipgloss.JoinVertical(lipgloss.Left, header, body)
+return p.border().Width(p.width - 2).Height(p.height - 2).Render(inner)
+}
+
+func (p *DetailPane) renderArtifact() string {
+borderStyle := styles.UnfocusedBorder
+titleStyle := styles.PaneTitle
+if p.focused {
+borderStyle = styles.FocusedBorder
+titleStyle = styles.PaneTitleFocused
+}
+
+header := titleStyle.Render(" Detail ")
+
+if p.artifact == nil {
+empty := styles.Muted.Render("  Select an artifact to preview")
+inner := lipgloss.JoinVertical(lipgloss.Left, header, empty)
+return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+}
+
+a := p.artifact
+icon := artifact.KindIcon(a.Kind)
+color := kindColor(a.Kind)
+
+titleLine := lipgloss.NewStyle().Foreground(color).Bold(true).
+Render(fmt.Sprintf("%s  %s", icon, a.Title))
+
+var meta []string
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("kind:   %s", kindName(a.Kind))))
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("heat:   %s %.2f", styles.HeatBar(a.HeatScore), a.HeatScore)))
+if a.SourcePath != "" {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("source: %s", truncateStr(a.SourcePath, p.width-12))))
+}
+if a.SourceApp != "" {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("app:    %s", a.SourceApp)))
+}
+if a.DueAt != nil {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("due:    %s", a.DueAt.AsTime().Format("2006-01-02 15:04"))))
+}
+if len(a.Tags) > 0 {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("tags:   %s", strings.Join(a.Tags, ", "))))
+}
+if a.Kind == artifactv1.ArtifactKind_ARTIFACT_KIND_REMINDER {
+if list, ok := a.Metadata["list"]; ok && list != "" {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("list:   %s", list)))
+}
+if pri, ok := a.Metadata["priority"]; ok {
+priNames := map[string]string{"0": "none", "1": "high", "5": "medium", "9": "low"}
+if name, ok := priNames[pri]; ok {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", name)))
+} else {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", pri)))
+}
+}
+}
+if a.Kind == artifactv1.ArtifactKind_ARTIFACT_KIND_TASK {
+if proj, ok := a.Metadata["project"]; ok && proj != "" {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("project: %s", proj)))
+}
+if pri, ok := a.Metadata["priority"]; ok && pri != "" {
+meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", pri)))
+}
+}
+
+separator := strings.Repeat("─", p.width-4)
+
+contentLines := strings.Split(a.Content, "\n")
+innerH := p.height - 4 - len(meta) - 3
+if innerH < 1 {
+innerH = 1
+}
+
+start := p.scrollY
+if start >= len(contentLines) {
+start = maxInt(0, len(contentLines)-1)
+}
+end := start + innerH
+if end > len(contentLines) {
+end = len(contentLines)
+}
+
+var contentRows []string
+for _, line := range contentLines[start:end] {
+contentRows = append(contentRows, styles.ItemNormal.Width(p.width-4).Render(truncateStr(line, p.width-4)))
+}
+
+parts := []string{header, titleLine, ""}
+parts = append(parts, meta...)
+parts = append(parts, styles.Muted.Render(separator))
+parts = append(parts, contentRows...)
+
+inner := lipgloss.JoinVertical(lipgloss.Left, parts...)
+return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
 }
 
 func kindName(kind artifactv1.ArtifactKind) string {
-	switch kind {
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_REMINDER:
-		return "reminder"
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_NOTE:
-		return "note"
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_FILE:
-		return "file"
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_EMAIL:
-		return "email"
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_BOOKMARK:
-		return "bookmark"
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_LOG:
-		return "log"
-	case artifactv1.ArtifactKind_ARTIFACT_KIND_SUGGESTION:
-		return "suggestion"
-	default:
-		return "unknown"
-	}
+switch kind {
+case artifactv1.ArtifactKind_ARTIFACT_KIND_REMINDER:
+return "reminder"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_NOTE:
+return "note"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_FILE:
+return "file"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_EMAIL:
+return "email"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_BOOKMARK:
+return "bookmark"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_LOG:
+return "log"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_SUGGESTION:
+return "suggestion"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_TASK:
+return "task"
+default:
+return "unknown"
+}
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
+func maxInt(a, b int) int {
+if a > b {
+return a
+}
+return b
+}
+
+func formatUptime(seconds int64) string {
+if seconds < 60 {
+return fmt.Sprintf("%ds", seconds)
+}
+if seconds < 3600 {
+return fmt.Sprintf("%dm%ds", seconds/60, seconds%60)
+}
+return fmt.Sprintf("%dh%dm", seconds/3600, (seconds%3600)/60)
 }

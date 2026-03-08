@@ -21,6 +21,7 @@ service NativeWorkerService {
 
   // GetSystemTheme returns the current macOS appearance (dark or light).
   rpc GetSystemTheme(GetSystemThemeRequest) returns (GetSystemThemeResponse);
+  rpc UpdateReminder(UpdateReminderRequest) returns (UpdateReminderResponse);
 }
 
 message ListRemindersRequest {
@@ -75,3 +76,15 @@ message GetSystemThemeResponse {
   bool dark = 1; // true = dark mode, false = light mode
 }
 
+
+message UpdateReminderRequest {
+  string                    id       = 1;
+  string                    title    = 2;
+  string                    notes    = 3;
+  google.protobuf.Timestamp due_date = 4;
+}
+
+message UpdateReminderResponse {
+  bool   ok    = 1;
+  string error = 2;
+}

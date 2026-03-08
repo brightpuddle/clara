@@ -34,6 +34,7 @@ const (
 	ArtifactKind_ARTIFACT_KIND_BOOKMARK    ArtifactKind = 5
 	ArtifactKind_ARTIFACT_KIND_LOG         ArtifactKind = 6 // terminal process log / copilot status
 	ArtifactKind_ARTIFACT_KIND_SUGGESTION  ArtifactKind = 7 // internal Clara suggestions (backlinks, tags, etc.)
+	ArtifactKind_ARTIFACT_KIND_TASK        ArtifactKind = 8 // taskwarrior / external task manager task
 )
 
 // Enum value maps for ArtifactKind.
@@ -47,6 +48,7 @@ var (
 		5: "ARTIFACT_KIND_BOOKMARK",
 		6: "ARTIFACT_KIND_LOG",
 		7: "ARTIFACT_KIND_SUGGESTION",
+		8: "ARTIFACT_KIND_TASK",
 	}
 	ArtifactKind_value = map[string]int32{
 		"ARTIFACT_KIND_UNSPECIFIED": 0,
@@ -57,6 +59,7 @@ var (
 		"ARTIFACT_KIND_BOOKMARK":    5,
 		"ARTIFACT_KIND_LOG":         6,
 		"ARTIFACT_KIND_SUGGESTION":  7,
+		"ARTIFACT_KIND_TASK":        8,
 	}
 )
 
@@ -255,7 +258,7 @@ const file_artifact_v1_artifact_proto_rawDesc = "" +
 	"\x06due_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\x05dueAt\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xe3\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xfb\x01\n" +
 	"\fArtifactKind\x12\x1d\n" +
 	"\x19ARTIFACT_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12ARTIFACT_KIND_FILE\x10\x01\x12\x16\n" +
@@ -264,7 +267,8 @@ const file_artifact_v1_artifact_proto_rawDesc = "" +
 	"\x13ARTIFACT_KIND_EMAIL\x10\x04\x12\x1a\n" +
 	"\x16ARTIFACT_KIND_BOOKMARK\x10\x05\x12\x15\n" +
 	"\x11ARTIFACT_KIND_LOG\x10\x06\x12\x1c\n" +
-	"\x18ARTIFACT_KIND_SUGGESTION\x10\aB:Z8github.com/brightpuddle/clara/gen/artifact/v1;artifactv1b\x06proto3"
+	"\x18ARTIFACT_KIND_SUGGESTION\x10\a\x12\x16\n" +
+	"\x12ARTIFACT_KIND_TASK\x10\bB:Z8github.com/brightpuddle/clara/gen/artifact/v1;artifactv1b\x06proto3"
 
 var (
 	file_artifact_v1_artifact_proto_rawDescOnce sync.Once

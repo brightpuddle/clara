@@ -12,9 +12,11 @@ import (
 tea "github.com/charmbracelet/bubbletea"
 "github.com/charmbracelet/lipgloss"
 "github.com/rs/zerolog"
+"google.golang.org/protobuf/types/known/timestamppb"
 
 agentv1 "github.com/brightpuddle/clara/gen/agent/v1"
 artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
+configpkg "github.com/brightpuddle/clara/internal/config"
 "github.com/brightpuddle/clara/internal/theme"
 tuigrpc "github.com/brightpuddle/clara/tui/grpc"
 "github.com/brightpuddle/clara/tui/panes"
@@ -26,13 +28,13 @@ type focusedPane int
 const (
 paneArtifacts focusedPane = iota
 paneRelated
+paneSettings
 paneDetail
 )
 
-const PaneCount = 2
+const PaneCount = 3
 
 // helpItems are the status bar entries in priority order (most important first).
-// Lower-priority items are truncated first when space is tight.
 var helpItems = []string{
 "j/k:nav",
 "/:search",
@@ -49,14 +51,24 @@ artifact *artifactv1.Artifact
 related  []*artifactv1.Artifact
 }
 type artifactEventMsg struct {
-	event *agentv1.ArtifactEvent
-	ch    <-chan *agentv1.ArtifactEvent
+event *agentv1.ArtifactEvent
+ch    <-chan *agentv1.ArtifactEvent
 }
 type themeChangedMsg struct{ isDark bool }
 type errorMsg struct{ err error }
 type statusMsg struct{ text string }
 type agentDisconnectedMsg struct{}
 type agentReconnectedMsg struct{}
+type settingsViewMsg struct {
+category   string
+statusData *agentv1.GetStatusResponse
+}
+type reminderUpdateMsg struct {
+id      string
+title   string
+notes   string
+dueDate *timestamppb.Timestamp
+}
 
 // Model is the root Bubbletea model for the Clara TUI.
 type Model struct {
@@ -65,9 +77,11 @@ ctx      context.Context
 cancel   context.CancelFunc
 logger   zerolog.Logger
 themeMgr *theme.Manager
+cfg      *configpkg.Config
 
 artifacts panes.ArtifactsPane
 related   panes.RelatedPane
+settings  panes.SettingsPane
 detail    panes.DetailPane
 
 focus  focusedPane
@@ -78,7 +92,7 @@ err    string
 }
 
 // New creates a new TUI Model.
-func New(client *tuigrpc.Client, logger zerolog.Logger, mgr *theme.Manager) Model {
+func New(client *tuigrpc.Client, logger zerolog.Logger, mgr *theme.Manager, cfg *configpkg.Config) Model {
 ctx, cancel := context.WithCancel(context.Background())
 m := Model{
 client:    client,
@@ -86,8 +100,10 @@ ctx:       ctx,
 cancel:    cancel,
 logger:    logger,
 themeMgr:  mgr,
+cfg:       cfg,
 artifacts: panes.NewArtifactsPane(),
 related:   panes.NewRelatedPane(),
+settings:  panes.NewSettingsPane(),
 detail:    panes.NewDetailPane(),
 focus:     paneArtifacts,
 }
@@ -134,10 +150,10 @@ return m, m.retrySubscribeCmd()
 
 case artifactEventMsg:
 if msg.event == nil {
-	m.status = "reconnected"
+m.status = "reconnected"
 }
-// Reload artifact list and continue listening for the next event.
 return m, tea.Batch(m.loadArtifacts(), waitForEventCmd(msg.ch))
+
 case themeChangedMsg:
 m.themeMgr.SetDark(msg.isDark)
 styles.SetTheme(m.themeMgr.Current())
@@ -148,6 +164,12 @@ m.status = msg.text
 
 case errorMsg:
 m.err = msg.err.Error()
+
+case settingsViewMsg:
+m.detail.SetSettingsView(msg.category, msg.statusData, m.cfg)
+
+case reminderUpdateMsg:
+return m, m.callUpdateReminder(msg)
 }
 
 return m, nil
@@ -167,12 +189,13 @@ case "shift+tab":
 m.cycleFocus(-1)
 return m, nil
 case "l", "h":
-// l and h toggle between the two left panes only, wrapping around.
-// Neither key enters the detail pane.
 if m.focus == paneArtifacts {
 m.setFocus(paneRelated)
 return m, nil
 } else if m.focus == paneRelated {
+m.setFocus(paneSettings)
+return m, nil
+} else if m.focus == paneSettings {
 m.setFocus(paneArtifacts)
 return m, nil
 }
@@ -190,6 +213,12 @@ return m, m.loadDetail(sel.Id)
 
 case paneRelated:
 action := m.related.Update(msg)
+if action != "" {
+return m, m.handleAction(action)
+}
+
+case paneSettings:
+action := m.settings.Update(msg)
 if action != "" {
 return m, m.handleAction(action)
 }
@@ -226,8 +255,23 @@ case "edit":
 return m.openInEditor(id)
 case "open":
 return m.openNative(id)
+case "settings":
+return m.showSettings(id)
 }
 return nil
+}
+
+func (m *Model) showSettings(category string) tea.Cmd {
+return func() tea.Msg {
+if category == "status" {
+resp, err := m.client.GetStatus(m.ctx)
+if err != nil {
+return settingsViewMsg{category: category}
+}
+return settingsViewMsg{category: category, statusData: resp}
+}
+return settingsViewMsg{category: category}
+}
 }
 
 func (m *Model) openInEditor(id string) tea.Cmd {
@@ -238,9 +282,9 @@ return nil
 
 path := sel.SourcePath
 cleanup := false
+isReminder := sel.SourceApp == "reminders"
 
-// For non-file artifacts, write content to a temp file.
-if sel.SourceApp == "reminders" || path == "" || !fileExists(path) {
+if isReminder || path == "" || !fileExists(path) {
 tmp, err := writeTempArtifact(sel)
 if err != nil {
 return func() tea.Msg { return errorMsg{err} }
@@ -253,19 +297,86 @@ editor := os.Getenv("EDITOR")
 if editor == "" {
 editor = "vim"
 }
+artifactSourcePath := sel.SourcePath
 cmd := exec.Command(editor, path) //nolint:gosec
 cmd.Stdin = os.Stdin
 cmd.Stdout = os.Stdout
 cmd.Stderr = os.Stderr
 return tea.ExecProcess(cmd, func(err error) tea.Msg {
+if err != nil {
 if cleanup {
 os.Remove(path) //nolint:errcheck
 }
-if err != nil {
 return errorMsg{err}
+}
+if cleanup && isReminder {
+content, readErr := os.ReadFile(path)
+os.Remove(path) //nolint:errcheck
+if readErr == nil {
+fm := parseFrontmatter(string(content))
+body := extractBody(string(content))
+msg := reminderUpdateMsg{
+id:    artifactSourcePath,
+title: fm["title"],
+notes: body,
+}
+if dueStr := fm["due"]; dueStr != "" {
+if t, err := time.Parse("2006-01-02 15:04", dueStr); err == nil {
+msg.dueDate = timestamppb.New(t)
+}
+}
+return msg
+}
+} else if cleanup {
+os.Remove(path) //nolint:errcheck
 }
 return statusMsg{"editor closed"}
 })
+}
+
+func parseFrontmatter(content string) map[string]string {
+fm := make(map[string]string)
+if !strings.HasPrefix(content, "---\n") {
+return fm
+}
+rest := content[4:]
+end := strings.Index(rest, "\n---\n")
+if end < 0 {
+return fm
+}
+for _, line := range strings.Split(rest[:end], "\n") {
+colonIdx := strings.Index(line, ":")
+if colonIdx < 0 {
+continue
+}
+key := strings.TrimSpace(line[:colonIdx])
+val := strings.TrimSpace(line[colonIdx+1:])
+val = strings.Trim(val, `"`)
+fm[key] = val
+}
+return fm
+}
+
+func extractBody(content string) string {
+if !strings.HasPrefix(content, "---\n") {
+return content
+}
+rest := content[4:]
+end := strings.Index(rest, "\n---\n")
+if end < 0 {
+return content
+}
+body := rest[end+5:]
+return strings.TrimPrefix(body, "\n")
+}
+
+func (m *Model) callUpdateReminder(msg reminderUpdateMsg) tea.Cmd {
+return func() tea.Msg {
+if err := m.client.UpdateReminder(m.ctx, msg.id, msg.title, msg.notes, msg.dueDate); err != nil {
+return errorMsg{err}
+}
+return statusMsg{"reminder updated"}
+}
 }
 
 func fileExists(path string) bool {
@@ -287,6 +398,8 @@ case artifactv1.ArtifactKind_ARTIFACT_KIND_BOOKMARK:
 return "bookmark"
 case artifactv1.ArtifactKind_ARTIFACT_KIND_LOG:
 return "log"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_TASK:
+return "task"
 default:
 return kind.String()
 }
@@ -322,7 +435,6 @@ defer tmp.Close()
 _, err = tmp.WriteString(sb.String())
 return tmp.Name(), err
 }
-
 
 func (m *Model) openNative(id string) tea.Cmd {
 sel := m.findArtifact(id)
@@ -373,8 +485,10 @@ func (m *Model) setFocus(f focusedPane) {
 m.focus = f
 m.artifacts.SetFocused(f == paneArtifacts)
 m.related.SetFocused(f == paneRelated)
+m.settings.SetFocused(f == paneSettings)
 m.updatePaneSizes()
 }
+
 func (m *Model) updatePaneSizes() {
 if m.width == 0 || m.height == 0 {
 return
@@ -382,33 +496,44 @@ return
 sidebarW := m.width * 35 / 100
 detailW := m.width - sidebarW
 
-var artifactsH, relatedH int
+const collapsedH = 3
+var artifactsH, relatedH, settingsH int
+
 switch m.focus {
 case paneArtifacts:
-relatedH = 3
-artifactsH = m.height - 3 - 1
+relatedH = collapsedH
+settingsH = collapsedH
+artifactsH = m.height - 2*collapsedH - 1
 if artifactsH < 5 {
 artifactsH = 5
 }
 case paneRelated:
-artifactsH = 3
-relatedH = m.height - 3 - 1
+artifactsH = collapsedH
+settingsH = collapsedH
+relatedH = m.height - 2*collapsedH - 1
 if relatedH < 5 {
 relatedH = 5
+}
+case paneSettings:
+artifactsH = collapsedH
+relatedH = collapsedH
+settingsH = m.height - 2*collapsedH - 1
+if settingsH < 5 {
+settingsH = 5
 }
 default:
-artifactsH = m.height / 2
-relatedH = m.height - artifactsH - 1
-if artifactsH < 5 {
-artifactsH = 5
-}
-if relatedH < 5 {
-relatedH = 5
+h3 := (m.height - 1) / 3
+artifactsH = h3
+relatedH = h3
+settingsH = m.height - 1 - 2*h3
+if settingsH < 3 {
+settingsH = 3
 }
 }
 
 m.artifacts.SetSize(sidebarW, artifactsH)
 m.related.SetSize(sidebarW, relatedH)
+m.settings.SetSize(sidebarW, settingsH)
 m.detail.SetSize(detailW, m.height-1)
 }
 
@@ -422,6 +547,7 @@ sidebarW := m.width * 35 / 100
 sidebar := lipgloss.JoinVertical(lipgloss.Left,
 m.artifacts.View(),
 m.related.View(),
+m.settings.View(),
 )
 sidebar = lipgloss.NewStyle().Width(sidebarW).Render(sidebar)
 detail := m.detail.View()
@@ -447,8 +573,6 @@ Foreground(styles.ColorHelpFg).
 Render(prefix + helpStr)
 }
 
-// buildHelpText renders help items separated by "  ", dropping whole items
-// from the right when they don't fit within maxWidth.
 func buildHelpText(items []string, maxWidth int) string {
 if maxWidth <= 0 {
 return ""
@@ -505,7 +629,6 @@ return waitForEvent(ch)
 }
 }
 
-// waitForEventCmd returns a tea.Cmd that blocks until the next event arrives on ch.
 func waitForEventCmd(ch <-chan *agentv1.ArtifactEvent) tea.Cmd {
 return func() tea.Msg {
 return waitForEvent(ch)
@@ -520,7 +643,6 @@ return agentDisconnectedMsg{}
 return artifactEventMsg{event: ev, ch: ch}
 }
 
-// retrySubscribeCmd waits 5 seconds then attempts to re-subscribe to the agent.
 func (m Model) retrySubscribeCmd() tea.Cmd {
 return tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
 ch, err := m.client.Subscribe(m.ctx)
@@ -531,8 +653,6 @@ return artifactEventMsg{event: nil, ch: ch}
 })
 }
 
-// pollTheme schedules a periodic check of the system theme via the agent.
-// It polls every 5 seconds and triggers a themeChangedMsg if the value changes.
 func (m Model) pollTheme() tea.Cmd {
 return tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
 ctx, cancel := context.WithTimeout(m.ctx, 3*time.Second)

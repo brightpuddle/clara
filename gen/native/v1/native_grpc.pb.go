@@ -23,6 +23,7 @@ const (
 	NativeWorkerService_MarkReminderDone_FullMethodName = "/native.v1.NativeWorkerService/MarkReminderDone"
 	NativeWorkerService_SpotlightSearch_FullMethodName  = "/native.v1.NativeWorkerService/SpotlightSearch"
 	NativeWorkerService_GetSystemTheme_FullMethodName   = "/native.v1.NativeWorkerService/GetSystemTheme"
+	NativeWorkerService_UpdateReminder_FullMethodName   = "/native.v1.NativeWorkerService/UpdateReminder"
 )
 
 // NativeWorkerServiceClient is the client API for NativeWorkerService service.
@@ -40,6 +41,7 @@ type NativeWorkerServiceClient interface {
 	SpotlightSearch(ctx context.Context, in *SpotlightSearchRequest, opts ...grpc.CallOption) (*SpotlightSearchResponse, error)
 	// GetSystemTheme returns the current macOS appearance (dark or light).
 	GetSystemTheme(ctx context.Context, in *GetSystemThemeRequest, opts ...grpc.CallOption) (*GetSystemThemeResponse, error)
+	UpdateReminder(ctx context.Context, in *UpdateReminderRequest, opts ...grpc.CallOption) (*UpdateReminderResponse, error)
 }
 
 type nativeWorkerServiceClient struct {
@@ -90,6 +92,16 @@ func (c *nativeWorkerServiceClient) GetSystemTheme(ctx context.Context, in *GetS
 	return out, nil
 }
 
+func (c *nativeWorkerServiceClient) UpdateReminder(ctx context.Context, in *UpdateReminderRequest, opts ...grpc.CallOption) (*UpdateReminderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateReminderResponse)
+	err := c.cc.Invoke(ctx, NativeWorkerService_UpdateReminder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NativeWorkerServiceServer is the server API for NativeWorkerService service.
 // All implementations must embed UnimplementedNativeWorkerServiceServer
 // for forward compatibility.
@@ -105,6 +117,7 @@ type NativeWorkerServiceServer interface {
 	SpotlightSearch(context.Context, *SpotlightSearchRequest) (*SpotlightSearchResponse, error)
 	// GetSystemTheme returns the current macOS appearance (dark or light).
 	GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error)
+	UpdateReminder(context.Context, *UpdateReminderRequest) (*UpdateReminderResponse, error)
 	mustEmbedUnimplementedNativeWorkerServiceServer()
 }
 
@@ -126,6 +139,9 @@ func (UnimplementedNativeWorkerServiceServer) SpotlightSearch(context.Context, *
 }
 func (UnimplementedNativeWorkerServiceServer) GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSystemTheme not implemented")
+}
+func (UnimplementedNativeWorkerServiceServer) UpdateReminder(context.Context, *UpdateReminderRequest) (*UpdateReminderResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateReminder not implemented")
 }
 func (UnimplementedNativeWorkerServiceServer) mustEmbedUnimplementedNativeWorkerServiceServer() {}
 func (UnimplementedNativeWorkerServiceServer) testEmbeddedByValue()                             {}
@@ -220,6 +236,24 @@ func _NativeWorkerService_GetSystemTheme_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NativeWorkerService_UpdateReminder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateReminderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NativeWorkerServiceServer).UpdateReminder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NativeWorkerService_UpdateReminder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NativeWorkerServiceServer).UpdateReminder(ctx, req.(*UpdateReminderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NativeWorkerService_ServiceDesc is the grpc.ServiceDesc for NativeWorkerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -242,6 +276,10 @@ var NativeWorkerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSystemTheme",
 			Handler:    _NativeWorkerService_GetSystemTheme_Handler,
+		},
+		{
+			MethodName: "UpdateReminder",
+			Handler:    _NativeWorkerService_UpdateReminder_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

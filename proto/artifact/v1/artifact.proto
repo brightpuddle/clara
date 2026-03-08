@@ -16,6 +16,7 @@ enum ArtifactKind {
   ARTIFACT_KIND_BOOKMARK    = 5;
   ARTIFACT_KIND_LOG         = 6;   // terminal process log / copilot status
   ARTIFACT_KIND_SUGGESTION  = 7;   // internal Clara suggestions (backlinks, tags, etc.)
+  ARTIFACT_KIND_TASK        = 8;   // taskwarrior / external task manager task
 }
 
 // Artifact is the universal data unit in Clara.

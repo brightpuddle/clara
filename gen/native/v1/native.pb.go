@@ -567,6 +567,126 @@ func (x *GetSystemThemeResponse) GetDark() bool {
 	return false
 }
 
+type UpdateReminderRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Notes         string                 `protobuf:"bytes,3,opt,name=notes,proto3" json:"notes,omitempty"`
+	DueDate       *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateReminderRequest) Reset() {
+	*x = UpdateReminderRequest{}
+	mi := &file_native_v1_native_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateReminderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateReminderRequest) ProtoMessage() {}
+
+func (x *UpdateReminderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_native_v1_native_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateReminderRequest.ProtoReflect.Descriptor instead.
+func (*UpdateReminderRequest) Descriptor() ([]byte, []int) {
+	return file_native_v1_native_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdateReminderRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateReminderRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *UpdateReminderRequest) GetNotes() string {
+	if x != nil {
+		return x.Notes
+	}
+	return ""
+}
+
+func (x *UpdateReminderRequest) GetDueDate() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DueDate
+	}
+	return nil
+}
+
+type UpdateReminderResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateReminderResponse) Reset() {
+	*x = UpdateReminderResponse{}
+	mi := &file_native_v1_native_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateReminderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateReminderResponse) ProtoMessage() {}
+
+func (x *UpdateReminderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_native_v1_native_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateReminderResponse.ProtoReflect.Descriptor instead.
+func (*UpdateReminderResponse) Descriptor() ([]byte, []int) {
+	return file_native_v1_native_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *UpdateReminderResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *UpdateReminderResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_native_v1_native_proto protoreflect.FileDescriptor
 
 const file_native_v1_native_proto_rawDesc = "" +
@@ -607,12 +727,21 @@ const file_native_v1_native_proto_rawDesc = "" +
 	"\aresults\x18\x01 \x03(\v2\x1a.native.v1.SpotlightResultR\aresults\"\x17\n" +
 	"\x15GetSystemThemeRequest\",\n" +
 	"\x16GetSystemThemeResponse\x12\x12\n" +
-	"\x04dark\x18\x01 \x01(\bR\x04dark2\xf7\x02\n" +
+	"\x04dark\x18\x01 \x01(\bR\x04dark\"\x8a\x01\n" +
+	"\x15UpdateReminderRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
+	"\x05notes\x18\x03 \x01(\tR\x05notes\x125\n" +
+	"\bdue_date\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\adueDate\">\n" +
+	"\x16UpdateReminderResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error2\xce\x03\n" +
 	"\x13NativeWorkerService\x12R\n" +
 	"\rListReminders\x12\x1f.native.v1.ListRemindersRequest\x1a .native.v1.ListRemindersResponse\x12[\n" +
 	"\x10MarkReminderDone\x12\".native.v1.MarkReminderDoneRequest\x1a#.native.v1.MarkReminderDoneResponse\x12X\n" +
 	"\x0fSpotlightSearch\x12!.native.v1.SpotlightSearchRequest\x1a\".native.v1.SpotlightSearchResponse\x12U\n" +
-	"\x0eGetSystemTheme\x12 .native.v1.GetSystemThemeRequest\x1a!.native.v1.GetSystemThemeResponseB6Z4github.com/brightpuddle/clara/gen/native/v1;nativev1b\x06proto3"
+	"\x0eGetSystemTheme\x12 .native.v1.GetSystemThemeRequest\x1a!.native.v1.GetSystemThemeResponse\x12U\n" +
+	"\x0eUpdateReminder\x12 .native.v1.UpdateReminderRequest\x1a!.native.v1.UpdateReminderResponseB6Z4github.com/brightpuddle/clara/gen/native/v1;nativev1b\x06proto3"
 
 var (
 	file_native_v1_native_proto_rawDescOnce sync.Once
@@ -626,7 +755,7 @@ func file_native_v1_native_proto_rawDescGZIP() []byte {
 	return file_native_v1_native_proto_rawDescData
 }
 
-var file_native_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_native_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_native_v1_native_proto_goTypes = []any{
 	(*ListRemindersRequest)(nil),     // 0: native.v1.ListRemindersRequest
 	(*Reminder)(nil),                 // 1: native.v1.Reminder
@@ -638,28 +767,33 @@ var file_native_v1_native_proto_goTypes = []any{
 	(*SpotlightSearchResponse)(nil),  // 7: native.v1.SpotlightSearchResponse
 	(*GetSystemThemeRequest)(nil),    // 8: native.v1.GetSystemThemeRequest
 	(*GetSystemThemeResponse)(nil),   // 9: native.v1.GetSystemThemeResponse
-	(*timestamppb.Timestamp)(nil),    // 10: google.protobuf.Timestamp
+	(*UpdateReminderRequest)(nil),    // 10: native.v1.UpdateReminderRequest
+	(*UpdateReminderResponse)(nil),   // 11: native.v1.UpdateReminderResponse
+	(*timestamppb.Timestamp)(nil),    // 12: google.protobuf.Timestamp
 }
 var file_native_v1_native_proto_depIdxs = []int32{
-	10, // 0: native.v1.Reminder.due_date:type_name -> google.protobuf.Timestamp
-	10, // 1: native.v1.Reminder.created_at:type_name -> google.protobuf.Timestamp
-	10, // 2: native.v1.Reminder.modified_at:type_name -> google.protobuf.Timestamp
+	12, // 0: native.v1.Reminder.due_date:type_name -> google.protobuf.Timestamp
+	12, // 1: native.v1.Reminder.created_at:type_name -> google.protobuf.Timestamp
+	12, // 2: native.v1.Reminder.modified_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: native.v1.ListRemindersResponse.reminders:type_name -> native.v1.Reminder
-	10, // 4: native.v1.SpotlightResult.last_used:type_name -> google.protobuf.Timestamp
+	12, // 4: native.v1.SpotlightResult.last_used:type_name -> google.protobuf.Timestamp
 	6,  // 5: native.v1.SpotlightSearchResponse.results:type_name -> native.v1.SpotlightResult
-	0,  // 6: native.v1.NativeWorkerService.ListReminders:input_type -> native.v1.ListRemindersRequest
-	3,  // 7: native.v1.NativeWorkerService.MarkReminderDone:input_type -> native.v1.MarkReminderDoneRequest
-	5,  // 8: native.v1.NativeWorkerService.SpotlightSearch:input_type -> native.v1.SpotlightSearchRequest
-	8,  // 9: native.v1.NativeWorkerService.GetSystemTheme:input_type -> native.v1.GetSystemThemeRequest
-	2,  // 10: native.v1.NativeWorkerService.ListReminders:output_type -> native.v1.ListRemindersResponse
-	4,  // 11: native.v1.NativeWorkerService.MarkReminderDone:output_type -> native.v1.MarkReminderDoneResponse
-	7,  // 12: native.v1.NativeWorkerService.SpotlightSearch:output_type -> native.v1.SpotlightSearchResponse
-	9,  // 13: native.v1.NativeWorkerService.GetSystemTheme:output_type -> native.v1.GetSystemThemeResponse
-	10, // [10:14] is the sub-list for method output_type
-	6,  // [6:10] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	12, // 6: native.v1.UpdateReminderRequest.due_date:type_name -> google.protobuf.Timestamp
+	0,  // 7: native.v1.NativeWorkerService.ListReminders:input_type -> native.v1.ListRemindersRequest
+	3,  // 8: native.v1.NativeWorkerService.MarkReminderDone:input_type -> native.v1.MarkReminderDoneRequest
+	5,  // 9: native.v1.NativeWorkerService.SpotlightSearch:input_type -> native.v1.SpotlightSearchRequest
+	8,  // 10: native.v1.NativeWorkerService.GetSystemTheme:input_type -> native.v1.GetSystemThemeRequest
+	10, // 11: native.v1.NativeWorkerService.UpdateReminder:input_type -> native.v1.UpdateReminderRequest
+	2,  // 12: native.v1.NativeWorkerService.ListReminders:output_type -> native.v1.ListRemindersResponse
+	4,  // 13: native.v1.NativeWorkerService.MarkReminderDone:output_type -> native.v1.MarkReminderDoneResponse
+	7,  // 14: native.v1.NativeWorkerService.SpotlightSearch:output_type -> native.v1.SpotlightSearchResponse
+	9,  // 15: native.v1.NativeWorkerService.GetSystemTheme:output_type -> native.v1.GetSystemThemeResponse
+	11, // 16: native.v1.NativeWorkerService.UpdateReminder:output_type -> native.v1.UpdateReminderResponse
+	12, // [12:17] is the sub-list for method output_type
+	7,  // [7:12] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_native_v1_native_proto_init() }
@@ -673,7 +807,7 @@ func file_native_v1_native_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_native_v1_native_proto_rawDesc), len(file_native_v1_native_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -72,6 +72,25 @@ final class RemindersManager: @unchecked Sendable {
         reminder.isCompleted = true
         try store.save(reminder, commit: true)
     }
+
+    /// Updates the title, notes, and/or due date of a reminder.
+    func updateReminder(id: String, title: String?, notes: String?, dueDate: Date?) async throws {
+        guard let reminder = store.calendarItem(withIdentifier: id) as? EKReminder else {
+            throw RemindersError.notFound(id)
+        }
+        if let title = title {
+            reminder.title = title
+        }
+        if let notes = notes {
+            reminder.notes = notes
+        }
+        if let dueDate = dueDate {
+            var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: dueDate)
+            components.timeZone = TimeZone.current
+            reminder.dueDateComponents = components
+        }
+        try store.save(reminder, commit: true)
+    }
 }
 
 enum RemindersError: Error {

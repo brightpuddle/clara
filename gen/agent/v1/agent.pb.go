@@ -10,6 +10,7 @@ import (
 	v1 "github.com/brightpuddle/clara/gen/artifact/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -634,11 +635,303 @@ func (x *GetSystemThemeResponse) GetDark() bool {
 	return false
 }
 
+type GetStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetStatusRequest) Reset() {
+	*x = GetStatusRequest{}
+	mi := &file_agent_v1_agent_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStatusRequest) ProtoMessage() {}
+
+func (x *GetStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetStatusRequest) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{12}
+}
+
+type ComponentStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Connected     bool                   `protobuf:"varint,1,opt,name=connected,proto3" json:"connected,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	UptimeSeconds int64                  `protobuf:"varint,3,opt,name=uptime_seconds,json=uptimeSeconds,proto3" json:"uptime_seconds,omitempty"`
+	Fault         string                 `protobuf:"bytes,4,opt,name=fault,proto3" json:"fault,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ComponentStatus) Reset() {
+	*x = ComponentStatus{}
+	mi := &file_agent_v1_agent_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ComponentStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ComponentStatus) ProtoMessage() {}
+
+func (x *ComponentStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ComponentStatus.ProtoReflect.Descriptor instead.
+func (*ComponentStatus) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ComponentStatus) GetConnected() bool {
+	if x != nil {
+		return x.Connected
+	}
+	return false
+}
+
+func (x *ComponentStatus) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ComponentStatus) GetUptimeSeconds() int64 {
+	if x != nil {
+		return x.UptimeSeconds
+	}
+	return 0
+}
+
+func (x *ComponentStatus) GetFault() string {
+	if x != nil {
+		return x.Fault
+	}
+	return ""
+}
+
+type GetStatusResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Agent          *ComponentStatus       `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
+	Server         *ComponentStatus       `protobuf:"bytes,2,opt,name=server,proto3" json:"server,omitempty"`
+	Native         *ComponentStatus       `protobuf:"bytes,3,opt,name=native,proto3" json:"native,omitempty"`
+	ArtifactCounts map[string]int32       `protobuf:"bytes,4,rep,name=artifact_counts,json=artifactCounts,proto3" json:"artifact_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetStatusResponse) Reset() {
+	*x = GetStatusResponse{}
+	mi := &file_agent_v1_agent_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetStatusResponse) ProtoMessage() {}
+
+func (x *GetStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetStatusResponse) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetStatusResponse) GetAgent() *ComponentStatus {
+	if x != nil {
+		return x.Agent
+	}
+	return nil
+}
+
+func (x *GetStatusResponse) GetServer() *ComponentStatus {
+	if x != nil {
+		return x.Server
+	}
+	return nil
+}
+
+func (x *GetStatusResponse) GetNative() *ComponentStatus {
+	if x != nil {
+		return x.Native
+	}
+	return nil
+}
+
+func (x *GetStatusResponse) GetArtifactCounts() map[string]int32 {
+	if x != nil {
+		return x.ArtifactCounts
+	}
+	return nil
+}
+
+type UpdateReminderRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Notes         string                 `protobuf:"bytes,3,opt,name=notes,proto3" json:"notes,omitempty"`
+	DueDate       *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateReminderRequest) Reset() {
+	*x = UpdateReminderRequest{}
+	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateReminderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateReminderRequest) ProtoMessage() {}
+
+func (x *UpdateReminderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateReminderRequest.ProtoReflect.Descriptor instead.
+func (*UpdateReminderRequest) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *UpdateReminderRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateReminderRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *UpdateReminderRequest) GetNotes() string {
+	if x != nil {
+		return x.Notes
+	}
+	return ""
+}
+
+func (x *UpdateReminderRequest) GetDueDate() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DueDate
+	}
+	return nil
+}
+
+type UpdateReminderResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateReminderResponse) Reset() {
+	*x = UpdateReminderResponse{}
+	mi := &file_agent_v1_agent_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateReminderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateReminderResponse) ProtoMessage() {}
+
+func (x *UpdateReminderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateReminderResponse.ProtoReflect.Descriptor instead.
+func (*UpdateReminderResponse) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UpdateReminderResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *UpdateReminderResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_agent_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x14agent/v1/agent.proto\x12\bagent.v1\x1a\x1aartifact/v1/artifact.proto\"u\n" +
+	"\x14agent/v1/agent.proto\x12\bagent.v1\x1a\x1aartifact/v1/artifact.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"u\n" +
 	"\x14ListArtifactsRequest\x12\x14\n" +
 	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x16\n" +
 	"\x06offset\x18\x02 \x01(\x05R\x06offset\x12/\n" +
@@ -666,19 +959,43 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\bartifact\x18\x02 \x01(\v2\x15.artifact.v1.ArtifactR\bartifact\"\x17\n" +
 	"\x15GetSystemThemeRequest\",\n" +
 	"\x16GetSystemThemeResponse\x12\x12\n" +
-	"\x04dark\x18\x01 \x01(\bR\x04dark*o\n" +
+	"\x04dark\x18\x01 \x01(\bR\x04dark\"\x12\n" +
+	"\x10GetStatusRequest\"\x82\x01\n" +
+	"\x0fComponentStatus\x12\x1c\n" +
+	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12%\n" +
+	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds\x12\x14\n" +
+	"\x05fault\x18\x04 \x01(\tR\x05fault\"\xc7\x02\n" +
+	"\x11GetStatusResponse\x12/\n" +
+	"\x05agent\x18\x01 \x01(\v2\x19.agent.v1.ComponentStatusR\x05agent\x121\n" +
+	"\x06server\x18\x02 \x01(\v2\x19.agent.v1.ComponentStatusR\x06server\x121\n" +
+	"\x06native\x18\x03 \x01(\v2\x19.agent.v1.ComponentStatusR\x06native\x12X\n" +
+	"\x0fartifact_counts\x18\x04 \x03(\v2/.agent.v1.GetStatusResponse.ArtifactCountsEntryR\x0eartifactCounts\x1aA\n" +
+	"\x13ArtifactCountsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"\x8a\x01\n" +
+	"\x15UpdateReminderRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x14\n" +
+	"\x05notes\x18\x03 \x01(\tR\x05notes\x125\n" +
+	"\bdue_date\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\adueDate\">\n" +
+	"\x16UpdateReminderResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error*o\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12EVENT_TYPE_CREATED\x10\x01\x12\x16\n" +
 	"\x12EVENT_TYPE_UPDATED\x10\x02\x12\x16\n" +
-	"\x12EVENT_TYPE_DELETED\x10\x032\xc5\x03\n" +
+	"\x12EVENT_TYPE_DELETED\x10\x032\xe0\x04\n" +
 	"\fAgentService\x12P\n" +
 	"\rListArtifacts\x12\x1e.agent.v1.ListArtifactsRequest\x1a\x1f.agent.v1.ListArtifactsResponse\x12J\n" +
 	"\vGetArtifact\x12\x1c.agent.v1.GetArtifactRequest\x1a\x1d.agent.v1.GetArtifactResponse\x12A\n" +
 	"\bMarkDone\x12\x19.agent.v1.MarkDoneRequest\x1a\x1a.agent.v1.MarkDoneResponse\x12;\n" +
 	"\x06Search\x12\x17.agent.v1.SearchRequest\x1a\x18.agent.v1.SearchResponse\x12B\n" +
 	"\tSubscribe\x12\x1a.agent.v1.SubscribeRequest\x1a\x17.agent.v1.ArtifactEvent0\x01\x12S\n" +
-	"\x0eGetSystemTheme\x12\x1f.agent.v1.GetSystemThemeRequest\x1a .agent.v1.GetSystemThemeResponseB4Z2github.com/brightpuddle/clara/gen/agent/v1;agentv1b\x06proto3"
+	"\x0eGetSystemTheme\x12\x1f.agent.v1.GetSystemThemeRequest\x1a .agent.v1.GetSystemThemeResponse\x12D\n" +
+	"\tGetStatus\x12\x1a.agent.v1.GetStatusRequest\x1a\x1b.agent.v1.GetStatusResponse\x12S\n" +
+	"\x0eUpdateReminder\x12\x1f.agent.v1.UpdateReminderRequest\x1a .agent.v1.UpdateReminderResponseB4Z2github.com/brightpuddle/clara/gen/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once
@@ -693,7 +1010,7 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_agent_v1_agent_proto_goTypes = []any{
 	(EventType)(0),                 // 0: agent.v1.EventType
 	(*ListArtifactsRequest)(nil),   // 1: agent.v1.ListArtifactsRequest
@@ -708,35 +1025,51 @@ var file_agent_v1_agent_proto_goTypes = []any{
 	(*ArtifactEvent)(nil),          // 10: agent.v1.ArtifactEvent
 	(*GetSystemThemeRequest)(nil),  // 11: agent.v1.GetSystemThemeRequest
 	(*GetSystemThemeResponse)(nil), // 12: agent.v1.GetSystemThemeResponse
-	(v1.ArtifactKind)(0),           // 13: artifact.v1.ArtifactKind
-	(*v1.Artifact)(nil),            // 14: artifact.v1.Artifact
+	(*GetStatusRequest)(nil),       // 13: agent.v1.GetStatusRequest
+	(*ComponentStatus)(nil),        // 14: agent.v1.ComponentStatus
+	(*GetStatusResponse)(nil),      // 15: agent.v1.GetStatusResponse
+	(*UpdateReminderRequest)(nil),  // 16: agent.v1.UpdateReminderRequest
+	(*UpdateReminderResponse)(nil), // 17: agent.v1.UpdateReminderResponse
+	nil,                            // 18: agent.v1.GetStatusResponse.ArtifactCountsEntry
+	(v1.ArtifactKind)(0),           // 19: artifact.v1.ArtifactKind
+	(*v1.Artifact)(nil),            // 20: artifact.v1.Artifact
+	(*timestamppb.Timestamp)(nil),  // 21: google.protobuf.Timestamp
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
-	13, // 0: agent.v1.ListArtifactsRequest.kinds:type_name -> artifact.v1.ArtifactKind
-	14, // 1: agent.v1.ListArtifactsResponse.artifacts:type_name -> artifact.v1.Artifact
-	14, // 2: agent.v1.GetArtifactResponse.artifact:type_name -> artifact.v1.Artifact
-	14, // 3: agent.v1.GetArtifactResponse.related:type_name -> artifact.v1.Artifact
-	13, // 4: agent.v1.SearchRequest.kinds:type_name -> artifact.v1.ArtifactKind
-	14, // 5: agent.v1.SearchResponse.artifacts:type_name -> artifact.v1.Artifact
+	19, // 0: agent.v1.ListArtifactsRequest.kinds:type_name -> artifact.v1.ArtifactKind
+	20, // 1: agent.v1.ListArtifactsResponse.artifacts:type_name -> artifact.v1.Artifact
+	20, // 2: agent.v1.GetArtifactResponse.artifact:type_name -> artifact.v1.Artifact
+	20, // 3: agent.v1.GetArtifactResponse.related:type_name -> artifact.v1.Artifact
+	19, // 4: agent.v1.SearchRequest.kinds:type_name -> artifact.v1.ArtifactKind
+	20, // 5: agent.v1.SearchResponse.artifacts:type_name -> artifact.v1.Artifact
 	0,  // 6: agent.v1.ArtifactEvent.type:type_name -> agent.v1.EventType
-	14, // 7: agent.v1.ArtifactEvent.artifact:type_name -> artifact.v1.Artifact
-	1,  // 8: agent.v1.AgentService.ListArtifacts:input_type -> agent.v1.ListArtifactsRequest
-	3,  // 9: agent.v1.AgentService.GetArtifact:input_type -> agent.v1.GetArtifactRequest
-	5,  // 10: agent.v1.AgentService.MarkDone:input_type -> agent.v1.MarkDoneRequest
-	7,  // 11: agent.v1.AgentService.Search:input_type -> agent.v1.SearchRequest
-	9,  // 12: agent.v1.AgentService.Subscribe:input_type -> agent.v1.SubscribeRequest
-	11, // 13: agent.v1.AgentService.GetSystemTheme:input_type -> agent.v1.GetSystemThemeRequest
-	2,  // 14: agent.v1.AgentService.ListArtifacts:output_type -> agent.v1.ListArtifactsResponse
-	4,  // 15: agent.v1.AgentService.GetArtifact:output_type -> agent.v1.GetArtifactResponse
-	6,  // 16: agent.v1.AgentService.MarkDone:output_type -> agent.v1.MarkDoneResponse
-	8,  // 17: agent.v1.AgentService.Search:output_type -> agent.v1.SearchResponse
-	10, // 18: agent.v1.AgentService.Subscribe:output_type -> agent.v1.ArtifactEvent
-	12, // 19: agent.v1.AgentService.GetSystemTheme:output_type -> agent.v1.GetSystemThemeResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	20, // 7: agent.v1.ArtifactEvent.artifact:type_name -> artifact.v1.Artifact
+	14, // 8: agent.v1.GetStatusResponse.agent:type_name -> agent.v1.ComponentStatus
+	14, // 9: agent.v1.GetStatusResponse.server:type_name -> agent.v1.ComponentStatus
+	14, // 10: agent.v1.GetStatusResponse.native:type_name -> agent.v1.ComponentStatus
+	18, // 11: agent.v1.GetStatusResponse.artifact_counts:type_name -> agent.v1.GetStatusResponse.ArtifactCountsEntry
+	21, // 12: agent.v1.UpdateReminderRequest.due_date:type_name -> google.protobuf.Timestamp
+	1,  // 13: agent.v1.AgentService.ListArtifacts:input_type -> agent.v1.ListArtifactsRequest
+	3,  // 14: agent.v1.AgentService.GetArtifact:input_type -> agent.v1.GetArtifactRequest
+	5,  // 15: agent.v1.AgentService.MarkDone:input_type -> agent.v1.MarkDoneRequest
+	7,  // 16: agent.v1.AgentService.Search:input_type -> agent.v1.SearchRequest
+	9,  // 17: agent.v1.AgentService.Subscribe:input_type -> agent.v1.SubscribeRequest
+	11, // 18: agent.v1.AgentService.GetSystemTheme:input_type -> agent.v1.GetSystemThemeRequest
+	13, // 19: agent.v1.AgentService.GetStatus:input_type -> agent.v1.GetStatusRequest
+	16, // 20: agent.v1.AgentService.UpdateReminder:input_type -> agent.v1.UpdateReminderRequest
+	2,  // 21: agent.v1.AgentService.ListArtifacts:output_type -> agent.v1.ListArtifactsResponse
+	4,  // 22: agent.v1.AgentService.GetArtifact:output_type -> agent.v1.GetArtifactResponse
+	6,  // 23: agent.v1.AgentService.MarkDone:output_type -> agent.v1.MarkDoneResponse
+	8,  // 24: agent.v1.AgentService.Search:output_type -> agent.v1.SearchResponse
+	10, // 25: agent.v1.AgentService.Subscribe:output_type -> agent.v1.ArtifactEvent
+	12, // 26: agent.v1.AgentService.GetSystemTheme:output_type -> agent.v1.GetSystemThemeResponse
+	15, // 27: agent.v1.AgentService.GetStatus:output_type -> agent.v1.GetStatusResponse
+	17, // 28: agent.v1.AgentService.UpdateReminder:output_type -> agent.v1.UpdateReminderResponse
+	21, // [21:29] is the sub-list for method output_type
+	13, // [13:21] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_agent_proto_init() }
@@ -750,7 +1083,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

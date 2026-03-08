@@ -5,6 +5,7 @@ package agent.v1;
 option go_package = "github.com/brightpuddle/clara/gen/agent/v1;agentv1";
 
 import "artifact/v1/artifact.proto";
+import "google/protobuf/timestamp.proto";
 
 // AgentService is the gRPC interface between the TUI and the Agent daemon.
 // Served over a Unix Domain Socket at $DATA_DIR/agent.sock.
@@ -29,6 +30,13 @@ service AgentService {
   // GetSystemTheme returns the current OS appearance (dark or light), proxied
   // from the native worker. Returns dark=true if the worker is unavailable.
   rpc GetSystemTheme(GetSystemThemeRequest) returns (GetSystemThemeResponse);
+
+  // GetStatus returns live status of all Clara components and artifact counts.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+
+  // UpdateReminder updates the title, notes, and/or due date of a reminder
+  // via the native worker.
+  rpc UpdateReminder(UpdateReminderRequest) returns (UpdateReminderResponse);
 }
 
 message ListArtifactsRequest {
@@ -86,4 +94,32 @@ message GetSystemThemeRequest {}
 
 message GetSystemThemeResponse {
   bool dark = 1; // true = dark mode, false = light mode
+}
+
+message GetStatusRequest {}
+
+message ComponentStatus {
+  bool   connected       = 1;
+  string state           = 2;
+  int64  uptime_seconds  = 3;
+  string fault           = 4;
+}
+
+message GetStatusResponse {
+  ComponentStatus          agent           = 1;
+  ComponentStatus          server          = 2;
+  ComponentStatus          native          = 3;
+  map<string, int32>       artifact_counts = 4;
+}
+
+message UpdateReminderRequest {
+  string                    id       = 1;
+  string                    title    = 2;
+  string                    notes    = 3;
+  google.protobuf.Timestamp due_date = 4;
+}
+
+message UpdateReminderResponse {
+  bool   ok    = 1;
+  string error = 2;
 }

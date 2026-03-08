@@ -53,6 +53,8 @@ func baseUrgency(kind artifactv1.ArtifactKind) float64 {
 		return 0.25
 	case artifactv1.ArtifactKind_ARTIFACT_KIND_SUGGESTION:
 		return 0.20
+	case artifactv1.ArtifactKind_ARTIFACT_KIND_TASK:
+		return 0.60
 	default:
 		return 0.30
 	}
@@ -108,6 +110,8 @@ func KindIcon(kind artifactv1.ArtifactKind) string {
 		return "" // nf-fa-terminal
 	case artifactv1.ArtifactKind_ARTIFACT_KIND_SUGGESTION:
 		return "󰛩" // nf-md-lightbulb_on
+	case artifactv1.ArtifactKind_ARTIFACT_KIND_TASK:
+		return "󰄱" // nf-md-checkbox_marked_outline
 	default:
 		return "" // nf-fa-circle
 	}

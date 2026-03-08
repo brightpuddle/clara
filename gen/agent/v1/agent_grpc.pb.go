@@ -25,6 +25,8 @@ const (
 	AgentService_Search_FullMethodName         = "/agent.v1.AgentService/Search"
 	AgentService_Subscribe_FullMethodName      = "/agent.v1.AgentService/Subscribe"
 	AgentService_GetSystemTheme_FullMethodName = "/agent.v1.AgentService/GetSystemTheme"
+	AgentService_GetStatus_FullMethodName      = "/agent.v1.AgentService/GetStatus"
+	AgentService_UpdateReminder_FullMethodName = "/agent.v1.AgentService/UpdateReminder"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -49,6 +51,11 @@ type AgentServiceClient interface {
 	// GetSystemTheme returns the current OS appearance (dark or light), proxied
 	// from the native worker. Returns dark=true if the worker is unavailable.
 	GetSystemTheme(ctx context.Context, in *GetSystemThemeRequest, opts ...grpc.CallOption) (*GetSystemThemeResponse, error)
+	// GetStatus returns live status of all Clara components and artifact counts.
+	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
+	// UpdateReminder updates the title, notes, and/or due date of a reminder
+	// via the native worker.
+	UpdateReminder(ctx context.Context, in *UpdateReminderRequest, opts ...grpc.CallOption) (*UpdateReminderResponse, error)
 }
 
 type agentServiceClient struct {
@@ -128,6 +135,26 @@ func (c *agentServiceClient) GetSystemTheme(ctx context.Context, in *GetSystemTh
 	return out, nil
 }
 
+func (c *agentServiceClient) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStatusResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *agentServiceClient) UpdateReminder(ctx context.Context, in *UpdateReminderRequest, opts ...grpc.CallOption) (*UpdateReminderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateReminderResponse)
+	err := c.cc.Invoke(ctx, AgentService_UpdateReminder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -150,6 +177,11 @@ type AgentServiceServer interface {
 	// GetSystemTheme returns the current OS appearance (dark or light), proxied
 	// from the native worker. Returns dark=true if the worker is unavailable.
 	GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error)
+	// GetStatus returns live status of all Clara components and artifact counts.
+	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
+	// UpdateReminder updates the title, notes, and/or due date of a reminder
+	// via the native worker.
+	UpdateReminder(context.Context, *UpdateReminderRequest) (*UpdateReminderResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -177,6 +209,12 @@ func (UnimplementedAgentServiceServer) Subscribe(*SubscribeRequest, grpc.ServerS
 }
 func (UnimplementedAgentServiceServer) GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetSystemTheme not implemented")
+}
+func (UnimplementedAgentServiceServer) GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStatus not implemented")
+}
+func (UnimplementedAgentServiceServer) UpdateReminder(context.Context, *UpdateReminderRequest) (*UpdateReminderResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateReminder not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -300,6 +338,42 @@ func _AgentService_GetSystemTheme_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetStatus(ctx, req.(*GetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AgentService_UpdateReminder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateReminderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).UpdateReminder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_UpdateReminder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).UpdateReminder(ctx, req.(*UpdateReminderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -326,6 +400,14 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSystemTheme",
 			Handler:    _AgentService_GetSystemTheme_Handler,
+		},
+		{
+			MethodName: "GetStatus",
+			Handler:    _AgentService_GetStatus_Handler,
+		},
+		{
+			MethodName: "UpdateReminder",
+			Handler:    _AgentService_UpdateReminder_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
