@@ -2,6 +2,7 @@ package panes
 
 import (
 "fmt"
+"os"
 "strings"
 
 "github.com/charmbracelet/lipgloss"
@@ -86,10 +87,8 @@ func (p *DetailPane) renderSettings() string {
 switch p.settingsCategory {
 case "status":
 return p.renderStatusView()
-case "tui":
-return p.renderTUIView()
-case "integrations":
-return p.renderIntegrationsView()
+case "config":
+return p.renderConfigView()
 default:
 return p.renderEmptySettings(p.settingsCategory)
 }
@@ -158,82 +157,37 @@ lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %d", kind+":
 return p.wrapInBorder(header, lines, innerW)
 }
 
-func (p *DetailPane) renderTUIView() string {
-header := p.titleStyle().Render(" TUI Settings ")
+
+func (p *DetailPane) renderConfigView() string {
+header := p.titleStyle().Render(" Config ")
 innerW := p.width - 4
 if innerW < 1 {
 innerW = 1
 }
 
-var lines []string
-lines = append(lines, styles.Bold.Render("Theme"))
-lines = append(lines, "")
-
-if p.config == nil {
-lines = append(lines, styles.Muted.Render("  config not available"))
-} else {
-cfg := p.config.TUI
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %s", "theme_mode:", cfg.ThemeMode)))
-dark := cfg.DarkTheme
-if dark == "" {
-dark = "(native 16-color)"
-}
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %s", "dark_theme:", dark)))
-light := cfg.LightTheme
-if light == "" {
-light = "(native 16-color)"
-}
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %s", "light_theme:", light)))
-lines = append(lines, "")
-lines = append(lines, styles.Bold.Render("Config File"))
-lines = append(lines, "")
-lines = append(lines, styles.Muted.Render("  "+truncateStr(configpkg.ConfigPath(), innerW-2)))
-}
-
-return p.wrapInBorder(header, lines, innerW)
-}
-
-func (p *DetailPane) renderIntegrationsView() string {
-header := p.titleStyle().Render(" Integrations ")
-innerW := p.width - 4
-if innerW < 1 {
-innerW = 1
-}
-
+configPath := configpkg.ConfigPath()
 var lines []string
 
-if p.config == nil {
-lines = append(lines, styles.Muted.Render("  config not available"))
+lines = append(lines, styles.Bold.Render("Config file: "+truncateStr(configPath, innerW-14)))
+lines = append(lines, styles.Muted.Render("  Enter: edit in $EDITOR   o: open in app"))
+lines = append(lines, "")
+
+content, err := os.ReadFile(configPath)
+if err != nil {
+lines = append(lines, styles.Muted.Render("  (file not found — defaults are active)"))
 } else {
-cfg := p.config.Integrations
-
-// Filesystem
-lines = append(lines, styles.Bold.Render("Filesystem"))
-lines = append(lines, "")
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %v", "enabled:", cfg.Filesystem.Enabled)))
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %d", "ingest_concurrency:", cfg.Filesystem.IngestConcurrency)))
-if len(cfg.Filesystem.WatchDirs) > 0 {
-lines = append(lines, styles.ItemNormal.Render("  watch_dirs:"))
-for _, d := range cfg.Filesystem.WatchDirs {
-lines = append(lines, styles.Muted.Render("    - "+truncateStr(d, innerW-6)))
-}
+for _, line := range strings.Split(string(content), "\n") {
+if strings.HasPrefix(line, "#") {
+lines = append(lines, styles.Muted.Render(line))
+} else if strings.Contains(line, ":") {
+colonIdx := strings.Index(line, ":")
+key := line[:colonIdx]
+val := line[colonIdx:]
+lines = append(lines, styles.ItemNormal.Render(styles.Bold.Render(key)+val))
 } else {
-lines = append(lines, styles.Muted.Render("  watch_dirs: (none configured)"))
+lines = append(lines, styles.ItemNormal.Render(line))
 }
-lines = append(lines, "")
-
-// Reminders
-lines = append(lines, styles.Bold.Render("Reminders"))
-lines = append(lines, "")
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %v", "enabled:", cfg.Reminders.Enabled)))
-lines = append(lines, "")
-
-// Taskwarrior
-lines = append(lines, styles.Bold.Render("Taskwarrior"))
-lines = append(lines, "")
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %v", "enabled:", cfg.Taskwarrior.Enabled)))
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %s", "binary_path:", cfg.Taskwarrior.BinaryPath)))
-lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-20s %s", "data_dir:", truncateStr(cfg.Taskwarrior.DataDir, innerW-22))))
+}
 }
 
 return p.wrapInBorder(header, lines, innerW)

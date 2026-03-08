@@ -7,6 +7,7 @@ import (
 "time"
 
 "github.com/rs/zerolog"
+"github.com/fsnotify/fsnotify"
 
 agentv1 "github.com/brightpuddle/clara/gen/agent/v1"
 artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
@@ -100,6 +101,9 @@ go ing.ScanDirs(ctx, a.cfg.Integrations.Filesystem.WatchDirs)
 }
 }
 
+// Watch config file for changes and reload.
+go a.watchConfig(ctx)
+
 lis, grpcSrv, err := agentgrpc.ListenUnix(a.cfg.AgentSocketPath())
 if err != nil {
 return err
@@ -119,6 +123,44 @@ grpcSrv.GracefulStop()
 _ = os.Remove(a.cfg.AgentSocketPath())
 time.Sleep(100 * time.Millisecond)
 return nil
+}
+
+func (a *Agent) watchConfig(ctx context.Context) {
+cfgPath := config.ConfigPath()
+w, err := fsnotify.NewWatcher()
+if err != nil {
+a.logger.Debug().Err(err).Msg("could not create config watcher")
+return
+}
+defer w.Close()
+if err := w.Add(cfgPath); err != nil {
+a.logger.Debug().Err(err).Msg("could not watch config file")
+return
+}
+for {
+select {
+case <-ctx.Done():
+return
+case event, ok := <-w.Events:
+if !ok {
+return
+}
+if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
+newCfg, err := config.Load()
+if err != nil {
+a.logger.Warn().Err(err).Msg("config reload failed")
+continue
+}
+a.cfg = newCfg
+a.logger.Info().Msg("config reloaded")
+}
+case err, ok := <-w.Errors:
+if !ok {
+return
+}
+a.logger.Debug().Err(err).Msg("config watcher error")
+}
+}
 }
 
 func (a *Agent) forwardNotifications(ctx context.Context, srv *agentgrpc.AgentServer, ch <-chan *artifactv1.Artifact) {

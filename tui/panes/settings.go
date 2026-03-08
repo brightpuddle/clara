@@ -18,8 +18,7 @@ type SettingsCategory struct {
 
 var DefaultCategories = []SettingsCategory{
 	{ID: "status", Label: "Status"},
-	{ID: "tui", Label: "TUI"},
-	{ID: "integrations", Label: "Integrations"},
+	{ID: "config", Label: "Config"},
 }
 
 // SettingsPane is the left sidebar settings navigator.
@@ -45,20 +44,27 @@ func (p *SettingsPane) Selected() *SettingsCategory {
 	return &p.categories[p.cursor]
 }
 
-// Update handles key events. Returns action string ("settings:status", etc.)
+// Update handles key events.
+// Returns "settings:nav:ID" on cursor movement, "settings:edit:ID" on Enter.
 func (p *SettingsPane) Update(msg tea.KeyMsg) string {
 	switch msg.String() {
 	case "j", "down":
 		if p.cursor < len(p.categories)-1 {
 			p.cursor++
 		}
+		if sel := p.Selected(); sel != nil {
+			return "settings:nav:" + sel.ID
+		}
 	case "k", "up":
 		if p.cursor > 0 {
 			p.cursor--
 		}
+		if sel := p.Selected(); sel != nil {
+			return "settings:nav:" + sel.ID
+		}
 	case "enter":
 		if sel := p.Selected(); sel != nil {
-			return "settings:" + sel.ID
+			return "settings:edit:" + sel.ID
 		}
 	}
 	return ""

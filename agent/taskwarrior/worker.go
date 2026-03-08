@@ -76,7 +76,7 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) sync(ctx context.Context) {
-	out, err := exec.CommandContext(ctx, w.binaryPath, "export", "status:pending").Output()
+	out, err := exec.CommandContext(ctx, w.binaryPath, "rc.confirmation=no", "status:pending", "export").Output()
 	if err != nil {
 		w.logger.Warn().Err(err).Msg("task export failed")
 		return

@@ -63,6 +63,8 @@ type settingsViewMsg struct {
 category   string
 statusData *agentv1.GetStatusResponse
 }
+type configReloadedMsg struct{ cfg *configpkg.Config }
+
 type reminderUpdateMsg struct {
 id      string
 title   string
@@ -136,13 +138,19 @@ return m.handleKey(msg)
 case artifactsLoadedMsg:
 m.artifacts.SetArtifacts(msg.artifacts)
 m.status = fmt.Sprintf("loaded %d artifacts", len(msg.artifacts))
+// Don't overwrite settings detail view when syncing.
+if m.focus != paneSettings {
 if sel := m.artifacts.Selected(); sel != nil {
 return m, m.loadDetail(sel.Id)
 }
+}
 
 case artifactDetailMsg:
+// Don't overwrite settings detail when syncing in background.
+if m.focus != paneSettings {
 m.detail.SetArtifact(msg.artifact)
 m.related.SetRelated(msg.related)
+}
 
 case agentDisconnectedMsg:
 m.status = "⚠ disconnected from agent — retrying…"
@@ -167,6 +175,11 @@ m.err = msg.err.Error()
 
 case settingsViewMsg:
 m.detail.SetSettingsView(msg.category, msg.statusData, m.cfg)
+
+case configReloadedMsg:
+m.cfg = msg.cfg
+m.detail.SetSettingsView("config", nil, m.cfg)
+m.status = "config reloaded"
 
 case reminderUpdateMsg:
 return m, m.callUpdateReminder(msg)
@@ -218,6 +231,12 @@ return m, m.handleAction(action)
 }
 
 case paneSettings:
+// Handle 'o' to open config in native app.
+if msg.String() == "o" {
+if sel := m.settings.Selected(); sel != nil && sel.ID == "config" {
+return m, m.openConfigNative()
+}
+}
 action := m.settings.Update(msg)
 if action != "" {
 return m, m.handleAction(action)
@@ -256,9 +275,30 @@ return m.openInEditor(id)
 case "open":
 return m.openNative(id)
 case "settings":
+// id is "nav:CATEGORY" or "edit:CATEGORY"
+subIdx := strings.Index(id, ":")
+if subIdx < 0 {
 return m.showSettings(id)
 }
+subVerb := id[:subIdx]
+category := id[subIdx+1:]
+if subVerb == "edit" {
+return m.editConfig(category)
+}
+return m.showSettings(category)
+}
 return nil
+}
+
+// autoShowSettings immediately sets the settings view for the given category
+// without going through the tea.Cmd round-trip (used on focus entry).
+func (m *Model) autoShowSettings(category string) {
+if category == "config" {
+m.detail.SetSettingsView("config", nil, m.cfg)
+return
+}
+// For status, we need async fetch — just clear to trigger a loading state.
+m.detail.SetSettingsView(category, nil, m.cfg)
 }
 
 func (m *Model) showSettings(category string) tea.Cmd {
@@ -272,6 +312,61 @@ return settingsViewMsg{category: category, statusData: resp}
 }
 return settingsViewMsg{category: category}
 }
+}
+
+func (m *Model) editConfig(category string) tea.Cmd {
+if category != "config" {
+// Status: just refresh.
+return m.showSettings(category)
+}
+cfgPath := configpkg.ConfigPath()
+// Ensure the yaml-language-server modeline is present.
+ensureConfigModeline(cfgPath, configpkg.SchemaPath())
+
+editor := os.Getenv("EDITOR")
+if editor == "" {
+editor = "vim"
+}
+cmd := exec.Command(editor, cfgPath) //nolint:gosec
+cmd.Stdin = os.Stdin
+cmd.Stdout = os.Stdout
+cmd.Stderr = os.Stderr
+return tea.ExecProcess(cmd, func(err error) tea.Msg {
+if err != nil {
+return errorMsg{err}
+}
+// Reload config from disk.
+newCfg, loadErr := configpkg.Load()
+if loadErr != nil {
+return errorMsg{loadErr}
+}
+return configReloadedMsg{cfg: newCfg}
+})
+}
+
+func (m *Model) openConfigNative() tea.Cmd {
+cmd := exec.Command("open", configpkg.ConfigPath()) //nolint:gosec
+return func() tea.Msg {
+if err := cmd.Start(); err != nil {
+return errorMsg{err}
+}
+return statusMsg{"opened config in native app"}
+}
+}
+
+// ensureConfigModeline adds the yaml-language-server modeline to the top
+// of the config file if it is not already present.
+func ensureConfigModeline(cfgPath, schemaPath string) {
+data, err := os.ReadFile(cfgPath)
+if err != nil {
+return
+}
+modeline := "# yaml-language-server: $schema=file://" + schemaPath
+if strings.Contains(string(data), "yaml-language-server") {
+return
+}
+newContent := modeline + "\n" + string(data)
+_ = os.WriteFile(cfgPath, []byte(newContent), 0o644)
 }
 
 func (m *Model) openInEditor(id string) tea.Cmd {
@@ -482,11 +577,18 @@ m.setFocus(focusedPane((int(m.focus) + delta + PaneCount) % PaneCount))
 }
 
 func (m *Model) setFocus(f focusedPane) {
+entering := f == paneSettings && m.focus != paneSettings
 m.focus = f
 m.artifacts.SetFocused(f == paneArtifacts)
 m.related.SetFocused(f == paneRelated)
 m.settings.SetFocused(f == paneSettings)
 m.updatePaneSizes()
+if entering {
+// Auto-show the currently selected settings category.
+if sel := m.settings.Selected(); sel != nil {
+m.autoShowSettings(sel.ID)
+}
+}
 }
 
 func (m *Model) updatePaneSizes() {
