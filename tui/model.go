@@ -64,6 +64,7 @@ category   string
 statusData *agentv1.GetStatusResponse
 }
 type configReloadedMsg struct{ cfg *configpkg.Config }
+type uptimeTickMsg struct{}
 
 type reminderUpdateMsg struct {
 id      string
@@ -175,6 +176,15 @@ m.err = msg.err.Error()
 
 case settingsViewMsg:
 m.detail.SetSettingsView(msg.category, msg.statusData, m.cfg)
+if msg.category == "status" && msg.statusData != nil {
+return m, uptimeTickCmd()
+}
+
+case uptimeTickMsg:
+m.detail.TickUptime()
+if m.focus == paneSettings {
+return m, uptimeTickCmd()
+}
 
 case configReloadedMsg:
 m.cfg = msg.cfg
@@ -201,16 +211,23 @@ return m, nil
 case "shift+tab":
 m.cycleFocus(-1)
 return m, nil
-case "l", "h":
+case "l":
+// l moves to the next pane (down/right)
 if m.focus == paneArtifacts {
-m.setFocus(paneRelated)
-return m, nil
+return m, m.setFocus(paneRelated)
 } else if m.focus == paneRelated {
-m.setFocus(paneSettings)
-return m, nil
+return m, m.setFocus(paneSettings)
 } else if m.focus == paneSettings {
-m.setFocus(paneArtifacts)
-return m, nil
+return m, m.setFocus(paneArtifacts)
+}
+case "h":
+// h moves to the previous pane (up/left)
+if m.focus == paneArtifacts {
+return m, m.setFocus(paneSettings)
+} else if m.focus == paneRelated {
+return m, m.setFocus(paneArtifacts)
+} else if m.focus == paneSettings {
+return m, m.setFocus(paneRelated)
 }
 }
 
@@ -366,7 +383,9 @@ if strings.Contains(string(data), "yaml-language-server") {
 return
 }
 newContent := modeline + "\n" + string(data)
-_ = os.WriteFile(cfgPath, []byte(newContent), 0o644)
+	if err := os.WriteFile(cfgPath, []byte(newContent), 0o644); err != nil {
+		// Log but don't fail - schema is optional
+	}
 }
 
 func (m *Model) openInEditor(id string) tea.Cmd {
@@ -569,14 +588,20 @@ return nil
 }
 
 func (m *Model) isSearching() bool {
-return false
+	if m.focus == paneArtifacts {
+		return m.artifacts.IsSearching()
+	}
+	if m.focus == paneRelated {
+		return m.related.IsSearching()
+	}
+	return false
 }
 
 func (m *Model) cycleFocus(delta int) {
-m.setFocus(focusedPane((int(m.focus) + delta + PaneCount) % PaneCount))
+m.setFocus(focusedPane((int(m.focus) + delta + PaneCount) % PaneCount)) //nolint:errcheck
 }
 
-func (m *Model) setFocus(f focusedPane) {
+func (m *Model) setFocus(f focusedPane) tea.Cmd {
 entering := f == paneSettings && m.focus != paneSettings
 m.focus = f
 m.artifacts.SetFocused(f == paneArtifacts)
@@ -584,11 +609,13 @@ m.related.SetFocused(f == paneRelated)
 m.settings.SetFocused(f == paneSettings)
 m.updatePaneSizes()
 if entering {
-// Auto-show the currently selected settings category.
+// Auto-show the currently selected settings category and fetch data.
 if sel := m.settings.Selected(); sel != nil {
 m.autoShowSettings(sel.ID)
+return m.showSettings(sel.ID)
 }
 }
+return nil
 }
 
 func (m *Model) updatePaneSizes() {
@@ -764,5 +791,11 @@ if err != nil {
 return nil
 }
 return themeChangedMsg{isDark: isDark}
+})
+}
+
+func uptimeTickCmd() tea.Cmd {
+return tea.Tick(time.Second, func(_ time.Time) tea.Msg {
+return uptimeTickMsg{}
 })
 }

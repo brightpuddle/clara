@@ -71,3 +71,7 @@ swift-build: ## Build the Swift native worker
 .PHONY: swift-build-debug
 swift-build-debug: ## Build the Swift native worker (debug)
 	cd native && swift build
+
+.PHONY: test
+test: ## Run all Go unit tests
+	$(GO) test ./...

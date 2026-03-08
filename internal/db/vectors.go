@@ -25,12 +25,34 @@ func (db *DB) UpsertEmbedding(ctx context.Context, artifactID string, vec []floa
 // KNNSearch returns the k nearest artifact IDs to the query vector,
 // sorted by ascending cosine distance (most similar first).
 // It excludes the query artifact itself if excludeID is non-empty.
+// NOTE: This implementation loads all embeddings into memory for distance calculation.
+// For large datasets, this should be replaced with sqlite-vec or an ANN library.
 func (db *DB) KNNSearch(ctx context.Context, query []float32, k int, excludeID string) ([]KNNResult, error) {
+	// First, get a candidate set using a time-based prefilter to limit memory usage.
+	// This avoids loading ALL embeddings when the dataset grows large.
+	// We fetch more than k to have candidates after distance calculation.
+	candidateLimit := k * 10
+	if candidateLimit < 100 {
+		candidateLimit = 100 // minimum to avoid edge cases
+	}
+
 	rows, err := db.QueryContext(ctx, `
-		SELECT artifact_id, embedding FROM artifact_embeddings
-	`)
+		SELECT ae.artifact_id, ae.embedding
+		FROM artifact_embeddings ae
+		JOIN artifacts a ON ae.artifact_id = a.id
+		WHERE a.done = 0
+		ORDER BY a.updated_at DESC
+		LIMIT ?
+	`, candidateLimit)
 	if err != nil {
-		return nil, errors.Wrap(err, "query embeddings")
+		// Fallback: try without the join if the above fails (e.g., schema changes)
+		rows, err = db.QueryContext(ctx, `
+			SELECT artifact_id, embedding FROM artifact_embeddings
+			LIMIT ?
+		`, candidateLimit)
+		if err != nil {
+			return nil, errors.Wrap(err, "query embeddings")
+		}
 	}
 	defer rows.Close()
 

@@ -32,10 +32,29 @@ func NewArtifactsPane() ArtifactsPane {
 	return ArtifactsPane{}
 }
 
-// SetArtifacts replaces the artifact list and resets the cursor.
+// SetArtifacts replaces the artifact list, preserving the cursor on the previously
+// selected artifact if it still exists in the new list.
 func (p *ArtifactsPane) SetArtifacts(arts []*artifactv1.Artifact) {
+	selectedID := ""
+	if sel := p.Selected(); sel != nil {
+		selectedID = sel.Id
+	}
 	p.artifacts = arts
 	p.applyFilter()
+	// Restore cursor to the previously selected artifact if it still exists.
+	if selectedID != "" {
+		for i, a := range p.filtered {
+			if a.Id == selectedID {
+				p.cursor = i
+				visibleRows := p.height - 4
+				if visibleRows < 1 {
+					visibleRows = 1
+				}
+				p.clampScroll(visibleRows)
+				break
+			}
+		}
+	}
 }
 
 // SetSize sets the pane dimensions.

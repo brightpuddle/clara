@@ -34,7 +34,7 @@ func (s *Server) StoreArtifact(ctx context.Context, req *serverv1.StoreArtifactR
 
 	if err := s.store.StoreArtifact(ctx, req.Artifact, req.Embedding); err != nil {
 		s.logger.Error().Err(err).Str("artifact_id", req.Artifact.Id).Msg("StoreArtifact failed")
-		return &serverv1.StoreArtifactResponse{Ok: false, Error: err.Error()}, nil
+		return nil, status.Errorf(codes.Internal, "store artifact: %v", err)
 	}
 
 	s.logger.Debug().Str("id", req.Artifact.Id).Str("title", req.Artifact.Title).Msg("stored artifact")

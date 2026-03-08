@@ -187,13 +187,9 @@ func (ing *Ingestor) processFile(ctx context.Context, path string) {
 		Artifact:  a,
 		Embedding: vec,
 	}
-	resp, err := ing.serverConn.StoreArtifact(storeCtx, req)
+	_, err = ing.serverConn.StoreArtifact(storeCtx, req)
 	if err != nil {
 		log.Error().Err(errors.Wrap(err, "store artifact")).Msg("ingest failed")
-		return
-	}
-	if !resp.Ok {
-		log.Error().Str("err", resp.Error).Msg("server store failed")
 		return
 	}
 

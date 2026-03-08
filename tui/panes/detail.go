@@ -4,6 +4,7 @@ import (
 "fmt"
 "os"
 "strings"
+"time"
 
 "github.com/charmbracelet/lipgloss"
 
@@ -24,6 +25,8 @@ height           int
 scrollY          int
 settingsCategory string
 statusData       *agentv1.GetStatusResponse
+statusFetchedAt  time.Time // when statusData was last fetched (for local uptime counting)
+uptimeTick       int64     // increments each second via TickUptime
 config           *configpkg.Config
 }
 
@@ -45,6 +48,18 @@ p.settingsCategory = category
 p.statusData = statusData
 p.config = cfg
 p.scrollY = 0
+if statusData != nil {
+p.statusFetchedAt = time.Now()
+p.uptimeTick = 0
+}
+}
+
+// TickUptime increments the local uptime counter by one second.
+// Call this every second while the status view is visible to avoid polling the server.
+func (p *DetailPane) TickUptime() {
+if p.statusData != nil {
+p.uptimeTick++
+}
 }
 
 // SetSize sets the pane dimensions.
@@ -133,8 +148,12 @@ connStr = "✓ " + c.State
 connColor = styles.ItemNormal
 }
 lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-10s %s", name+":", connColor.Render(connStr))))
-if c.Connected && c.UptimeSeconds > 0 {
-lines = append(lines, styles.Muted.Render(fmt.Sprintf("  %-10s %s", "", formatUptime(c.UptimeSeconds))))
+uptimeSecs := c.UptimeSeconds
+if c.Connected && name == "agent" {
+uptimeSecs += p.uptimeTick
+}
+if c.Connected && uptimeSecs > 0 {
+lines = append(lines, styles.Muted.Render(fmt.Sprintf("  %-10s %s", "", formatUptime(uptimeSecs))))
 }
 if c.Fault != "" {
 lines = append(lines, styles.Muted.Render(fmt.Sprintf("  %-10s %s", "", c.Fault)))
