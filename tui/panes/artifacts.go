@@ -18,6 +18,7 @@ type ArtifactsPane struct {
 	artifacts []*artifactv1.Artifact
 	filtered  []*artifactv1.Artifact
 	cursor    int
+	offset    int // first visible row index (scroll offset)
 	focused   bool
 	searching bool
 	searchBuf string
@@ -66,14 +67,24 @@ func (p *ArtifactsPane) Update(msg tea.KeyMsg) (action string) {
 	if p.searching {
 		return p.updateSearch(msg)
 	}
+
+	// visibleRows is needed to clamp scroll after cursor movement. Compute it
+	// from current height (same formula as View uses: height - 4).
+	visibleRows := p.height - 4
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+
 	switch msg.String() {
 	case "j", "down":
 		if p.cursor < len(p.filtered)-1 {
 			p.cursor++
+			p.clampScroll(visibleRows)
 		}
 	case "k", "up":
 		if p.cursor > 0 {
 			p.cursor--
+			p.clampScroll(visibleRows)
 		}
 	case "/":
 		p.searching = true
@@ -116,8 +127,40 @@ func (p *ArtifactsPane) updateSearch(msg tea.KeyMsg) string {
 	return ""
 }
 
+// scrollPad is the number of lines kept visible above/below the cursor when
+// scrolling (i.e. the cursor starts scrolling when it's this close to the edge).
+const scrollPad = 3
+
+// clampScroll adjusts the scroll offset so the cursor is always visible with
+// scrollPad lines of context, unless there are fewer items than the viewport.
+func (p *ArtifactsPane) clampScroll(visibleRows int) {
+	if visibleRows <= 0 {
+		return
+	}
+	// Scroll down: cursor is too close to the bottom of the viewport.
+	if p.cursor >= p.offset+visibleRows-scrollPad {
+		p.offset = p.cursor - visibleRows + scrollPad + 1
+	}
+	// Scroll up: cursor is too close to the top of the viewport.
+	if p.cursor < p.offset+scrollPad {
+		p.offset = p.cursor - scrollPad
+	}
+	// Clamp offset to valid range.
+	if p.offset < 0 {
+		p.offset = 0
+	}
+	max := len(p.filtered) - visibleRows
+	if max < 0 {
+		max = 0
+	}
+	if p.offset > max {
+		p.offset = max
+	}
+}
+
 func (p *ArtifactsPane) applyFilter() {
 	p.cursor = 0
+	p.offset = 0
 	if p.searchBuf == "" {
 		p.filtered = p.artifacts
 		return
@@ -163,10 +206,8 @@ func (p *ArtifactsPane) View() string {
 	}
 
 	var rows []string
-	for i, a := range p.filtered {
-		if i >= innerH {
-			break
-		}
+	for i := p.offset; i < len(p.filtered) && i < p.offset+innerH; i++ {
+		a := p.filtered[i]
 		icon := artifact.KindIcon(a.Kind)
 		kindCol := kindColor(a.Kind)
 		titleText := truncateStr(a.Title, innerW-4) // icon(1) + space(1) + title + margin

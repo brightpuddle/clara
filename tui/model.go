@@ -49,7 +49,10 @@ type artifactDetailMsg struct {
 artifact *artifactv1.Artifact
 related  []*artifactv1.Artifact
 }
-type artifactEventMsg struct{ event *agentv1.ArtifactEvent }
+type artifactEventMsg struct {
+	event *agentv1.ArtifactEvent
+	ch    <-chan *agentv1.ArtifactEvent
+}
 type themeChangedMsg struct{ isDark bool }
 type errorMsg struct{ err error }
 type statusMsg struct{ text string }
@@ -125,7 +128,9 @@ m.detail.SetArtifact(msg.artifact)
 m.related.SetRelated(msg.related)
 
 case artifactEventMsg:
-return m, m.loadArtifacts()
+// Continue listening for the next event on the same channel, and also
+// reload the artifact list to reflect the change.
+return m, tea.Batch(m.loadArtifacts(), waitForEventCmd(msg.ch))
 
 case themeChangedMsg:
 m.themeMgr.SetDark(msg.isDark)
@@ -416,12 +421,19 @@ return waitForEvent(ch)
 }
 }
 
+// waitForEventCmd returns a tea.Cmd that blocks until the next event arrives on ch.
+func waitForEventCmd(ch <-chan *agentv1.ArtifactEvent) tea.Cmd {
+return func() tea.Msg {
+return waitForEvent(ch)
+}
+}
+
 func waitForEvent(ch <-chan *agentv1.ArtifactEvent) tea.Msg {
 ev, ok := <-ch
 if !ok {
 return nil
 }
-return artifactEventMsg{event: ev}
+return artifactEventMsg{event: ev, ch: ch}
 }
 
 // pollTheme schedules a periodic check of the system theme via the agent.

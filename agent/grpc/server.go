@@ -164,7 +164,7 @@ func (s *AgentServer) GetSystemTheme(ctx context.Context, _ *agentv1.GetSystemTh
 		if err == nil {
 			return &agentv1.GetSystemThemeResponse{Dark: resp.Dark}, nil
 		}
-		s.logger.Warn().Err(err).Msg("native GetSystemTheme failed, defaulting to dark")
+		s.logger.Debug().Err(err).Msg("native GetSystemTheme unavailable, defaulting to dark")
 	}
 	return &agentv1.GetSystemThemeResponse{Dark: true}, nil
 }

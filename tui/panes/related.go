@@ -17,6 +17,7 @@ type RelatedPane struct {
 	related    []*artifactv1.Artifact
 	filtered   []*artifactv1.Artifact
 	cursor     int
+	offset     int // first visible row index (scroll offset)
 	focused    bool
 	searching  bool
 	searchBuf  string
@@ -59,19 +60,48 @@ func (p *RelatedPane) Selected() *artifactv1.Artifact {
 	return p.filtered[p.cursor]
 }
 
+// clampScroll adjusts offset to keep cursor visible with scrollPad context lines.
+func (p *RelatedPane) clampScroll(visibleRows int) {
+	if visibleRows <= 0 {
+		return
+	}
+	if p.cursor >= p.offset+visibleRows-scrollPad {
+		p.offset = p.cursor - visibleRows + scrollPad + 1
+	}
+	if p.cursor < p.offset+scrollPad {
+		p.offset = p.cursor - scrollPad
+	}
+	if p.offset < 0 {
+		p.offset = 0
+	}
+	max := len(p.filtered) - visibleRows
+	if max < 0 {
+		max = 0
+	}
+	if p.offset > max {
+		p.offset = max
+	}
+}
+
 // Update handles key events for the related pane.
 func (p *RelatedPane) Update(msg tea.KeyMsg) string {
 	if p.searching {
 		return p.updateSearch(msg)
 	}
+	visibleRows := p.height - 4
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
 	switch msg.String() {
 	case "j", "down":
 		if p.cursor < len(p.filtered)-1 {
 			p.cursor++
+			p.clampScroll(visibleRows)
 		}
 	case "k", "up":
 		if p.cursor > 0 {
 			p.cursor--
+			p.clampScroll(visibleRows)
 		}
 	case "s":
 		p.searching = true
@@ -112,6 +142,7 @@ func (p *RelatedPane) updateSearch(msg tea.KeyMsg) string {
 
 func (p *RelatedPane) applyFilter() {
 	p.cursor = 0
+	p.offset = 0
 	if p.searchBuf == "" {
 		p.filtered = p.related
 		return
@@ -146,28 +177,30 @@ func (p *RelatedPane) View() string {
 
 	header := titleStyle.Render(fmt.Sprintf(" %s (%d) ", title, len(p.filtered)))
 
+	innerW := p.width - 4
 	innerH := p.height - 4
 	if innerH < 1 {
 		innerH = 1
 	}
+	if innerW < 1 {
+		innerW = 1
+	}
 
 	var rows []string
-	for i, a := range p.filtered {
-		if i >= innerH {
-			break
-		}
+	for i := p.offset; i < len(p.filtered) && i < p.offset+innerH; i++ {
+		a := p.filtered[i]
 		icon := artifact.KindIcon(a.Kind)
 		color := kindColor(a.Kind)
-		titleText := truncateStr(a.Title, p.width-8)
+		titleText := truncateStr(a.Title, innerW-4)
 
 		selected := i == p.cursor && p.focused
 		if selected {
 			line := fmt.Sprintf("%s %s", icon, titleText)
-			rows = append(rows, styles.ItemSelected.Width(p.width-4).Render(line))
+			rows = append(rows, styles.ItemSelected.Width(innerW).Render(line))
 		} else {
 			iconStr := lipgloss.NewStyle().Foreground(color).Render(icon)
 			line := fmt.Sprintf("%s %s", iconStr, titleText)
-			rows = append(rows, styles.ItemNormal.Width(p.width-4).Render(line))
+			rows = append(rows, styles.ItemNormal.Width(innerW).Render(line))
 		}
 	}
 
