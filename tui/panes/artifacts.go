@@ -53,6 +53,11 @@ func (p *ArtifactsPane) SetFocused(f bool) {
 	}
 }
 
+// IsSearching returns true if the pane is in search mode.
+func (p *ArtifactsPane) IsSearching() bool {
+	return p.searching
+}
+
 // Selected returns the currently selected artifact, or nil.
 func (p *ArtifactsPane) Selected() *artifactv1.Artifact {
 	if len(p.filtered) == 0 {
