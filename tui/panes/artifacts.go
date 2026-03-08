@@ -22,6 +22,7 @@ type ArtifactsPane struct {
 	focused   bool
 	searching bool
 	searchBuf string
+	lastKey   string // tracks multi-key sequences (e.g. "gg")
 	width     int
 	height    int
 }
@@ -49,6 +50,7 @@ func (p *ArtifactsPane) SetFocused(f bool) {
 	if !f {
 		p.searching = false
 		p.searchBuf = ""
+		p.lastKey = ""
 		p.applyFilter()
 	}
 }
@@ -80,7 +82,31 @@ func (p *ArtifactsPane) Update(msg tea.KeyMsg) (action string) {
 		visibleRows = 1
 	}
 
-	switch msg.String() {
+	key := msg.String()
+
+	// Handle "gg" sequence: first g sets lastKey, second g jumps to top.
+	if key == "g" && p.lastKey == "g" {
+		p.lastKey = ""
+		p.cursor = 0
+		p.offset = 0
+		return ""
+	}
+
+	prev := p.lastKey
+	p.lastKey = ""
+
+	// If the previous key was "g" but this key is not "g", the sequence is
+	// abandoned — fall through to normal handling with prev discarded.
+	_ = prev
+
+	switch key {
+	case "g":
+		p.lastKey = "g"
+	case "G":
+		if len(p.filtered) > 0 {
+			p.cursor = len(p.filtered) - 1
+			p.clampScroll(visibleRows)
+		}
 	case "j", "down":
 		if p.cursor < len(p.filtered)-1 {
 			p.cursor++

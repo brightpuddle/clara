@@ -14,15 +14,16 @@ import (
 
 // RelatedPane shows artifacts related to the currently selected artifact.
 type RelatedPane struct {
-	related    []*artifactv1.Artifact
-	filtered   []*artifactv1.Artifact
-	cursor     int
-	offset     int // first visible row index (scroll offset)
-	focused    bool
-	searching  bool
-	searchBuf  string
-	width      int
-	height     int
+	related   []*artifactv1.Artifact
+	filtered  []*artifactv1.Artifact
+	cursor    int
+	offset    int // first visible row index (scroll offset)
+	focused   bool
+	searching bool
+	searchBuf string
+	lastKey   string // tracks multi-key sequences (e.g. "gg")
+	width     int
+	height    int
 }
 
 // NewRelatedPane creates an empty RelatedPane.
@@ -48,6 +49,7 @@ func (p *RelatedPane) SetFocused(f bool) {
 	if !f {
 		p.searching = false
 		p.searchBuf = ""
+		p.lastKey = ""
 		p.applyFilter()
 	}
 }
@@ -97,7 +99,29 @@ func (p *RelatedPane) Update(msg tea.KeyMsg) string {
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
-	switch msg.String() {
+
+	key := msg.String()
+
+	// Handle "gg" sequence: first g sets lastKey, second g jumps to top.
+	if key == "g" && p.lastKey == "g" {
+		p.lastKey = ""
+		p.cursor = 0
+		p.offset = 0
+		return ""
+	}
+
+	prev := p.lastKey
+	p.lastKey = ""
+	_ = prev
+
+	switch key {
+	case "g":
+		p.lastKey = "g"
+	case "G":
+		if len(p.filtered) > 0 {
+			p.cursor = len(p.filtered) - 1
+			p.clampScroll(visibleRows)
+		}
 	case "j", "down":
 		if p.cursor < len(p.filtered)-1 {
 			p.cursor++
