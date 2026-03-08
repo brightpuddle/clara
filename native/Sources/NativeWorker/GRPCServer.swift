@@ -47,8 +47,8 @@ struct NativeWorkerServiceImpl: Native_V1_NativeWorkerService.SimpleServiceProto
         do {
             try await reminders.updateReminder(
                 id: request.id,
-                title: request.hasTitle ? request.title : nil,
-                notes: request.hasNotes ? request.notes : nil,
+                title: request.title.isEmpty ? nil : request.title,
+                notes: request.notes.isEmpty ? nil : request.notes,
                 dueDate: request.hasDueDate ? request.dueDate.date : nil
             )
             resp.ok = true
