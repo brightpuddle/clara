@@ -88,6 +88,11 @@ func (db *DB) migrate(ctx context.Context) error {
 
 		`CREATE INDEX IF NOT EXISTS idx_ops_log_artifact_id ON ops_log(artifact_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_ops_log_created_at  ON ops_log(created_at DESC)`,
+
+		// Migration: remove old filesystem artifacts that used random UUIDs
+		// (source_app='filesystem' and id not starting with 'file:').
+		// Re-ingest will recreate them with stable path-based IDs.
+		`DELETE FROM artifacts WHERE source_app = 'filesystem' AND id NOT LIKE 'file:%'`,
 	}
 
 	for _, stmt := range stmts {

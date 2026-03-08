@@ -141,14 +141,22 @@ func (ing *Ingestor) processFile(ctx context.Context, path string) {
 	text := string(content)
 	title := filepath.Base(path)
 
+	// Use absolute path as the stable artifact ID so re-ingesting the same
+	// file updates the existing record instead of creating a new row.
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+	artifactID := "file:" + absPath
+
 	// Determine kind: .md files are notes, everything else is a file.
 	kind := artifactv1.ArtifactKind_ARTIFACT_KIND_FILE
 	if strings.HasSuffix(strings.ToLower(path), ".md") {
 		kind = artifactv1.ArtifactKind_ARTIFACT_KIND_NOTE
-		// Use first non-empty line as title.
+		// Use first non-empty, non-frontmatter-delimiter line as title.
 		for _, line := range strings.Split(text, "\n") {
 			line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
-			if line != "" {
+			if line != "" && line != "---" {
 				title = line
 				break
 			}
@@ -156,6 +164,7 @@ func (ing *Ingestor) processFile(ctx context.Context, path string) {
 	}
 
 	a := artifact.New(kind, title, text, path, "filesystem")
+	a.Id = artifactID
 	a.HeatScore = artifact.ComputeHeatScore(a)
 	now := time.Now()
 	a.CreatedAt = timestamppb.New(info.ModTime())

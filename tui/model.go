@@ -190,8 +190,8 @@ return m, nil
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 switch msg.String() {
-case "ctrl+c", "q":
-if m.focus == paneArtifacts && !m.isSearching() {
+case "ctrl+c", "ctrl+d", "q":
+if !m.isSearching() {
 m.cancel()
 return m, tea.Quit
 }
