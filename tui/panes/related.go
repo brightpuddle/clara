@@ -158,15 +158,15 @@ func (p *RelatedPane) View() string {
 		}
 		icon := artifact.KindIcon(a.Kind)
 		color := kindColor(a.Kind)
-		title := truncateStr(a.Title, p.width-8)
-		line := fmt.Sprintf("%s %-*s",
-			lipgloss.NewStyle().Foreground(color).Render(icon),
-			p.width-8,
-			title,
-		)
-		if i == p.cursor && p.focused {
+		titleText := truncateStr(a.Title, p.width-8)
+
+		selected := i == p.cursor && p.focused
+		if selected {
+			line := fmt.Sprintf("%s %s", icon, titleText)
 			rows = append(rows, styles.ItemSelected.Width(p.width-4).Render(line))
 		} else {
+			iconStr := lipgloss.NewStyle().Foreground(color).Render(icon)
+			line := fmt.Sprintf("%s %s", iconStr, titleText)
 			rows = append(rows, styles.ItemNormal.Width(p.width-4).Render(line))
 		}
 	}

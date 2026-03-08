@@ -19,7 +19,6 @@ import (
 	"github.com/brightpuddle/clara/internal/embedding"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
 const maxFileSize = 1 << 20 // 1 MiB - skip larger files
 
 // Ingestor reads file events, extracts text, generates embeddings,
@@ -82,6 +81,42 @@ func (ing *Ingestor) Run(ctx context.Context, events <-chan watcher.FileEvent) {
 			}(ev)
 		}
 	}
+}
+
+// initialScanRate is the maximum number of files ingested per second during
+// the initial directory scan, to reduce startup impact on CPU and disk I/O.
+const initialScanRate = 5
+
+// ScanDirs walks all configured directories and ingests existing text files.
+// It is rate-limited to initialScanRate files per second and should be called
+// in a goroutine after the watcher is started.
+func (ing *Ingestor) ScanDirs(ctx context.Context, dirs []string) {
+	ticker := time.NewTicker(time.Second / initialScanRate)
+	defer ticker.Stop()
+
+	for _, dir := range dirs {
+		if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil // skip unreadable entries
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !isTextFile(path) {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return filepath.SkipAll
+			case <-ticker.C:
+				ing.processFile(ctx, path)
+			}
+			return nil
+		}); err != nil {
+			ing.logger.Warn().Err(err).Str("dir", dir).Msg("initial scan walk error")
+		}
+	}
+	ing.logger.Info().Strs("dirs", dirs).Msg("initial directory scan complete")
 }
 
 // processFile ingests a single file.

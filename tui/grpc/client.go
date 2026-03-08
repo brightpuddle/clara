@@ -108,3 +108,13 @@ func (c *Client) Subscribe(ctx context.Context) (<-chan *agentv1.ArtifactEvent, 
 	}()
 	return ch, nil
 }
+
+// GetSystemTheme queries the current OS appearance from the agent.
+// Returns isDark=true if the call fails or the native worker is unavailable.
+func (c *Client) GetSystemTheme(ctx context.Context) (bool, error) {
+	resp, err := c.agent.GetSystemTheme(ctx, &agentv1.GetSystemThemeRequest{})
+	if err != nil {
+		return true, err
+	}
+	return resp.Dark, nil
+}

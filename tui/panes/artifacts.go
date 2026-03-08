@@ -153,9 +153,13 @@ func (p *ArtifactsPane) View() string {
 
 	header := titleStyle.Render(fmt.Sprintf(" %s (%d) ", title, len(p.filtered)))
 
+	innerW := p.width - 4 // account for border+padding
 	innerH := p.height - 4 // account for border + header
 	if innerH < 1 {
 		innerH = 1
+	}
+	if innerW < 1 {
+		innerW = 1
 	}
 
 	var rows []string
@@ -164,21 +168,19 @@ func (p *ArtifactsPane) View() string {
 			break
 		}
 		icon := artifact.KindIcon(a.Kind)
-		heatBar := styles.HeatBar(a.HeatScore)
-		kindColor := kindColor(a.Kind)
+		kindCol := kindColor(a.Kind)
+		titleText := truncateStr(a.Title, innerW-4) // icon(1) + space(1) + title + margin
 
-		title := truncateStr(a.Title, p.width-12)
-		line := fmt.Sprintf("%s %s %-*s %s",
-			lipgloss.NewStyle().Foreground(kindColor).Render(icon),
-			heatBar,
-			p.width-12,
-			title,
-			"",
-		)
-		if i == p.cursor && p.focused {
-			rows = append(rows, styles.ItemSelected.Width(p.width-4).Render(line))
+		selected := i == p.cursor && p.focused
+		if selected {
+			// Plain text for selected row — single unified style avoids broken
+			// background from nested ANSI resets.
+			line := fmt.Sprintf("%s %s", icon, titleText)
+			rows = append(rows, styles.ItemSelected.Width(innerW).Render(line))
 		} else {
-			rows = append(rows, styles.ItemNormal.Width(p.width-4).Render(line))
+			iconStr := lipgloss.NewStyle().Foreground(kindCol).Render(icon)
+			line := fmt.Sprintf("%s %s", iconStr, titleText)
+			rows = append(rows, styles.ItemNormal.Width(innerW).Render(line))
 		}
 	}
 

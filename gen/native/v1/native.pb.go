@@ -487,6 +487,86 @@ func (x *SpotlightSearchResponse) GetResults() []*SpotlightResult {
 	return nil
 }
 
+type GetSystemThemeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSystemThemeRequest) Reset() {
+	*x = GetSystemThemeRequest{}
+	mi := &file_native_v1_native_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSystemThemeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSystemThemeRequest) ProtoMessage() {}
+
+func (x *GetSystemThemeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_native_v1_native_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSystemThemeRequest.ProtoReflect.Descriptor instead.
+func (*GetSystemThemeRequest) Descriptor() ([]byte, []int) {
+	return file_native_v1_native_proto_rawDescGZIP(), []int{8}
+}
+
+type GetSystemThemeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Dark          bool                   `protobuf:"varint,1,opt,name=dark,proto3" json:"dark,omitempty"` // true = dark mode, false = light mode
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSystemThemeResponse) Reset() {
+	*x = GetSystemThemeResponse{}
+	mi := &file_native_v1_native_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSystemThemeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSystemThemeResponse) ProtoMessage() {}
+
+func (x *GetSystemThemeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_native_v1_native_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSystemThemeResponse.ProtoReflect.Descriptor instead.
+func (*GetSystemThemeResponse) Descriptor() ([]byte, []int) {
+	return file_native_v1_native_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetSystemThemeResponse) GetDark() bool {
+	if x != nil {
+		return x.Dark
+	}
+	return false
+}
+
 var File_native_v1_native_proto protoreflect.FileDescriptor
 
 const file_native_v1_native_proto_rawDesc = "" +
@@ -524,11 +604,15 @@ const file_native_v1_native_proto_rawDesc = "" +
 	"\fcontent_type\x18\x03 \x01(\tR\vcontentType\x127\n" +
 	"\tlast_used\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\blastUsed\"O\n" +
 	"\x17SpotlightSearchResponse\x124\n" +
-	"\aresults\x18\x01 \x03(\v2\x1a.native.v1.SpotlightResultR\aresults2\xa0\x02\n" +
+	"\aresults\x18\x01 \x03(\v2\x1a.native.v1.SpotlightResultR\aresults\"\x17\n" +
+	"\x15GetSystemThemeRequest\",\n" +
+	"\x16GetSystemThemeResponse\x12\x12\n" +
+	"\x04dark\x18\x01 \x01(\bR\x04dark2\xf7\x02\n" +
 	"\x13NativeWorkerService\x12R\n" +
 	"\rListReminders\x12\x1f.native.v1.ListRemindersRequest\x1a .native.v1.ListRemindersResponse\x12[\n" +
 	"\x10MarkReminderDone\x12\".native.v1.MarkReminderDoneRequest\x1a#.native.v1.MarkReminderDoneResponse\x12X\n" +
-	"\x0fSpotlightSearch\x12!.native.v1.SpotlightSearchRequest\x1a\".native.v1.SpotlightSearchResponseB6Z4github.com/brightpuddle/clara/gen/native/v1;nativev1b\x06proto3"
+	"\x0fSpotlightSearch\x12!.native.v1.SpotlightSearchRequest\x1a\".native.v1.SpotlightSearchResponse\x12U\n" +
+	"\x0eGetSystemTheme\x12 .native.v1.GetSystemThemeRequest\x1a!.native.v1.GetSystemThemeResponseB6Z4github.com/brightpuddle/clara/gen/native/v1;nativev1b\x06proto3"
 
 var (
 	file_native_v1_native_proto_rawDescOnce sync.Once
@@ -542,7 +626,7 @@ func file_native_v1_native_proto_rawDescGZIP() []byte {
 	return file_native_v1_native_proto_rawDescData
 }
 
-var file_native_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_native_v1_native_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_native_v1_native_proto_goTypes = []any{
 	(*ListRemindersRequest)(nil),     // 0: native.v1.ListRemindersRequest
 	(*Reminder)(nil),                 // 1: native.v1.Reminder
@@ -552,26 +636,30 @@ var file_native_v1_native_proto_goTypes = []any{
 	(*SpotlightSearchRequest)(nil),   // 5: native.v1.SpotlightSearchRequest
 	(*SpotlightResult)(nil),          // 6: native.v1.SpotlightResult
 	(*SpotlightSearchResponse)(nil),  // 7: native.v1.SpotlightSearchResponse
-	(*timestamppb.Timestamp)(nil),    // 8: google.protobuf.Timestamp
+	(*GetSystemThemeRequest)(nil),    // 8: native.v1.GetSystemThemeRequest
+	(*GetSystemThemeResponse)(nil),   // 9: native.v1.GetSystemThemeResponse
+	(*timestamppb.Timestamp)(nil),    // 10: google.protobuf.Timestamp
 }
 var file_native_v1_native_proto_depIdxs = []int32{
-	8, // 0: native.v1.Reminder.due_date:type_name -> google.protobuf.Timestamp
-	8, // 1: native.v1.Reminder.created_at:type_name -> google.protobuf.Timestamp
-	8, // 2: native.v1.Reminder.modified_at:type_name -> google.protobuf.Timestamp
-	1, // 3: native.v1.ListRemindersResponse.reminders:type_name -> native.v1.Reminder
-	8, // 4: native.v1.SpotlightResult.last_used:type_name -> google.protobuf.Timestamp
-	6, // 5: native.v1.SpotlightSearchResponse.results:type_name -> native.v1.SpotlightResult
-	0, // 6: native.v1.NativeWorkerService.ListReminders:input_type -> native.v1.ListRemindersRequest
-	3, // 7: native.v1.NativeWorkerService.MarkReminderDone:input_type -> native.v1.MarkReminderDoneRequest
-	5, // 8: native.v1.NativeWorkerService.SpotlightSearch:input_type -> native.v1.SpotlightSearchRequest
-	2, // 9: native.v1.NativeWorkerService.ListReminders:output_type -> native.v1.ListRemindersResponse
-	4, // 10: native.v1.NativeWorkerService.MarkReminderDone:output_type -> native.v1.MarkReminderDoneResponse
-	7, // 11: native.v1.NativeWorkerService.SpotlightSearch:output_type -> native.v1.SpotlightSearchResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	10, // 0: native.v1.Reminder.due_date:type_name -> google.protobuf.Timestamp
+	10, // 1: native.v1.Reminder.created_at:type_name -> google.protobuf.Timestamp
+	10, // 2: native.v1.Reminder.modified_at:type_name -> google.protobuf.Timestamp
+	1,  // 3: native.v1.ListRemindersResponse.reminders:type_name -> native.v1.Reminder
+	10, // 4: native.v1.SpotlightResult.last_used:type_name -> google.protobuf.Timestamp
+	6,  // 5: native.v1.SpotlightSearchResponse.results:type_name -> native.v1.SpotlightResult
+	0,  // 6: native.v1.NativeWorkerService.ListReminders:input_type -> native.v1.ListRemindersRequest
+	3,  // 7: native.v1.NativeWorkerService.MarkReminderDone:input_type -> native.v1.MarkReminderDoneRequest
+	5,  // 8: native.v1.NativeWorkerService.SpotlightSearch:input_type -> native.v1.SpotlightSearchRequest
+	8,  // 9: native.v1.NativeWorkerService.GetSystemTheme:input_type -> native.v1.GetSystemThemeRequest
+	2,  // 10: native.v1.NativeWorkerService.ListReminders:output_type -> native.v1.ListRemindersResponse
+	4,  // 11: native.v1.NativeWorkerService.MarkReminderDone:output_type -> native.v1.MarkReminderDoneResponse
+	7,  // 12: native.v1.NativeWorkerService.SpotlightSearch:output_type -> native.v1.SpotlightSearchResponse
+	9,  // 13: native.v1.NativeWorkerService.GetSystemTheme:output_type -> native.v1.GetSystemThemeResponse
+	10, // [10:14] is the sub-list for method output_type
+	6,  // [6:10] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_native_v1_native_proto_init() }
@@ -585,7 +673,7 @@ func file_native_v1_native_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_native_v1_native_proto_rawDesc), len(file_native_v1_native_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

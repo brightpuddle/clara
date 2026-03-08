@@ -41,7 +41,6 @@ func (db *DB) UpsertArtifact(ctx context.Context, a *artifactv1.Artifact) error 
 			source_path = excluded.source_path,
 			source_app  = excluded.source_app,
 			heat_score  = excluded.heat_score,
-			done        = excluded.done,
 			tags        = excluded.tags,
 			metadata    = excluded.metadata,
 			updated_at  = excluded.updated_at,

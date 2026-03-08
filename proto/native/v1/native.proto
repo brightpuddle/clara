@@ -18,6 +18,9 @@ service NativeWorkerService {
 
   // SpotlightSearch searches the Spotlight index via NSMetadataQuery.
   rpc SpotlightSearch(SpotlightSearchRequest) returns (SpotlightSearchResponse);
+
+  // GetSystemTheme returns the current macOS appearance (dark or light).
+  rpc GetSystemTheme(GetSystemThemeRequest) returns (GetSystemThemeResponse);
 }
 
 message ListRemindersRequest {
@@ -65,3 +68,10 @@ message SpotlightResult {
 message SpotlightSearchResponse {
   repeated SpotlightResult results = 1;
 }
+
+message GetSystemThemeRequest {}
+
+message GetSystemThemeResponse {
+  bool dark = 1; // true = dark mode, false = light mode
+}
+

@@ -554,6 +554,86 @@ func (x *ArtifactEvent) GetArtifact() *v1.Artifact {
 	return nil
 }
 
+type GetSystemThemeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSystemThemeRequest) Reset() {
+	*x = GetSystemThemeRequest{}
+	mi := &file_agent_v1_agent_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSystemThemeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSystemThemeRequest) ProtoMessage() {}
+
+func (x *GetSystemThemeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSystemThemeRequest.ProtoReflect.Descriptor instead.
+func (*GetSystemThemeRequest) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{10}
+}
+
+type GetSystemThemeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Dark          bool                   `protobuf:"varint,1,opt,name=dark,proto3" json:"dark,omitempty"` // true = dark mode, false = light mode
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSystemThemeResponse) Reset() {
+	*x = GetSystemThemeResponse{}
+	mi := &file_agent_v1_agent_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSystemThemeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSystemThemeResponse) ProtoMessage() {}
+
+func (x *GetSystemThemeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_v1_agent_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSystemThemeResponse.ProtoReflect.Descriptor instead.
+func (*GetSystemThemeResponse) Descriptor() ([]byte, []int) {
+	return file_agent_v1_agent_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetSystemThemeResponse) GetDark() bool {
+	if x != nil {
+		return x.Dark
+	}
+	return false
+}
+
 var File_agent_v1_agent_proto protoreflect.FileDescriptor
 
 const file_agent_v1_agent_proto_rawDesc = "" +
@@ -583,18 +663,22 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\x10SubscribeRequest\"k\n" +
 	"\rArtifactEvent\x12'\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x13.agent.v1.EventTypeR\x04type\x121\n" +
-	"\bartifact\x18\x02 \x01(\v2\x15.artifact.v1.ArtifactR\bartifact*o\n" +
+	"\bartifact\x18\x02 \x01(\v2\x15.artifact.v1.ArtifactR\bartifact\"\x17\n" +
+	"\x15GetSystemThemeRequest\",\n" +
+	"\x16GetSystemThemeResponse\x12\x12\n" +
+	"\x04dark\x18\x01 \x01(\bR\x04dark*o\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12EVENT_TYPE_CREATED\x10\x01\x12\x16\n" +
 	"\x12EVENT_TYPE_UPDATED\x10\x02\x12\x16\n" +
-	"\x12EVENT_TYPE_DELETED\x10\x032\xf0\x02\n" +
+	"\x12EVENT_TYPE_DELETED\x10\x032\xc5\x03\n" +
 	"\fAgentService\x12P\n" +
 	"\rListArtifacts\x12\x1e.agent.v1.ListArtifactsRequest\x1a\x1f.agent.v1.ListArtifactsResponse\x12J\n" +
 	"\vGetArtifact\x12\x1c.agent.v1.GetArtifactRequest\x1a\x1d.agent.v1.GetArtifactResponse\x12A\n" +
 	"\bMarkDone\x12\x19.agent.v1.MarkDoneRequest\x1a\x1a.agent.v1.MarkDoneResponse\x12;\n" +
 	"\x06Search\x12\x17.agent.v1.SearchRequest\x1a\x18.agent.v1.SearchResponse\x12B\n" +
-	"\tSubscribe\x12\x1a.agent.v1.SubscribeRequest\x1a\x17.agent.v1.ArtifactEvent0\x01B4Z2github.com/brightpuddle/clara/gen/agent/v1;agentv1b\x06proto3"
+	"\tSubscribe\x12\x1a.agent.v1.SubscribeRequest\x1a\x17.agent.v1.ArtifactEvent0\x01\x12S\n" +
+	"\x0eGetSystemTheme\x12\x1f.agent.v1.GetSystemThemeRequest\x1a .agent.v1.GetSystemThemeResponseB4Z2github.com/brightpuddle/clara/gen/agent/v1;agentv1b\x06proto3"
 
 var (
 	file_agent_v1_agent_proto_rawDescOnce sync.Once
@@ -609,43 +693,47 @@ func file_agent_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_agent_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_agent_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_agent_v1_agent_proto_goTypes = []any{
-	(EventType)(0),                // 0: agent.v1.EventType
-	(*ListArtifactsRequest)(nil),  // 1: agent.v1.ListArtifactsRequest
-	(*ListArtifactsResponse)(nil), // 2: agent.v1.ListArtifactsResponse
-	(*GetArtifactRequest)(nil),    // 3: agent.v1.GetArtifactRequest
-	(*GetArtifactResponse)(nil),   // 4: agent.v1.GetArtifactResponse
-	(*MarkDoneRequest)(nil),       // 5: agent.v1.MarkDoneRequest
-	(*MarkDoneResponse)(nil),      // 6: agent.v1.MarkDoneResponse
-	(*SearchRequest)(nil),         // 7: agent.v1.SearchRequest
-	(*SearchResponse)(nil),        // 8: agent.v1.SearchResponse
-	(*SubscribeRequest)(nil),      // 9: agent.v1.SubscribeRequest
-	(*ArtifactEvent)(nil),         // 10: agent.v1.ArtifactEvent
-	(v1.ArtifactKind)(0),          // 11: artifact.v1.ArtifactKind
-	(*v1.Artifact)(nil),           // 12: artifact.v1.Artifact
+	(EventType)(0),                 // 0: agent.v1.EventType
+	(*ListArtifactsRequest)(nil),   // 1: agent.v1.ListArtifactsRequest
+	(*ListArtifactsResponse)(nil),  // 2: agent.v1.ListArtifactsResponse
+	(*GetArtifactRequest)(nil),     // 3: agent.v1.GetArtifactRequest
+	(*GetArtifactResponse)(nil),    // 4: agent.v1.GetArtifactResponse
+	(*MarkDoneRequest)(nil),        // 5: agent.v1.MarkDoneRequest
+	(*MarkDoneResponse)(nil),       // 6: agent.v1.MarkDoneResponse
+	(*SearchRequest)(nil),          // 7: agent.v1.SearchRequest
+	(*SearchResponse)(nil),         // 8: agent.v1.SearchResponse
+	(*SubscribeRequest)(nil),       // 9: agent.v1.SubscribeRequest
+	(*ArtifactEvent)(nil),          // 10: agent.v1.ArtifactEvent
+	(*GetSystemThemeRequest)(nil),  // 11: agent.v1.GetSystemThemeRequest
+	(*GetSystemThemeResponse)(nil), // 12: agent.v1.GetSystemThemeResponse
+	(v1.ArtifactKind)(0),           // 13: artifact.v1.ArtifactKind
+	(*v1.Artifact)(nil),            // 14: artifact.v1.Artifact
 }
 var file_agent_v1_agent_proto_depIdxs = []int32{
-	11, // 0: agent.v1.ListArtifactsRequest.kinds:type_name -> artifact.v1.ArtifactKind
-	12, // 1: agent.v1.ListArtifactsResponse.artifacts:type_name -> artifact.v1.Artifact
-	12, // 2: agent.v1.GetArtifactResponse.artifact:type_name -> artifact.v1.Artifact
-	12, // 3: agent.v1.GetArtifactResponse.related:type_name -> artifact.v1.Artifact
-	11, // 4: agent.v1.SearchRequest.kinds:type_name -> artifact.v1.ArtifactKind
-	12, // 5: agent.v1.SearchResponse.artifacts:type_name -> artifact.v1.Artifact
+	13, // 0: agent.v1.ListArtifactsRequest.kinds:type_name -> artifact.v1.ArtifactKind
+	14, // 1: agent.v1.ListArtifactsResponse.artifacts:type_name -> artifact.v1.Artifact
+	14, // 2: agent.v1.GetArtifactResponse.artifact:type_name -> artifact.v1.Artifact
+	14, // 3: agent.v1.GetArtifactResponse.related:type_name -> artifact.v1.Artifact
+	13, // 4: agent.v1.SearchRequest.kinds:type_name -> artifact.v1.ArtifactKind
+	14, // 5: agent.v1.SearchResponse.artifacts:type_name -> artifact.v1.Artifact
 	0,  // 6: agent.v1.ArtifactEvent.type:type_name -> agent.v1.EventType
-	12, // 7: agent.v1.ArtifactEvent.artifact:type_name -> artifact.v1.Artifact
+	14, // 7: agent.v1.ArtifactEvent.artifact:type_name -> artifact.v1.Artifact
 	1,  // 8: agent.v1.AgentService.ListArtifacts:input_type -> agent.v1.ListArtifactsRequest
 	3,  // 9: agent.v1.AgentService.GetArtifact:input_type -> agent.v1.GetArtifactRequest
 	5,  // 10: agent.v1.AgentService.MarkDone:input_type -> agent.v1.MarkDoneRequest
 	7,  // 11: agent.v1.AgentService.Search:input_type -> agent.v1.SearchRequest
 	9,  // 12: agent.v1.AgentService.Subscribe:input_type -> agent.v1.SubscribeRequest
-	2,  // 13: agent.v1.AgentService.ListArtifacts:output_type -> agent.v1.ListArtifactsResponse
-	4,  // 14: agent.v1.AgentService.GetArtifact:output_type -> agent.v1.GetArtifactResponse
-	6,  // 15: agent.v1.AgentService.MarkDone:output_type -> agent.v1.MarkDoneResponse
-	8,  // 16: agent.v1.AgentService.Search:output_type -> agent.v1.SearchResponse
-	10, // 17: agent.v1.AgentService.Subscribe:output_type -> agent.v1.ArtifactEvent
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
+	11, // 13: agent.v1.AgentService.GetSystemTheme:input_type -> agent.v1.GetSystemThemeRequest
+	2,  // 14: agent.v1.AgentService.ListArtifacts:output_type -> agent.v1.ListArtifactsResponse
+	4,  // 15: agent.v1.AgentService.GetArtifact:output_type -> agent.v1.GetArtifactResponse
+	6,  // 16: agent.v1.AgentService.MarkDone:output_type -> agent.v1.MarkDoneResponse
+	8,  // 17: agent.v1.AgentService.Search:output_type -> agent.v1.SearchResponse
+	10, // 18: agent.v1.AgentService.Subscribe:output_type -> agent.v1.ArtifactEvent
+	12, // 19: agent.v1.AgentService.GetSystemTheme:output_type -> agent.v1.GetSystemThemeResponse
+	14, // [14:20] is the sub-list for method output_type
+	8,  // [8:14] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -662,7 +750,7 @@ func file_agent_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_v1_agent_proto_rawDesc), len(file_agent_v1_agent_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

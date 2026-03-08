@@ -22,6 +22,7 @@ const (
 	NativeWorkerService_ListReminders_FullMethodName    = "/native.v1.NativeWorkerService/ListReminders"
 	NativeWorkerService_MarkReminderDone_FullMethodName = "/native.v1.NativeWorkerService/MarkReminderDone"
 	NativeWorkerService_SpotlightSearch_FullMethodName  = "/native.v1.NativeWorkerService/SpotlightSearch"
+	NativeWorkerService_GetSystemTheme_FullMethodName   = "/native.v1.NativeWorkerService/GetSystemTheme"
 )
 
 // NativeWorkerServiceClient is the client API for NativeWorkerService service.
@@ -37,6 +38,8 @@ type NativeWorkerServiceClient interface {
 	MarkReminderDone(ctx context.Context, in *MarkReminderDoneRequest, opts ...grpc.CallOption) (*MarkReminderDoneResponse, error)
 	// SpotlightSearch searches the Spotlight index via NSMetadataQuery.
 	SpotlightSearch(ctx context.Context, in *SpotlightSearchRequest, opts ...grpc.CallOption) (*SpotlightSearchResponse, error)
+	// GetSystemTheme returns the current macOS appearance (dark or light).
+	GetSystemTheme(ctx context.Context, in *GetSystemThemeRequest, opts ...grpc.CallOption) (*GetSystemThemeResponse, error)
 }
 
 type nativeWorkerServiceClient struct {
@@ -77,6 +80,16 @@ func (c *nativeWorkerServiceClient) SpotlightSearch(ctx context.Context, in *Spo
 	return out, nil
 }
 
+func (c *nativeWorkerServiceClient) GetSystemTheme(ctx context.Context, in *GetSystemThemeRequest, opts ...grpc.CallOption) (*GetSystemThemeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSystemThemeResponse)
+	err := c.cc.Invoke(ctx, NativeWorkerService_GetSystemTheme_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NativeWorkerServiceServer is the server API for NativeWorkerService service.
 // All implementations must embed UnimplementedNativeWorkerServiceServer
 // for forward compatibility.
@@ -90,6 +103,8 @@ type NativeWorkerServiceServer interface {
 	MarkReminderDone(context.Context, *MarkReminderDoneRequest) (*MarkReminderDoneResponse, error)
 	// SpotlightSearch searches the Spotlight index via NSMetadataQuery.
 	SpotlightSearch(context.Context, *SpotlightSearchRequest) (*SpotlightSearchResponse, error)
+	// GetSystemTheme returns the current macOS appearance (dark or light).
+	GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error)
 	mustEmbedUnimplementedNativeWorkerServiceServer()
 }
 
@@ -108,6 +123,9 @@ func (UnimplementedNativeWorkerServiceServer) MarkReminderDone(context.Context, 
 }
 func (UnimplementedNativeWorkerServiceServer) SpotlightSearch(context.Context, *SpotlightSearchRequest) (*SpotlightSearchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SpotlightSearch not implemented")
+}
+func (UnimplementedNativeWorkerServiceServer) GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSystemTheme not implemented")
 }
 func (UnimplementedNativeWorkerServiceServer) mustEmbedUnimplementedNativeWorkerServiceServer() {}
 func (UnimplementedNativeWorkerServiceServer) testEmbeddedByValue()                             {}
@@ -184,6 +202,24 @@ func _NativeWorkerService_SpotlightSearch_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NativeWorkerService_GetSystemTheme_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSystemThemeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NativeWorkerServiceServer).GetSystemTheme(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NativeWorkerService_GetSystemTheme_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NativeWorkerServiceServer).GetSystemTheme(ctx, req.(*GetSystemThemeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NativeWorkerService_ServiceDesc is the grpc.ServiceDesc for NativeWorkerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -202,6 +238,10 @@ var NativeWorkerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SpotlightSearch",
 			Handler:    _NativeWorkerService_SpotlightSearch_Handler,
+		},
+		{
+			MethodName: "GetSystemTheme",
+			Handler:    _NativeWorkerService_GetSystemTheme_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

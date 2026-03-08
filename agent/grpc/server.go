@@ -157,6 +157,18 @@ func (s *AgentServer) Broadcast(ev *agentv1.ArtifactEvent) {
 	s.broadcast(ev)
 }
 
+// GetSystemTheme proxies to the native worker if available; falls back to dark=true.
+func (s *AgentServer) GetSystemTheme(ctx context.Context, _ *agentv1.GetSystemThemeRequest) (*agentv1.GetSystemThemeResponse, error) {
+	if s.nativeClient != nil {
+		resp, err := s.nativeClient.GetSystemTheme(ctx, &nativev1.GetSystemThemeRequest{})
+		if err == nil {
+			return &agentv1.GetSystemThemeResponse{Dark: resp.Dark}, nil
+		}
+		s.logger.Warn().Err(err).Msg("native GetSystemTheme failed, defaulting to dark")
+	}
+	return &agentv1.GetSystemThemeResponse{Dark: true}, nil
+}
+
 func (s *AgentServer) broadcast(ev *agentv1.ArtifactEvent) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

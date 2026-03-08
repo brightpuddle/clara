@@ -56,11 +56,24 @@ internal enum Native_V1_NativeWorkerService: Sendable {
                 method: "SpotlightSearch"
             )
         }
+        /// Namespace for "GetSystemTheme" metadata.
+        internal enum GetSystemTheme: Sendable {
+            /// Request type for "GetSystemTheme".
+            internal typealias Input = Native_V1_GetSystemThemeRequest
+            /// Response type for "GetSystemTheme".
+            internal typealias Output = Native_V1_GetSystemThemeResponse
+            /// Descriptor for "GetSystemTheme".
+            internal static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "native.v1.NativeWorkerService"),
+                method: "GetSystemTheme"
+            )
+        }
         /// Descriptors for all methods in the "native.v1.NativeWorkerService" service.
         internal static let descriptors: [GRPCCore.MethodDescriptor] = [
             ListReminders.descriptor,
             MarkReminderDone.descriptor,
-            SpotlightSearch.descriptor
+            SpotlightSearch.descriptor,
+            GetSystemTheme.descriptor
         ]
     }
 }
@@ -144,6 +157,24 @@ extension Native_V1_NativeWorkerService {
             request: GRPCCore.StreamingServerRequest<Native_V1_SpotlightSearchRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_SpotlightSearchResponse>
+
+        /// Handle the "GetSystemTheme" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > GetSystemTheme returns the current macOS appearance (dark or light).
+        ///
+        /// - Parameters:
+        ///   - request: A streaming request of `Native_V1_GetSystemThemeRequest` messages.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A streaming response of `Native_V1_GetSystemThemeResponse` messages.
+        func getSystemTheme(
+            request: GRPCCore.StreamingServerRequest<Native_V1_GetSystemThemeRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_GetSystemThemeResponse>
     }
 
     /// Service protocol for the "native.v1.NativeWorkerService" service.
@@ -212,6 +243,24 @@ extension Native_V1_NativeWorkerService {
             request: GRPCCore.ServerRequest<Native_V1_SpotlightSearchRequest>,
             context: GRPCCore.ServerContext
         ) async throws -> GRPCCore.ServerResponse<Native_V1_SpotlightSearchResponse>
+
+        /// Handle the "GetSystemTheme" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > GetSystemTheme returns the current macOS appearance (dark or light).
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Native_V1_GetSystemThemeRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A response containing a single `Native_V1_GetSystemThemeResponse` message.
+        func getSystemTheme(
+            request: GRPCCore.ServerRequest<Native_V1_GetSystemThemeRequest>,
+            context: GRPCCore.ServerContext
+        ) async throws -> GRPCCore.ServerResponse<Native_V1_GetSystemThemeResponse>
     }
 
     /// Simple service protocol for the "native.v1.NativeWorkerService" service.
@@ -278,6 +327,24 @@ extension Native_V1_NativeWorkerService {
             request: Native_V1_SpotlightSearchRequest,
             context: GRPCCore.ServerContext
         ) async throws -> Native_V1_SpotlightSearchResponse
+
+        /// Handle the "GetSystemTheme" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > GetSystemTheme returns the current macOS appearance (dark or light).
+        ///
+        /// - Parameters:
+        ///   - request: A `Native_V1_GetSystemThemeRequest` message.
+        ///   - context: Context providing information about the RPC.
+        /// - Throws: Any error which occurred during the processing of the request. Thrown errors
+        ///     of type `RPCError` are mapped to appropriate statuses. All other errors are converted
+        ///     to an internal error.
+        /// - Returns: A `Native_V1_GetSystemThemeResponse` to respond with.
+        func getSystemTheme(
+            request: Native_V1_GetSystemThemeRequest,
+            context: GRPCCore.ServerContext
+        ) async throws -> Native_V1_GetSystemThemeResponse
     }
 }
 
@@ -313,6 +380,17 @@ extension Native_V1_NativeWorkerService.StreamingServiceProtocol {
             serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_SpotlightSearchResponse>(),
             handler: { request, context in
                 try await self.spotlightSearch(
+                    request: request,
+                    context: context
+                )
+            }
+        )
+        router.registerHandler(
+            forMethod: Native_V1_NativeWorkerService.Method.GetSystemTheme.descriptor,
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Native_V1_GetSystemThemeRequest>(),
+            serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_GetSystemThemeResponse>(),
+            handler: { request, context in
+                try await self.getSystemTheme(
                     request: request,
                     context: context
                 )
@@ -356,6 +434,17 @@ extension Native_V1_NativeWorkerService.ServiceProtocol {
         )
         return GRPCCore.StreamingServerResponse(single: response)
     }
+
+    internal func getSystemTheme(
+        request: GRPCCore.StreamingServerRequest<Native_V1_GetSystemThemeRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.StreamingServerResponse<Native_V1_GetSystemThemeResponse> {
+        let response = try await self.getSystemTheme(
+            request: GRPCCore.ServerRequest(stream: request),
+            context: context
+        )
+        return GRPCCore.StreamingServerResponse(single: response)
+    }
 }
 
 // Default implementation of methods from 'ServiceProtocol'.
@@ -393,6 +482,19 @@ extension Native_V1_NativeWorkerService.SimpleServiceProtocol {
     ) async throws -> GRPCCore.ServerResponse<Native_V1_SpotlightSearchResponse> {
         return GRPCCore.ServerResponse<Native_V1_SpotlightSearchResponse>(
             message: try await self.spotlightSearch(
+                request: request.message,
+                context: context
+            ),
+            metadata: [:]
+        )
+    }
+
+    internal func getSystemTheme(
+        request: GRPCCore.ServerRequest<Native_V1_GetSystemThemeRequest>,
+        context: GRPCCore.ServerContext
+    ) async throws -> GRPCCore.ServerResponse<Native_V1_GetSystemThemeResponse> {
+        return GRPCCore.ServerResponse<Native_V1_GetSystemThemeResponse>(
+            message: try await self.getSystemTheme(
                 request: request.message,
                 context: context
             ),
@@ -482,6 +584,29 @@ extension Native_V1_NativeWorkerService {
             deserializer: some GRPCCore.MessageDeserializer<Native_V1_SpotlightSearchResponse>,
             options: GRPCCore.CallOptions,
             onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_SpotlightSearchResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "GetSystemTheme" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > GetSystemTheme returns the current macOS appearance (dark or light).
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Native_V1_GetSystemThemeRequest` message.
+        ///   - serializer: A serializer for `Native_V1_GetSystemThemeRequest` messages.
+        ///   - deserializer: A deserializer for `Native_V1_GetSystemThemeResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func getSystemTheme<Result>(
+            request: GRPCCore.ClientRequest<Native_V1_GetSystemThemeRequest>,
+            serializer: some GRPCCore.MessageSerializer<Native_V1_GetSystemThemeRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Native_V1_GetSystemThemeResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_GetSystemThemeResponse>) async throws -> Result
         ) async throws -> Result where Result: Sendable
     }
 
@@ -607,6 +732,40 @@ extension Native_V1_NativeWorkerService {
                 onResponse: handleResponse
             )
         }
+
+        /// Call the "GetSystemTheme" method.
+        ///
+        /// > Source IDL Documentation:
+        /// >
+        /// > GetSystemTheme returns the current macOS appearance (dark or light).
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Native_V1_GetSystemThemeRequest` message.
+        ///   - serializer: A serializer for `Native_V1_GetSystemThemeRequest` messages.
+        ///   - deserializer: A deserializer for `Native_V1_GetSystemThemeResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        internal func getSystemTheme<Result>(
+            request: GRPCCore.ClientRequest<Native_V1_GetSystemThemeRequest>,
+            serializer: some GRPCCore.MessageSerializer<Native_V1_GetSystemThemeRequest>,
+            deserializer: some GRPCCore.MessageDeserializer<Native_V1_GetSystemThemeResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_GetSystemThemeResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Native_V1_NativeWorkerService.Method.GetSystemTheme.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
     }
 }
 
@@ -695,6 +854,35 @@ extension Native_V1_NativeWorkerService.ClientProtocol {
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_SpotlightSearchRequest>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Native_V1_SpotlightSearchResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "GetSystemTheme" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > GetSystemTheme returns the current macOS appearance (dark or light).
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Native_V1_GetSystemThemeRequest` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func getSystemTheme<Result>(
+        request: GRPCCore.ClientRequest<Native_V1_GetSystemThemeRequest>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_GetSystemThemeResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.getSystemTheme(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Native_V1_GetSystemThemeRequest>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Native_V1_GetSystemThemeResponse>(),
             options: options,
             onResponse: handleResponse
         )
@@ -797,6 +985,39 @@ extension Native_V1_NativeWorkerService.ClientProtocol {
             metadata: metadata
         )
         return try await self.spotlightSearch(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "GetSystemTheme" method.
+    ///
+    /// > Source IDL Documentation:
+    /// >
+    /// > GetSystemTheme returns the current macOS appearance (dark or light).
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    internal func getSystemTheme<Result>(
+        _ message: Native_V1_GetSystemThemeRequest,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Native_V1_GetSystemThemeResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Native_V1_GetSystemThemeRequest>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.getSystemTheme(
             request: request,
             options: options,
             onResponse: handleResponse

@@ -25,6 +25,10 @@ service AgentService {
   // Subscribe opens a server-streaming RPC that pushes ArtifactEvent messages
   // whenever the artifact list changes.
   rpc Subscribe(SubscribeRequest) returns (stream ArtifactEvent);
+
+  // GetSystemTheme returns the current OS appearance (dark or light), proxied
+  // from the native worker. Returns dark=true if the worker is unavailable.
+  rpc GetSystemTheme(GetSystemThemeRequest) returns (GetSystemThemeResponse);
 }
 
 message ListArtifactsRequest {
@@ -76,4 +80,10 @@ enum EventType {
 message ArtifactEvent {
   EventType            type     = 1;
   artifact.v1.Artifact artifact = 2;
+}
+
+message GetSystemThemeRequest {}
+
+message GetSystemThemeResponse {
+  bool dark = 1; // true = dark mode, false = light mode
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/viper"
 )
-
 // Config holds the full Clara configuration.
 type Config struct {
 	// DataDir is the directory used for the SQLite database and Unix sockets.
@@ -57,8 +56,8 @@ type OllamaConfig struct {
 // TUIConfig holds theme and display settings for the terminal UI.
 type TUIConfig struct {
 	// ThemeMode controls which theme is active: "dark", "light", or "system".
-	// When "system", dark-notify is used to follow macOS appearance.
-	// If dark-notify is not installed and mode is "system", the dark theme is used.
+	// When "system", the native macOS appearance is used via the native worker.
+	// Falls back to dark theme if the native worker is unavailable.
 	ThemeMode string `mapstructure:"theme_mode"`
 
 	// DarkTheme is the bubbletint theme ID to use in dark mode.
@@ -104,7 +103,32 @@ func Load() (*Config, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, err
 	}
+	// Expand ~ in all path-type fields that may come from user config.
+	cfg.DataDir = expandHome(cfg.DataDir)
+	cfg.LogFile = expandHome(cfg.LogFile)
+	for i, d := range cfg.Agent.WatchDirs {
+		cfg.Agent.WatchDirs[i] = expandHome(d)
+	}
 	return cfg, nil
+}
+
+// expandHome replaces a leading "~/" with the user's home directory.
+func expandHome(path string) string {
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 // WriteDefaultConfig writes a commented default config.yaml to ~/.config/clara/

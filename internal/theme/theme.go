@@ -1,21 +1,16 @@
 // Package theme manages the active bubbletint color theme for the Clara TUI.
-// It supports dark, light, and system (dark-notify) modes. When no theme is
-// configured the caller receives nil, which means "use native 16-color terminal".
+// It supports dark, light, and system modes. When no theme is configured the
+// caller receives nil, meaning "use native 16-color terminal". System mode
+// polls the OS appearance via the native worker (no external tools needed).
 package theme
 
 import (
-	"bufio"
-	"context"
-	"os/exec"
-	"strings"
-
 	bubbletint "github.com/lrstanley/bubbletint/v2"
 
 	"github.com/brightpuddle/clara/internal/config"
 )
 
-// Manager resolves which bubbletint.Tint is currently active and watches for
-// macOS appearance changes via dark-notify.
+// Manager resolves which bubbletint.Tint is currently active.
 type Manager struct {
 	mode      string // "dark", "light", "system"
 	darkTint  *bubbletint.Tint
@@ -54,57 +49,8 @@ func (m *Manager) Current() *bubbletint.Tint {
 	}
 }
 
-// SetDark updates whether the system is in dark mode (used by WatchDarkNotify).
+// SetDark updates whether the system is in dark mode.
+// Called by the TUI when the periodic theme poll returns a new value.
 func (m *Manager) SetDark(dark bool) {
 	m.isDark = dark
-}
-
-// DarkNotifyInstalled reports whether dark-notify is available in PATH.
-func DarkNotifyInstalled() bool {
-	_, err := exec.LookPath("dark-notify")
-	return err == nil
-}
-
-// WatchDarkNotify launches dark-notify and sends true (dark) or false (light) on
-// the returned channel whenever macOS appearance changes. The goroutine exits when
-// ctx is cancelled. The channel is never closed — callers should select on ctx.Done().
-// Returns nil if dark-notify is not installed.
-func WatchDarkNotify(ctx context.Context) <-chan bool {
-	if !DarkNotifyInstalled() {
-		return nil
-	}
-
-	ch := make(chan bool, 4)
-
-	go func() {
-		cmd := exec.CommandContext(ctx, "dark-notify")
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return
-		}
-		if err := cmd.Start(); err != nil {
-			return
-		}
-
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			switch line {
-			case "dark":
-				select {
-				case ch <- true:
-				case <-ctx.Done():
-					return
-				}
-			case "light":
-				select {
-				case ch <- false:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}
-	}()
-
-	return ch
 }

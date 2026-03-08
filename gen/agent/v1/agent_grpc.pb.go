@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AgentService_ListArtifacts_FullMethodName = "/agent.v1.AgentService/ListArtifacts"
-	AgentService_GetArtifact_FullMethodName   = "/agent.v1.AgentService/GetArtifact"
-	AgentService_MarkDone_FullMethodName      = "/agent.v1.AgentService/MarkDone"
-	AgentService_Search_FullMethodName        = "/agent.v1.AgentService/Search"
-	AgentService_Subscribe_FullMethodName     = "/agent.v1.AgentService/Subscribe"
+	AgentService_ListArtifacts_FullMethodName  = "/agent.v1.AgentService/ListArtifacts"
+	AgentService_GetArtifact_FullMethodName    = "/agent.v1.AgentService/GetArtifact"
+	AgentService_MarkDone_FullMethodName       = "/agent.v1.AgentService/MarkDone"
+	AgentService_Search_FullMethodName         = "/agent.v1.AgentService/Search"
+	AgentService_Subscribe_FullMethodName      = "/agent.v1.AgentService/Subscribe"
+	AgentService_GetSystemTheme_FullMethodName = "/agent.v1.AgentService/GetSystemTheme"
 )
 
 // AgentServiceClient is the client API for AgentService service.
@@ -45,6 +46,9 @@ type AgentServiceClient interface {
 	// Subscribe opens a server-streaming RPC that pushes ArtifactEvent messages
 	// whenever the artifact list changes.
 	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ArtifactEvent], error)
+	// GetSystemTheme returns the current OS appearance (dark or light), proxied
+	// from the native worker. Returns dark=true if the worker is unavailable.
+	GetSystemTheme(ctx context.Context, in *GetSystemThemeRequest, opts ...grpc.CallOption) (*GetSystemThemeResponse, error)
 }
 
 type agentServiceClient struct {
@@ -114,6 +118,16 @@ func (c *agentServiceClient) Subscribe(ctx context.Context, in *SubscribeRequest
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_SubscribeClient = grpc.ServerStreamingClient[ArtifactEvent]
 
+func (c *agentServiceClient) GetSystemTheme(ctx context.Context, in *GetSystemThemeRequest, opts ...grpc.CallOption) (*GetSystemThemeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSystemThemeResponse)
+	err := c.cc.Invoke(ctx, AgentService_GetSystemTheme_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServiceServer is the server API for AgentService service.
 // All implementations must embed UnimplementedAgentServiceServer
 // for forward compatibility.
@@ -133,6 +147,9 @@ type AgentServiceServer interface {
 	// Subscribe opens a server-streaming RPC that pushes ArtifactEvent messages
 	// whenever the artifact list changes.
 	Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[ArtifactEvent]) error
+	// GetSystemTheme returns the current OS appearance (dark or light), proxied
+	// from the native worker. Returns dark=true if the worker is unavailable.
+	GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
 }
 
@@ -157,6 +174,9 @@ func (UnimplementedAgentServiceServer) Search(context.Context, *SearchRequest) (
 }
 func (UnimplementedAgentServiceServer) Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[ArtifactEvent]) error {
 	return status.Error(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedAgentServiceServer) GetSystemTheme(context.Context, *GetSystemThemeRequest) (*GetSystemThemeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSystemTheme not implemented")
 }
 func (UnimplementedAgentServiceServer) mustEmbedUnimplementedAgentServiceServer() {}
 func (UnimplementedAgentServiceServer) testEmbeddedByValue()                      {}
@@ -262,6 +282,24 @@ func _AgentService_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentService_SubscribeServer = grpc.ServerStreamingServer[ArtifactEvent]
 
+func _AgentService_GetSystemTheme_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSystemThemeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).GetSystemTheme(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_GetSystemTheme_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).GetSystemTheme(ctx, req.(*GetSystemThemeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AgentService_ServiceDesc is the grpc.ServiceDesc for AgentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -284,6 +322,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Search",
 			Handler:    _AgentService_Search_Handler,
+		},
+		{
+			MethodName: "GetSystemTheme",
+			Handler:    _AgentService_GetSystemTheme_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

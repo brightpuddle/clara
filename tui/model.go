@@ -7,6 +7,7 @@ import (
 "os"
 "os/exec"
 "strings"
+"time"
 
 tea "github.com/charmbracelet/bubbletea"
 "github.com/charmbracelet/lipgloss"
@@ -97,7 +98,7 @@ m.loadArtifacts(),
 m.subscribeToAgent(),
 }
 if m.themeMgr != nil {
-cmds = append(cmds, m.watchTheme())
+cmds = append(cmds, m.pollTheme())
 }
 return tea.Batch(cmds...)
 }
@@ -129,7 +130,7 @@ return m, m.loadArtifacts()
 case themeChangedMsg:
 m.themeMgr.SetDark(msg.isDark)
 styles.SetTheme(m.themeMgr.Current())
-return m, m.watchTheme()
+return m, m.pollTheme()
 
 case statusMsg:
 m.status = msg.text
@@ -154,14 +155,14 @@ return m, nil
 case "shift+tab":
 m.cycleFocus(-1)
 return m, nil
-case "l":
-if m.focus < paneDetail {
-m.cycleFocus(1)
+case "l", "h":
+// l and h toggle between the two left panes only, wrapping around.
+// Neither key enters the detail pane.
+if m.focus == paneArtifacts {
+m.setFocus(paneRelated)
 return m, nil
-}
-case "h":
-if m.focus > paneArtifacts {
-m.cycleFocus(-1)
+} else if m.focus == paneRelated {
+m.setFocus(paneArtifacts)
 return m, nil
 }
 }
@@ -423,22 +424,16 @@ return nil
 return artifactEventMsg{event: ev}
 }
 
-// watchTheme waits for the next dark-notify event and returns a themeChangedMsg.
-// Each call starts a new dark-notify subprocess and waits for its first output.
-func (m Model) watchTheme() tea.Cmd {
-ch := theme.WatchDarkNotify(m.ctx)
-if ch == nil {
-return nil
-}
-return func() tea.Msg {
-select {
-case isDark, ok := <-ch:
-if !ok {
+// pollTheme schedules a periodic check of the system theme via the agent.
+// It polls every 5 seconds and triggers a themeChangedMsg if the value changes.
+func (m Model) pollTheme() tea.Cmd {
+return tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
+ctx, cancel := context.WithTimeout(m.ctx, 3*time.Second)
+defer cancel()
+isDark, err := m.client.GetSystemTheme(ctx)
+if err != nil {
 return nil
 }
 return themeChangedMsg{isDark: isDark}
-case <-m.ctx.Done():
-return nil
-}
-}
+})
 }

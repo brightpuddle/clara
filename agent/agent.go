@@ -99,6 +99,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			} else {
 				go ing.Run(ctx, fsWatcher.Events())
 				go a.forwardNotifications(ctx, agentSrv, ing.Notifications())
+				// Ingest any files that already exist in the watch directories.
+				go ing.ScanDirs(ctx, a.cfg.Agent.WatchDirs)
 			}
 		}
 	}
