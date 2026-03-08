@@ -15,7 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const pollInterval = 60 * time.Second
+const pollInterval = 30 * time.Second
 
 // Worker polls the native worker for reminders and syncs them to the DB.
 type Worker struct {

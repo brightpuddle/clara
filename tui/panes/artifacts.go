@@ -182,16 +182,22 @@ func (p *ArtifactsPane) View() string {
 		return ""
 	}
 
-	title := "Artifacts"
-	if p.searching {
-		title = "/ " + p.searchBuf + "█"
-	}
-
 	borderStyle := styles.UnfocusedBorder
 	titleStyle := styles.PaneTitle
 	if p.focused {
 		borderStyle = styles.FocusedBorder
 		titleStyle = styles.PaneTitleFocused
+	}
+
+	// Collapsed: only show header row inside border.
+	if p.height <= 3 {
+		header := titleStyle.Render(fmt.Sprintf(" Artifacts (%d) ", len(p.filtered)))
+		return borderStyle.Width(p.width - 2).Height(1).Render(header)
+	}
+
+	title := "Artifacts"
+	if p.searching {
+		title = "/ " + p.searchBuf + "█"
 	}
 
 	header := titleStyle.Render(fmt.Sprintf(" %s (%d) ", title, len(p.filtered)))

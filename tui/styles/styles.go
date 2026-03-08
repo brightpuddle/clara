@@ -144,7 +144,7 @@ func regenerateStyles() {
 
 	PaneTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(ColorMuted).
+		Foreground(ColorFg).
 		Padding(0, 1)
 
 	PaneTitleFocused = lipgloss.NewStyle().

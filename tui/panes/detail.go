@@ -84,19 +84,32 @@ func (p *DetailPane) View() string {
 		Render(fmt.Sprintf("%s  %s", icon, a.Title))
 
 	var meta []string
-	meta = append(meta, styles.Muted.Render(fmt.Sprintf("kind:   %s", kindName(a.Kind))))
-	meta = append(meta, styles.Muted.Render(fmt.Sprintf("heat:   %s %.2f", styles.HeatBar(a.HeatScore), a.HeatScore)))
+	meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("kind:   %s", kindName(a.Kind))))
+	meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("heat:   %s %.2f", styles.HeatBar(a.HeatScore), a.HeatScore)))
 	if a.SourcePath != "" {
-		meta = append(meta, styles.Muted.Render(fmt.Sprintf("source: %s", truncateStr(a.SourcePath, p.width-12))))
+		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("source: %s", truncateStr(a.SourcePath, p.width-12))))
 	}
 	if a.SourceApp != "" {
-		meta = append(meta, styles.Muted.Render(fmt.Sprintf("app:    %s", a.SourceApp)))
+		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("app:    %s", a.SourceApp)))
 	}
 	if a.DueAt != nil {
-		meta = append(meta, styles.Muted.Render(fmt.Sprintf("due:    %s", a.DueAt.AsTime().Format("2006-01-02 15:04"))))
+		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("due:    %s", a.DueAt.AsTime().Format("2006-01-02 15:04"))))
 	}
 	if len(a.Tags) > 0 {
-		meta = append(meta, styles.Muted.Render(fmt.Sprintf("tags:   %s", strings.Join(a.Tags, ", "))))
+		meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("tags:   %s", strings.Join(a.Tags, ", "))))
+	}
+	if a.Kind == artifactv1.ArtifactKind_ARTIFACT_KIND_REMINDER {
+		if list, ok := a.Metadata["list"]; ok && list != "" {
+			meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("list:   %s", list)))
+		}
+		if pri, ok := a.Metadata["priority"]; ok {
+			priNames := map[string]string{"0": "none", "1": "high", "5": "medium", "9": "low"}
+			if name, ok := priNames[pri]; ok {
+				meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", name)))
+			} else {
+				meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", pri)))
+			}
+		}
 	}
 
 	separator := strings.Repeat("─", p.width-4)

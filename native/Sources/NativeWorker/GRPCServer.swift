@@ -2,7 +2,6 @@ import GRPCCore
 import GRPCProtobuf
 import GRPCNIOTransportHTTP2
 import Foundation
-import AppKit
 
 /// Implements the NativeWorkerService gRPC service.
 @available(macOS 15.0, *)
@@ -58,9 +57,7 @@ struct NativeWorkerServiceImpl: Native_V1_NativeWorkerService.SimpleServiceProto
         request: Native_V1_GetSystemThemeRequest,
         context: GRPCCore.ServerContext
     ) async throws -> Native_V1_GetSystemThemeResponse {
-        let isDark = await MainActor.run {
-            NSApp.effectiveAppearance.name.rawValue.contains("Dark")
-        }
+        let isDark = UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
         var resp = Native_V1_GetSystemThemeResponse()
         resp.dark = isDark
         return resp

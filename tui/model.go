@@ -29,13 +29,12 @@ paneRelated
 paneDetail
 )
 
-const PaneCount = 3
+const PaneCount = 2
 
 // helpItems are the status bar entries in priority order (most important first).
 // Lower-priority items are truncated first when space is tight.
 var helpItems = []string{
 "j/k:nav",
-"Tab:focus",
 "/:search",
 "Space:done",
 "Enter:edit",
@@ -56,6 +55,8 @@ type artifactEventMsg struct {
 type themeChangedMsg struct{ isDark bool }
 type errorMsg struct{ err error }
 type statusMsg struct{ text string }
+type agentDisconnectedMsg struct{}
+type agentReconnectedMsg struct{}
 
 // Model is the root Bubbletea model for the Clara TUI.
 type Model struct {
@@ -127,11 +128,16 @@ case artifactDetailMsg:
 m.detail.SetArtifact(msg.artifact)
 m.related.SetRelated(msg.related)
 
-case artifactEventMsg:
-// Continue listening for the next event on the same channel, and also
-// reload the artifact list to reflect the change.
-return m, tea.Batch(m.loadArtifacts(), waitForEventCmd(msg.ch))
+case agentDisconnectedMsg:
+m.status = "⚠ disconnected from agent — retrying…"
+return m, m.retrySubscribeCmd()
 
+case artifactEventMsg:
+if msg.event == nil {
+	m.status = "reconnected"
+}
+// Reload artifact list and continue listening for the next event.
+return m, tea.Batch(m.loadArtifacts(), waitForEventCmd(msg.ch))
 case themeChangedMsg:
 m.themeMgr.SetDark(msg.isDark)
 styles.SetTheme(m.themeMgr.Current())
@@ -226,24 +232,97 @@ return nil
 
 func (m *Model) openInEditor(id string) tea.Cmd {
 sel := m.findArtifact(id)
-if sel == nil || sel.SourcePath == "" {
+if sel == nil {
 return nil
 }
+
+path := sel.SourcePath
+cleanup := false
+
+// For non-file artifacts, write content to a temp file.
+if sel.SourceApp == "reminders" || path == "" || !fileExists(path) {
+tmp, err := writeTempArtifact(sel)
+if err != nil {
+return func() tea.Msg { return errorMsg{err} }
+}
+path = tmp
+cleanup = true
+}
+
 editor := os.Getenv("EDITOR")
 if editor == "" {
 editor = "vim"
 }
-cmd := exec.Command(editor, sel.SourcePath) //nolint:gosec
+cmd := exec.Command(editor, path) //nolint:gosec
 cmd.Stdin = os.Stdin
 cmd.Stdout = os.Stdout
 cmd.Stderr = os.Stderr
 return tea.ExecProcess(cmd, func(err error) tea.Msg {
+if cleanup {
+os.Remove(path) //nolint:errcheck
+}
 if err != nil {
 return errorMsg{err}
 }
 return statusMsg{"editor closed"}
 })
 }
+
+func fileExists(path string) bool {
+_, err := os.Stat(path)
+return err == nil
+}
+
+func kindNameStr(kind artifactv1.ArtifactKind) string {
+switch kind {
+case artifactv1.ArtifactKind_ARTIFACT_KIND_REMINDER:
+return "reminder"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_NOTE:
+return "note"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_FILE:
+return "file"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_EMAIL:
+return "email"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_BOOKMARK:
+return "bookmark"
+case artifactv1.ArtifactKind_ARTIFACT_KIND_LOG:
+return "log"
+default:
+return kind.String()
+}
+}
+
+func writeTempArtifact(a *artifactv1.Artifact) (string, error) {
+var sb strings.Builder
+sb.WriteString("---\n")
+sb.WriteString(fmt.Sprintf("title: %q\n", a.Title))
+sb.WriteString(fmt.Sprintf("kind: %s\n", kindNameStr(a.Kind)))
+if a.SourceApp != "" {
+sb.WriteString(fmt.Sprintf("source_app: %s\n", a.SourceApp))
+}
+if meta := a.Metadata; meta != nil {
+for k, v := range meta {
+sb.WriteString(fmt.Sprintf("%s: %q\n", k, v))
+}
+}
+if a.DueAt != nil {
+sb.WriteString(fmt.Sprintf("due: %s\n", a.DueAt.AsTime().Format("2006-01-02 15:04")))
+}
+if len(a.Tags) > 0 {
+sb.WriteString(fmt.Sprintf("tags: [%s]\n", strings.Join(a.Tags, ", ")))
+}
+sb.WriteString("---\n\n")
+sb.WriteString(a.Content)
+
+tmp, err := os.CreateTemp("", "clara-*.md")
+if err != nil {
+return "", err
+}
+defer tmp.Close()
+_, err = tmp.WriteString(sb.String())
+return tmp.Name(), err
+}
+
 
 func (m *Model) openNative(id string) tea.Cmd {
 sel := m.findArtifact(id)
@@ -294,9 +373,8 @@ func (m *Model) setFocus(f focusedPane) {
 m.focus = f
 m.artifacts.SetFocused(f == paneArtifacts)
 m.related.SetFocused(f == paneRelated)
-m.detail.SetFocused(f == paneDetail)
+m.updatePaneSizes()
 }
-
 func (m *Model) updatePaneSizes() {
 if m.width == 0 || m.height == 0 {
 return
@@ -307,20 +385,26 @@ detailW := m.width - sidebarW
 var artifactsH, relatedH int
 switch m.focus {
 case paneArtifacts:
-artifactsH = m.height * 65 / 100
-relatedH = m.height - artifactsH - 1
+relatedH = 3
+artifactsH = m.height - 3 - 1
+if artifactsH < 5 {
+artifactsH = 5
+}
 case paneRelated:
-relatedH = m.height * 65 / 100
-artifactsH = m.height - relatedH - 1
+artifactsH = 3
+relatedH = m.height - 3 - 1
+if relatedH < 5 {
+relatedH = 5
+}
 default:
 artifactsH = m.height / 2
 relatedH = m.height - artifactsH - 1
+if artifactsH < 5 {
+artifactsH = 5
 }
-if artifactsH < 3 {
-artifactsH = 3
+if relatedH < 5 {
+relatedH = 5
 }
-if relatedH < 3 {
-relatedH = 3
 }
 
 m.artifacts.SetSize(sidebarW, artifactsH)
@@ -415,7 +499,7 @@ func (m Model) subscribeToAgent() tea.Cmd {
 return func() tea.Msg {
 ch, err := m.client.Subscribe(m.ctx)
 if err != nil {
-return errorMsg{err}
+return agentDisconnectedMsg{}
 }
 return waitForEvent(ch)
 }
@@ -431,9 +515,20 @@ return waitForEvent(ch)
 func waitForEvent(ch <-chan *agentv1.ArtifactEvent) tea.Msg {
 ev, ok := <-ch
 if !ok {
-return nil
+return agentDisconnectedMsg{}
 }
 return artifactEventMsg{event: ev, ch: ch}
+}
+
+// retrySubscribeCmd waits 5 seconds then attempts to re-subscribe to the agent.
+func (m Model) retrySubscribeCmd() tea.Cmd {
+return tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
+ch, err := m.client.Subscribe(m.ctx)
+if err != nil {
+return agentDisconnectedMsg{}
+}
+return artifactEventMsg{event: nil, ch: ch}
+})
 }
 
 // pollTheme schedules a periodic check of the system theme via the agent.

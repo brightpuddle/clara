@@ -163,16 +163,22 @@ func (p *RelatedPane) View() string {
 		return ""
 	}
 
-	title := "Related"
-	if p.searching {
-		title = "s " + p.searchBuf + "█"
-	}
-
 	borderStyle := styles.UnfocusedBorder
 	titleStyle := styles.PaneTitle
 	if p.focused {
 		borderStyle = styles.FocusedBorder
 		titleStyle = styles.PaneTitleFocused
+	}
+
+	// Collapsed: only show header row inside border.
+	if p.height <= 3 {
+		header := titleStyle.Render(fmt.Sprintf(" Related (%d) ", len(p.filtered)))
+		return borderStyle.Width(p.width - 2).Height(1).Render(header)
+	}
+
+	title := "Related"
+	if p.searching {
+		title = "s " + p.searchBuf + "█"
 	}
 
 	header := titleStyle.Render(fmt.Sprintf(" %s (%d) ", title, len(p.filtered)))
