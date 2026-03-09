@@ -7,7 +7,6 @@ TUI_BIN       := $(BINARY_DIR)/clara-tui
 
 GO            := go
 BUF           := buf
-AIR           := air
 GOREMAN       := goreman
 
 .PHONY: help
@@ -17,16 +16,14 @@ help: ## Display available make targets
 		sort
 
 .PHONY: setup
-setup: ## Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, air, goreman)
+setup: ## Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, goreman). Also: brew install watchexec
 	@echo "Installing protoc-gen-go..."
 	$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	@echo "Installing protoc-gen-go-grpc..."
 	$(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-	@echo "Installing air..."
-	$(GO) install github.com/air-verse/air@latest
 	@echo "Installing goreman..."
 	$(GO) install github.com/mattn/goreman@latest
-	@echo "Setup complete."
+	@echo "Setup complete. For file-watching: brew install watchexec"
 
 .PHONY: proto
 proto: ## Generate gRPC/protobuf Go stubs from .proto files
@@ -41,19 +38,19 @@ build: proto ## Compile all Go binaries
 	@echo "Built: $(SERVER_BIN), $(AGENT_BIN), $(TUI_BIN)"
 
 .PHONY: dev
-dev: ## Run server, agent, and native worker together via goreman
+dev: ## Start server, agent, and native worker via goreman (no file watching)
 	$(GOREMAN) start
 
-.PHONY: dev-server
-dev-server: ## Run server with air hot-reload (--debug enabled)
-	$(AIR) -c .air.server.toml
+.PHONY: watch
+watch: ## Auto-rebuild and restart on .go/.proto changes (requires: brew install watchexec)
+	watchexec --exts go,proto --restart -- $(GOREMAN) start
 
-.PHONY: dev-agent
-dev-agent: ## Run agent with air hot-reload (--debug enabled)
-	$(AIR) -c .air.agent.toml
+.PHONY: watch-native
+watch-native: ## Auto-rebuild native worker on Swift source changes (requires: brew install watchexec)
+	watchexec --exts swift -w native/Sources -- make swift-build-debug
 
 .PHONY: dev-tui
-dev-tui: ## Run TUI directly (no hot-reload needed for interactive TUI)
+dev-tui: ## Run TUI (leave running; auto-reconnects when agent restarts)
 	$(GO) run ./cmd/tui
 
 .PHONY: clean
@@ -65,12 +62,20 @@ tidy: ## Run go mod tidy
 	$(GO) mod tidy
 
 .PHONY: swift-build
-swift-build: ## Build the Swift native worker
+swift-build: ## Build the Swift native worker (release)
 	cd native && swift build -c release
 
 .PHONY: swift-build-debug
 swift-build-debug: ## Build the Swift native worker (debug)
 	cd native && swift build
+
+.PHONY: gui-open
+gui-open: ## Open the Clara GUI app in Xcode for development
+	open -a Xcode gui/
+
+.PHONY: gui-build
+gui-build: ## Build the Clara GUI Swift package
+	cd gui && swift build
 
 .PHONY: test
 test: ## Run all Go unit tests

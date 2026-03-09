@@ -1,0 +1,160 @@
+e706051d5579b5c6c45ecda1bcb72c0aedaa6683	not-for-merge	branch 'main' of github.com:grpc/grpc-swift-nio-transport
+ca2303eb7f3df556beafbba33a143ffa30d5b786	not-for-merge	branch 'release/1.x' of github.com:grpc/grpc-swift-nio-transport
+12cdab0bfd20f1172b24a8224f24ff666c1b0238	not-for-merge	'refs/pull/1/head' of github.com:grpc/grpc-swift-nio-transport
+378823c282a89de56020302781715c01e006e5da	not-for-merge	'refs/pull/10/head' of github.com:grpc/grpc-swift-nio-transport
+4bbb042895112078f325ba5966600270d9f75668	not-for-merge	'refs/pull/100/head' of github.com:grpc/grpc-swift-nio-transport
+c68f46ba48e3699a99eef720a6e7843031e5755f	not-for-merge	'refs/pull/101/head' of github.com:grpc/grpc-swift-nio-transport
+2a5f51a0c7b52f383115d07169a4c417401803f3	not-for-merge	'refs/pull/102/head' of github.com:grpc/grpc-swift-nio-transport
+3af284aa3ef7d03c6be4ba174d389aa474cc3547	not-for-merge	'refs/pull/103/head' of github.com:grpc/grpc-swift-nio-transport
+2b72fa7a23c0e8cde69a8f16d6b2e38e51e89ab0	not-for-merge	'refs/pull/104/head' of github.com:grpc/grpc-swift-nio-transport
+dd41973527e9df96b0f2c6d2975e57a0abb29f45	not-for-merge	'refs/pull/105/head' of github.com:grpc/grpc-swift-nio-transport
+8dc5745b8ecc9131583d7f72553cea533bc3acfa	not-for-merge	'refs/pull/107/head' of github.com:grpc/grpc-swift-nio-transport
+93751f093846b981b194db52b9baa7a04a60203e	not-for-merge	'refs/pull/11/head' of github.com:grpc/grpc-swift-nio-transport
+7263803762b79b8d846429d4156dda981dc5daf2	not-for-merge	'refs/pull/110/head' of github.com:grpc/grpc-swift-nio-transport
+33c19b35f6412f2963b95be40e9a00c39c89fd82	not-for-merge	'refs/pull/112/head' of github.com:grpc/grpc-swift-nio-transport
+ba05208e336ef9906a71ee1af9729b1b29a94e08	not-for-merge	'refs/pull/113/head' of github.com:grpc/grpc-swift-nio-transport
+5bd071413fed98d918db232e36307fa21a1e0ee6	not-for-merge	'refs/pull/114/head' of github.com:grpc/grpc-swift-nio-transport
+3a4650d5d17d6676d2f20bcb85c1d18017fbaeb6	not-for-merge	'refs/pull/115/head' of github.com:grpc/grpc-swift-nio-transport
+2c26d7b690db19cb92432fe36a59eed52f148d87	not-for-merge	'refs/pull/117/head' of github.com:grpc/grpc-swift-nio-transport
+9493d5485c7a4b0a15aabc73e44bd4d39193ffbe	not-for-merge	'refs/pull/118/head' of github.com:grpc/grpc-swift-nio-transport
+eeed7fc8c5c001a6a648d53db0e7fbdfdfa17370	not-for-merge	'refs/pull/119/head' of github.com:grpc/grpc-swift-nio-transport
+5b1151f2f47d8dca23619149cdd513b0f9507f1d	not-for-merge	'refs/pull/12/head' of github.com:grpc/grpc-swift-nio-transport
+5243c8f72b3b2ef283d7031a40be748b8e030871	not-for-merge	'refs/pull/120/head' of github.com:grpc/grpc-swift-nio-transport
+b90fa29c11c0c86354c7508c3f0a1d0f6a1d970d	not-for-merge	'refs/pull/121/head' of github.com:grpc/grpc-swift-nio-transport
+5d3e9ecd62d21c4406c9754c02640d9c40f5efd2	not-for-merge	'refs/pull/122/head' of github.com:grpc/grpc-swift-nio-transport
+c417cc7c912adf6684878469b5a2996bf2aaff74	not-for-merge	'refs/pull/123/head' of github.com:grpc/grpc-swift-nio-transport
+99504743154a05847cb33334d8d2f8e9b3482ebd	not-for-merge	'refs/pull/124/head' of github.com:grpc/grpc-swift-nio-transport
+8b8aa25ad4b72a18523a5e73aa7f79d16062afbb	not-for-merge	'refs/pull/125/head' of github.com:grpc/grpc-swift-nio-transport
+7afbc27a65beedf62646017777018717c749667a	not-for-merge	'refs/pull/126/head' of github.com:grpc/grpc-swift-nio-transport
+faa1d77da772a9885fe5d84e4d088c8238d617d7	not-for-merge	'refs/pull/127/head' of github.com:grpc/grpc-swift-nio-transport
+3f0d3012865f2bde50b3e4c62c87c4971e5c7028	not-for-merge	'refs/pull/128/head' of github.com:grpc/grpc-swift-nio-transport
+a090216a703ea34308cdc1cff606c6228cb294f1	not-for-merge	'refs/pull/129/head' of github.com:grpc/grpc-swift-nio-transport
+d9ed15496f598841f4179ab93ddd82b75bd5c16c	not-for-merge	'refs/pull/13/head' of github.com:grpc/grpc-swift-nio-transport
+5e93bbb6410f88b2d5e5f3e568d61ac07e57ab5f	not-for-merge	'refs/pull/130/head' of github.com:grpc/grpc-swift-nio-transport
+30298f19be9ed845aca969f49ce766d074aa4092	not-for-merge	'refs/pull/132/head' of github.com:grpc/grpc-swift-nio-transport
+7fe6f6e9a1b216a8cd066beda31583a921af8384	not-for-merge	'refs/pull/133/head' of github.com:grpc/grpc-swift-nio-transport
+50eb2b4af479f9a1d641f608b11b4cd9b970df6d	not-for-merge	'refs/pull/134/head' of github.com:grpc/grpc-swift-nio-transport
+00db344932b92f5c3db8d520918d21a673fe5d74	not-for-merge	'refs/pull/135/head' of github.com:grpc/grpc-swift-nio-transport
+c98f852b25bffa35a2769f96dc053a231d4b65fa	not-for-merge	'refs/pull/136/head' of github.com:grpc/grpc-swift-nio-transport
+5f9171e273a2b864dad6fd8344b3b2d7da517324	not-for-merge	'refs/pull/137/head' of github.com:grpc/grpc-swift-nio-transport
+ce991a520b83da3d7edd6a87915c5db7709afff1	not-for-merge	'refs/pull/138/head' of github.com:grpc/grpc-swift-nio-transport
+8f53f8e7f5557629d19da562b62b902ca802f84b	not-for-merge	'refs/pull/139/head' of github.com:grpc/grpc-swift-nio-transport
+6e65c698d3f26cf55746848f382b724001d86951	not-for-merge	'refs/pull/14/head' of github.com:grpc/grpc-swift-nio-transport
+57878881b877a1f9dfcda8f4362835d2f04c4cff	not-for-merge	'refs/pull/141/head' of github.com:grpc/grpc-swift-nio-transport
+3477c1a41af9e3b32034f1f0d29f903876d779df	not-for-merge	'refs/pull/141/merge' of github.com:grpc/grpc-swift-nio-transport
+ca6bc87dd06f53888bc3a6e0dd4e13d7d0b5a11d	not-for-merge	'refs/pull/142/head' of github.com:grpc/grpc-swift-nio-transport
+10b1756406afe6cd460b63418e6fbb7342834a19	not-for-merge	'refs/pull/143/head' of github.com:grpc/grpc-swift-nio-transport
+d58c9908b7eb1ad621339ffaf31c4ab0ccd72828	not-for-merge	'refs/pull/144/head' of github.com:grpc/grpc-swift-nio-transport
+b5a535192a545b24de0facc636e3017cf577b72e	not-for-merge	'refs/pull/145/head' of github.com:grpc/grpc-swift-nio-transport
+5bc1e1f3f43a70a19d83adadc7dbf6abe9179805	not-for-merge	'refs/pull/146/head' of github.com:grpc/grpc-swift-nio-transport
+1f413baeb9e4d629e36fcb306ab0d752121e3d12	not-for-merge	'refs/pull/146/merge' of github.com:grpc/grpc-swift-nio-transport
+a7d08b15c81107163bae8af39f2627eee9c81fa1	not-for-merge	'refs/pull/148/head' of github.com:grpc/grpc-swift-nio-transport
+4e404e866d16ba7302b48f51458540c311fce1b0	not-for-merge	'refs/pull/149/head' of github.com:grpc/grpc-swift-nio-transport
+3810a97626c11b7f2511d2fbb2cdfc512bea673c	not-for-merge	'refs/pull/15/head' of github.com:grpc/grpc-swift-nio-transport
+271c776c2cdf2871ea0fd06ae36768078e2ca565	not-for-merge	'refs/pull/150/head' of github.com:grpc/grpc-swift-nio-transport
+22432a3ffc89f61eb6919db750af1def74549ed6	not-for-merge	'refs/pull/151/head' of github.com:grpc/grpc-swift-nio-transport
+cbd05bc69555d96c43e2470e71fea98989e7e832	not-for-merge	'refs/pull/152/head' of github.com:grpc/grpc-swift-nio-transport
+6efb4be91cbcf40afe4367ae2bb4a739d373647c	not-for-merge	'refs/pull/153/head' of github.com:grpc/grpc-swift-nio-transport
+04dcd96f6afbf3df9e4cc91e35ff375a26df817d	not-for-merge	'refs/pull/153/merge' of github.com:grpc/grpc-swift-nio-transport
+220c2b934f2965af0ec2cdf68a47ee8165aa41d0	not-for-merge	'refs/pull/154/head' of github.com:grpc/grpc-swift-nio-transport
+62bfe009706d7dcedc852891a2911a14fa105ca2	not-for-merge	'refs/pull/154/merge' of github.com:grpc/grpc-swift-nio-transport
+f1b02866411b62265bb2dab6cbea477d648724f7	not-for-merge	'refs/pull/16/head' of github.com:grpc/grpc-swift-nio-transport
+f11a98b4afe7cda2e988935e57b1f86ae1c41501	not-for-merge	'refs/pull/17/head' of github.com:grpc/grpc-swift-nio-transport
+d5e95ce88346cca26ced60bcdfb1748097028679	not-for-merge	'refs/pull/18/head' of github.com:grpc/grpc-swift-nio-transport
+11d1e5561325f042c857a93113e4d944ac05d468	not-for-merge	'refs/pull/19/head' of github.com:grpc/grpc-swift-nio-transport
+4f4e45939a8c416faa5dafc8efe7eb771eb34fac	not-for-merge	'refs/pull/2/head' of github.com:grpc/grpc-swift-nio-transport
+7adaf43397cdb583498f7a43d039f6a353d09456	not-for-merge	'refs/pull/20/head' of github.com:grpc/grpc-swift-nio-transport
+a7cfe3515b95f696f7ea2b551422193c39827f5e	not-for-merge	'refs/pull/21/head' of github.com:grpc/grpc-swift-nio-transport
+eec63a3b369bde955975329254a309b552de0876	not-for-merge	'refs/pull/22/head' of github.com:grpc/grpc-swift-nio-transport
+d5f8471c6e836c384e6ec18b52244cfc864b6802	not-for-merge	'refs/pull/23/head' of github.com:grpc/grpc-swift-nio-transport
+9c1563cca3b2a8c744000864a74311ed0c831f53	not-for-merge	'refs/pull/24/head' of github.com:grpc/grpc-swift-nio-transport
+30fde2b550804ee0e0cd83da463a6464cb4217aa	not-for-merge	'refs/pull/25/head' of github.com:grpc/grpc-swift-nio-transport
+4489952493f3ba07572e163bc4c4a8585b58a4c8	not-for-merge	'refs/pull/26/head' of github.com:grpc/grpc-swift-nio-transport
+9335197c51edf5fbd1d2cd62c0a03efbcdede7f2	not-for-merge	'refs/pull/27/head' of github.com:grpc/grpc-swift-nio-transport
+3ca7afc10097f10e716d61eaa18088eab65809e5	not-for-merge	'refs/pull/28/head' of github.com:grpc/grpc-swift-nio-transport
+ae74468bc4338baa23f63a0d5dd85e32a14656db	not-for-merge	'refs/pull/3/head' of github.com:grpc/grpc-swift-nio-transport
+2a9820f42bfcfa98aaca0baa46727736cc3d9ebf	not-for-merge	'refs/pull/30/head' of github.com:grpc/grpc-swift-nio-transport
+f3ef9e64c6785a8f1eef0753e9c9469665a60b1c	not-for-merge	'refs/pull/31/head' of github.com:grpc/grpc-swift-nio-transport
+9ebaaae56207e2a2c5f9c6fe0c47bbb495ba73f2	not-for-merge	'refs/pull/32/head' of github.com:grpc/grpc-swift-nio-transport
+8f4bd1a1cb5bf8f8571d08c8684038027540329f	not-for-merge	'refs/pull/33/head' of github.com:grpc/grpc-swift-nio-transport
+c7f8a91834bbbbd2e438f914a30a3c8c8676c90a	not-for-merge	'refs/pull/34/head' of github.com:grpc/grpc-swift-nio-transport
+aec90a016a9c3158b30f79c2ead5538fd8b14a80	not-for-merge	'refs/pull/35/head' of github.com:grpc/grpc-swift-nio-transport
+f083ac1ca3a7f204568cf624ff4f4827c5ac1d97	not-for-merge	'refs/pull/36/head' of github.com:grpc/grpc-swift-nio-transport
+40a3d98983bb9f2f83f94d8f0d1a8ed31b0e21c0	not-for-merge	'refs/pull/37/head' of github.com:grpc/grpc-swift-nio-transport
+234eecb0fb99ad91e401d51fb9af6a7d5ffa2c09	not-for-merge	'refs/pull/38/head' of github.com:grpc/grpc-swift-nio-transport
+2a7f374ff110cf1dc6e8d2c3e1cdd7fc624ee698	not-for-merge	'refs/pull/39/head' of github.com:grpc/grpc-swift-nio-transport
+df49dbd1be3a874d0eac692ec79fa14c33dbf40a	not-for-merge	'refs/pull/4/head' of github.com:grpc/grpc-swift-nio-transport
+4f34f9669325bb997b0a32ef63c43b99b9f5202d	not-for-merge	'refs/pull/41/head' of github.com:grpc/grpc-swift-nio-transport
+f8a918d7913935c993817c4ec7d58f788f128c9d	not-for-merge	'refs/pull/42/head' of github.com:grpc/grpc-swift-nio-transport
+9c34ce6b8cd8723e195abc770dfd3cb3b7f255bb	not-for-merge	'refs/pull/44/head' of github.com:grpc/grpc-swift-nio-transport
+21196ed8a0033880bf15c943fed5ed1971371669	not-for-merge	'refs/pull/45/head' of github.com:grpc/grpc-swift-nio-transport
+b3b478536a07d7970eae50a3a76a36dcc9853612	not-for-merge	'refs/pull/46/head' of github.com:grpc/grpc-swift-nio-transport
+0967d65d8eba91005b4d95270086fb239e7ba898	not-for-merge	'refs/pull/47/head' of github.com:grpc/grpc-swift-nio-transport
+e107989c8ec15a1695be570948a66acaec239027	not-for-merge	'refs/pull/48/head' of github.com:grpc/grpc-swift-nio-transport
+1c6bdaa0100688ed617f53ffcc2dac5b44e7b7f0	not-for-merge	'refs/pull/49/head' of github.com:grpc/grpc-swift-nio-transport
+14c2d3fca4d503f8bb020fedaf772373ef299207	not-for-merge	'refs/pull/5/head' of github.com:grpc/grpc-swift-nio-transport
+3801c859227622ab46f8cedd3e86e933e0f9ff93	not-for-merge	'refs/pull/50/head' of github.com:grpc/grpc-swift-nio-transport
+7205c08466734b5b3a3607349e11f5bc9a4d4ec7	not-for-merge	'refs/pull/51/head' of github.com:grpc/grpc-swift-nio-transport
+3657927837169973fa914b62896dd4feec24d4a7	not-for-merge	'refs/pull/52/head' of github.com:grpc/grpc-swift-nio-transport
+6d50fe095cbf53c7fa699e317260196bf6c56ddf	not-for-merge	'refs/pull/53/head' of github.com:grpc/grpc-swift-nio-transport
+d01a16b93353cd6f2a53b964ff4eaec21b9405a4	not-for-merge	'refs/pull/54/head' of github.com:grpc/grpc-swift-nio-transport
+ff4c02e77266fcb3990d642b2d8c67bef332a78e	not-for-merge	'refs/pull/55/head' of github.com:grpc/grpc-swift-nio-transport
+8c594e9e3969ff4a9eee3958f47a542ee661a5c3	not-for-merge	'refs/pull/56/head' of github.com:grpc/grpc-swift-nio-transport
+498c601d565c38ca3b78e31a016b04007e92b8dc	not-for-merge	'refs/pull/57/head' of github.com:grpc/grpc-swift-nio-transport
+88b6feddec882366030353e24d7173fb7392804a	not-for-merge	'refs/pull/58/head' of github.com:grpc/grpc-swift-nio-transport
+b258767d3a45b0b4eceff05b592942b8cbc6b8bb	not-for-merge	'refs/pull/59/head' of github.com:grpc/grpc-swift-nio-transport
+e7b4fca3cab203d1b32cac9b89a865d09180d82e	not-for-merge	'refs/pull/6/head' of github.com:grpc/grpc-swift-nio-transport
+848314f83590a94f41a5a646c597294bbb15a2fd	not-for-merge	'refs/pull/60/head' of github.com:grpc/grpc-swift-nio-transport
+cb9ab1c0ce32c9e6328b0f8fb6b9f99a15932c2d	not-for-merge	'refs/pull/61/head' of github.com:grpc/grpc-swift-nio-transport
+09393d9884b9fd27af19601378177533d89d6987	not-for-merge	'refs/pull/62/head' of github.com:grpc/grpc-swift-nio-transport
+60d42f438e926cf4e2ae905c72c655e91effb542	not-for-merge	'refs/pull/63/head' of github.com:grpc/grpc-swift-nio-transport
+340ca94055adf0bbb1cfbd5f43e2ceec7017c3bb	not-for-merge	'refs/pull/64/head' of github.com:grpc/grpc-swift-nio-transport
+ae2fcfd74475b20f923b60b19db473619123229b	not-for-merge	'refs/pull/66/head' of github.com:grpc/grpc-swift-nio-transport
+6631b6e809dadc7b4563d7ff5e57f978f62b9175	not-for-merge	'refs/pull/67/head' of github.com:grpc/grpc-swift-nio-transport
+a0c2e0a0f9915902413dd877ab304f84ea4772cd	not-for-merge	'refs/pull/68/head' of github.com:grpc/grpc-swift-nio-transport
+43f1e13d7aed4e6cc6f6d57c25e469bfbc30d1b9	not-for-merge	'refs/pull/69/head' of github.com:grpc/grpc-swift-nio-transport
+0b4f3ea14a436bd43cddf98fd1e0a472784e35e9	not-for-merge	'refs/pull/7/head' of github.com:grpc/grpc-swift-nio-transport
+ca570c6982512adf70d39af4da5f01232f388735	not-for-merge	'refs/pull/70/head' of github.com:grpc/grpc-swift-nio-transport
+640ab3653c1c497a2cb7ad70d41bfb307d30b2ec	not-for-merge	'refs/pull/73/head' of github.com:grpc/grpc-swift-nio-transport
+2cd3256b4c47580984ba5e266c904ff2493ca2ce	not-for-merge	'refs/pull/76/head' of github.com:grpc/grpc-swift-nio-transport
+dafbcc32b66d5bb8403dad59cf121c6864a7488c	not-for-merge	'refs/pull/77/head' of github.com:grpc/grpc-swift-nio-transport
+964d3832acf91a5fb0d098c3356870ab60f80e63	not-for-merge	'refs/pull/79/head' of github.com:grpc/grpc-swift-nio-transport
+3ac6b609db74a309ac3fbacf95e774ce08d27a9c	not-for-merge	'refs/pull/8/head' of github.com:grpc/grpc-swift-nio-transport
+cdb189bf49e32b5ab8f09d79d7d3269280a07bda	not-for-merge	'refs/pull/80/head' of github.com:grpc/grpc-swift-nio-transport
+a4c6c2848f0f0aada9dcb9144f17188a4c2ac655	not-for-merge	'refs/pull/81/head' of github.com:grpc/grpc-swift-nio-transport
+5b8edbe3cb579c86fe6f268f653eca773bcc0e55	not-for-merge	'refs/pull/85/head' of github.com:grpc/grpc-swift-nio-transport
+285eb6d5c9aadeb93fa41b6345bab3b1f2466a04	not-for-merge	'refs/pull/87/head' of github.com:grpc/grpc-swift-nio-transport
+b0b20973f3cf3b5adb3c48d42ceba3c6772b0952	not-for-merge	'refs/pull/88/head' of github.com:grpc/grpc-swift-nio-transport
+4169832629bcd4f76e8c39f715fae4884a0bbbd2	not-for-merge	'refs/pull/89/head' of github.com:grpc/grpc-swift-nio-transport
+1f44ac87337fe10c684bcb1085bcb43e078654fe	not-for-merge	'refs/pull/9/head' of github.com:grpc/grpc-swift-nio-transport
+21509a3f9b32b3adb20e235894024c4e8e370164	not-for-merge	'refs/pull/90/head' of github.com:grpc/grpc-swift-nio-transport
+ca8d220e1b83009ce8c68de896fcf7f669ef307b	not-for-merge	'refs/pull/92/head' of github.com:grpc/grpc-swift-nio-transport
+98074e91f40f2eadfc0d93893a6cd6bf98e36f21	not-for-merge	'refs/pull/93/head' of github.com:grpc/grpc-swift-nio-transport
+d97aa59a725880f7355c165b2a474b89da40a7db	not-for-merge	'refs/pull/94/head' of github.com:grpc/grpc-swift-nio-transport
+b0ed0094e5b97b58437066d2496dca23bbe55fe7	not-for-merge	'refs/pull/97/head' of github.com:grpc/grpc-swift-nio-transport
+faef01c5fa2dffac05f35ad9af7dd0839932d0ca	not-for-merge	'refs/pull/98/head' of github.com:grpc/grpc-swift-nio-transport
+85cd6115a08967960f1ab3c723b29d0fb7789e68	not-for-merge	'refs/pull/99/head' of github.com:grpc/grpc-swift-nio-transport
+b549df57e1a7bad5babfd41f7c70dec70e39c6a7	not-for-merge	tag '1.0.0' of github.com:grpc/grpc-swift-nio-transport
+0d1c61a501683a2acf5810b1ce1230e993c87b3f	not-for-merge	tag '1.0.0-alpha.1' of github.com:grpc/grpc-swift-nio-transport
+ae3f3f5cd03bd43dcc5cb8bcb65831618bc73330	not-for-merge	tag '1.0.0-beta.1' of github.com:grpc/grpc-swift-nio-transport
+e97f97e399f62dbedadfa4e55e962577c313907d	not-for-merge	tag '1.0.0-beta.2' of github.com:grpc/grpc-swift-nio-transport
+808e6fe3a5ccade6d5fe8e7c7b85b670863c6258	not-for-merge	tag '1.0.0-beta.3' of github.com:grpc/grpc-swift-nio-transport
+d48be4b276529357ad2fe7975478ebf96a331297	not-for-merge	tag '1.0.0-rc.1' of github.com:grpc/grpc-swift-nio-transport
+803769ec6ff5aac75d951cfabb4273bc255420d5	not-for-merge	tag '1.0.1' of github.com:grpc/grpc-swift-nio-transport
+dac5f358f2ed36cc782f4c5476117398e62cb53c	not-for-merge	tag '1.0.2' of github.com:grpc/grpc-swift-nio-transport
+9bd1b5b5e31f3fae497e84c2806777899183679b	not-for-merge	tag '1.0.3' of github.com:grpc/grpc-swift-nio-transport
+5d0c90b182a01d1443ce9ccabd3cd19333b55e13	not-for-merge	tag '1.1.0' of github.com:grpc/grpc-swift-nio-transport
+e726e36c0d20d9bad862734fa0871870adb48da4	not-for-merge	tag '1.2.0' of github.com:grpc/grpc-swift-nio-transport
+7733a8e2de1d48e0d15cd68704a8351024a80072	not-for-merge	tag '1.2.1' of github.com:grpc/grpc-swift-nio-transport
+030b9aaa2df294a99b48b86465a6c0a1ea3f33ee	not-for-merge	tag '1.2.2' of github.com:grpc/grpc-swift-nio-transport
+ca2303eb7f3df556beafbba33a143ffa30d5b786	not-for-merge	tag '1.2.3' of github.com:grpc/grpc-swift-nio-transport
+e3069431c4e640c39e16342b318b39d2ac458c67	not-for-merge	tag '2.0.0' of github.com:grpc/grpc-swift-nio-transport
+24cded15c662cd9559f23172366bfed6e7a81c06	not-for-merge	tag '2.1.0' of github.com:grpc/grpc-swift-nio-transport
+108495b705a68f6931281a96156532029ff8b9ed	not-for-merge	tag '2.1.1' of github.com:grpc/grpc-swift-nio-transport
+0393731de32c472e3bcdb7f339ecf55cc607a6b4	not-for-merge	tag '2.2.0' of github.com:grpc/grpc-swift-nio-transport
+11d1f0917aa30ca50e2c78d216e8ae8c72f42af1	not-for-merge	tag '2.3.0' of github.com:grpc/grpc-swift-nio-transport
+0e459d706b8041711bf0c8a72c61b1c609bd48c0	not-for-merge	tag '2.3.1' of github.com:grpc/grpc-swift-nio-transport
+dcfa8dc858bba5ded7a3760cede8c5fc03558a42	not-for-merge	tag '2.4.0' of github.com:grpc/grpc-swift-nio-transport
+1f247d35f305ef3c21d9ebc1dd2dfcfee64260d8	not-for-merge	tag '2.4.1' of github.com:grpc/grpc-swift-nio-transport
+812f12edcca82bfc4cf57263c66ffca0aded9bff	not-for-merge	tag '2.4.2' of github.com:grpc/grpc-swift-nio-transport
+9ed6c16a4c1619520cf8dd72f8ee0058b1103749	not-for-merge	tag '2.4.3' of github.com:grpc/grpc-swift-nio-transport

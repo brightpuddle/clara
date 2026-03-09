@@ -1,0 +1,4 @@
+module CNIOLinux {
+    umbrella header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-nio/Sources/CNIOLinux/include/CNIOLinux.h"
+    export *
+}

@@ -1,0 +1,26 @@
+{
+  "": {
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/master.swiftdeps"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobufCodeGen/CamelCaser.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/CamelCaser.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/CamelCaser.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/CamelCaser~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/CamelCaser.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/CamelCaser.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobufCodeGen/ProtobufCodeGenParser.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenParser.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenParser.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenParser~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenParser.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenParser.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobufCodeGen/ProtobufCodeGenerator.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenerator.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenerator.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenerator~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenerator.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/ProtobufCodeGenerator.dia"
+  }
+}

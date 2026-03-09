@@ -1,0 +1,3 @@
+module GRPCNIOTransportHTTP2Posix {
+    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2Posix.build/include/GRPCNIOTransportHTTP2Posix-Swift.h"
+}

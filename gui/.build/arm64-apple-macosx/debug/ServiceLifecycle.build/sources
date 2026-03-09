@@ -1,0 +1,9 @@
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/AsyncCancelOnGracefulShutdownSequence.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/AsyncGracefulShutdownSequence.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/CancellationWaiter.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/ClosureService.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/GracefulShutdown.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/Service.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/ServiceGroup.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/ServiceGroupConfiguration.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycle/ServiceRunnerError.swift

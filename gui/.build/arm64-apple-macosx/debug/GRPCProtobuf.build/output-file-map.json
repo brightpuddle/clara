@@ -1,0 +1,82 @@
+{
+  "": {
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/master.swiftdeps"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Coding.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/Coding.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/Coding.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/Coding~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/Coding.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/Coding.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/ContiguousBytesAdapter.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ContiguousBytesAdapter.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ContiguousBytesAdapter.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ContiguousBytesAdapter~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ContiguousBytesAdapter.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ContiguousBytesAdapter.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/ErrorDetails+AnyPacking.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+AnyPacking.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+AnyPacking.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+AnyPacking~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+AnyPacking.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+AnyPacking.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/ErrorDetails+CustomStringConvertible.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+CustomStringConvertible.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+CustomStringConvertible.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+CustomStringConvertible~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+CustomStringConvertible.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+CustomStringConvertible.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/ErrorDetails+Types.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+Types.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+Types.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+Types~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+Types.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails+Types.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/ErrorDetails.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/ErrorDetails.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/Generated/code.pb.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/code.pb.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/code.pb.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/code.pb~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/code.pb.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/code.pb.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/Generated/error_details.pb.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/error_details.pb.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/error_details.pb.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/error_details.pb~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/error_details.pb.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/error_details.pb.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/Generated/status.pb.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/status.pb.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/status.pb.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/status.pb~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/status.pb.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/status.pb.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/GoogleRPCStatus.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/GoogleRPCStatus.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/GoogleRPCStatus.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/GoogleRPCStatus~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/GoogleRPCStatus.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/GoogleRPCStatus.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/GRPCProtobuf/Errors/RPCError+GoogleRPCStatus.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/RPCError+GoogleRPCStatus.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/RPCError+GoogleRPCStatus.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/RPCError+GoogleRPCStatus~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/RPCError+GoogleRPCStatus.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobuf.build/RPCError+GoogleRPCStatus.dia"
+  }
+}

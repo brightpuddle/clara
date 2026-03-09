@@ -1,0 +1,33 @@
+{
+  "": {
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/master.swiftdeps"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-nio-transport/Sources/GRPCNIOTransportHTTP2TransportServices/Config+TLS.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Config+TLS.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Config+TLS.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Config+TLS~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Config+TLS.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Config+TLS.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-nio-transport/Sources/GRPCNIOTransportHTTP2TransportServices/Exports.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Exports.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Exports.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Exports~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Exports.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/Exports.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-nio-transport/Sources/GRPCNIOTransportHTTP2TransportServices/HTTP2ClientTransport+TransportServices.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ClientTransport+TransportServices.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ClientTransport+TransportServices.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ClientTransport+TransportServices~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ClientTransport+TransportServices.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ClientTransport+TransportServices.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-nio-transport/Sources/GRPCNIOTransportHTTP2TransportServices/HTTP2ServerTransport+TransportServices.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ServerTransport+TransportServices.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ServerTransport+TransportServices.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ServerTransport+TransportServices~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ServerTransport+TransportServices.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCNIOTransportHTTP2TransportServices.build/HTTP2ServerTransport+TransportServices.dia"
+  }
+}

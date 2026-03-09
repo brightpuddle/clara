@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ServiceLifecycleTestKit.build/master.swiftdeps"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-service-lifecycle/Sources/ServiceLifecycleTestKit/GracefulShutdown.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ServiceLifecycleTestKit.build/GracefulShutdown.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ServiceLifecycleTestKit.build/GracefulShutdown.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ServiceLifecycleTestKit.build/GracefulShutdown~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ServiceLifecycleTestKit.build/GracefulShutdown.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ServiceLifecycleTestKit.build/GracefulShutdown.dia"
+  }
+}

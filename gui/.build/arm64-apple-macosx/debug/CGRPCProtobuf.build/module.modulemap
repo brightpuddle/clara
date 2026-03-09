@@ -1,0 +1,4 @@
+module CGRPCProtobuf {
+    umbrella header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/grpc-swift-protobuf/Sources/CGRPCProtobuf/include/CGRPCProtobuf.h"
+    export *
+}

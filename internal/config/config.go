@@ -12,13 +12,14 @@ import (
 
 // Config holds the full Clara configuration.
 type Config struct {
-DataDir      string             `mapstructure:"data_dir"`
-LogFile      string             `mapstructure:"log_file"`
-LogLevel     string             `mapstructure:"log_level"`
-Server       ServerConfig       `mapstructure:"server"`
-Ollama       OllamaConfig       `mapstructure:"ollama"`
-TUI          TUIConfig          `mapstructure:"tui"`
-Integrations IntegrationsConfig `mapstructure:"integrations"`
+	DataDir          string             `mapstructure:"data_dir"`
+	LogFile          string             `mapstructure:"log_file"`
+	LogLevel         string             `mapstructure:"log_level"`
+	NativeWorkerPath string             `mapstructure:"native_worker_path"`
+	Server           ServerConfig       `mapstructure:"server"`
+	Ollama           OllamaConfig       `mapstructure:"ollama"`
+	TUI              TUIConfig          `mapstructure:"tui"`
+	Integrations     IntegrationsConfig `mapstructure:"integrations"`
 }
 
 type ServerConfig struct {
@@ -68,7 +69,9 @@ home, _ := os.UserHomeDir()
 v.SetDefault("data_dir", dataDir)
 v.SetDefault("log_level", "info")
 v.SetDefault("log_file", filepath.Join(dataDir, "logs", "clara.log"))
+v.SetDefault("native_worker_path", "")
 v.SetDefault("server.addr", "localhost:50051")
+
 v.SetDefault("ollama.url", "http://localhost:11434")
 v.SetDefault("ollama.embed_model", "nomic-embed-text")
 v.SetDefault("tui.theme_mode", "system")
@@ -109,7 +112,9 @@ cfg.Integrations.Taskwarrior.DataDir = filepath.Join(home, ".task")
 // Expand ~ in path fields.
 cfg.DataDir = expandHome(cfg.DataDir)
 cfg.LogFile = expandHome(cfg.LogFile)
+cfg.NativeWorkerPath = expandHome(cfg.NativeWorkerPath)
 for i, d := range cfg.Integrations.Filesystem.WatchDirs {
+
 cfg.Integrations.Filesystem.WatchDirs[i] = expandHome(d)
 }
 cfg.Integrations.Taskwarrior.DataDir = expandHome(cfg.Integrations.Taskwarrior.DataDir)

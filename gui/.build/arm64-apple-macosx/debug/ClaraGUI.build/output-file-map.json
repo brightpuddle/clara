@@ -1,0 +1,103 @@
+{
+  "": {
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/master.swiftdeps"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Agent/AgentClient.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/AgentClient.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/AgentClient.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/AgentClient~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/AgentClient.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/AgentClient.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/ClaraApp.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ClaraApp.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ClaraApp.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ClaraApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ClaraApp.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ClaraApp.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Generated/agent/v1/agent.grpc.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.grpc.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.grpc.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.grpc~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.grpc.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.grpc.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Generated/agent/v1/agent.pb.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.pb.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.pb.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.pb~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.pb.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/agent.pb.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Generated/artifact/v1/artifact.pb.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/artifact.pb.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/artifact.pb.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/artifact.pb~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/artifact.pb.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/artifact.pb.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Models/ArtifactStore.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactStore.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactStore.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactStore~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactStore.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactStore.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Models/SidebarSection.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarSection.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarSection.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarSection~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarSection.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarSection.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/ContentView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ContentView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ContentView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ContentView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ContentView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ContentView.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Detail/ArtifactDetailView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactDetailView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactDetailView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactDetailView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactDetailView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactDetailView.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Detail/RelatedItemsView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/RelatedItemsView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/RelatedItemsView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/RelatedItemsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/RelatedItemsView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/RelatedItemsView.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/List/ArtifactListView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactListView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactListView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactListView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactListView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactListView.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/List/ArtifactRowView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactRowView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactRowView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactRowView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactRowView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/ArtifactRowView.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Settings/SettingsView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SettingsView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SettingsView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SettingsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SettingsView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SettingsView.dia"
+  },
+  "/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Sidebar/SidebarView.swift": {
+    "dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarView.d",
+    "object": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarView.swift.o",
+    "swiftmodule": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarView~partial.swiftmodule",
+    "swift-dependencies": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarView.swiftdeps",
+    "diagnostics": "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/ClaraGUI.build/SidebarView.dia"
+  }
+}

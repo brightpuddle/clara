@@ -1,0 +1,14 @@
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Agent/AgentClient.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/ClaraApp.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Generated/agent/v1/agent.grpc.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Generated/agent/v1/agent.pb.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Generated/artifact/v1/artifact.pb.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Models/ArtifactStore.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Models/SidebarSection.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/ContentView.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Detail/ArtifactDetailView.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Detail/RelatedItemsView.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/List/ArtifactListView.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/List/ArtifactRowView.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Settings/SettingsView.swift
+/Users/nathan/src/github.com/brightpuddle/clara/gui/Sources/ClaraGUI/Views/Sidebar/SidebarView.swift

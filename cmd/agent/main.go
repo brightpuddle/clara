@@ -2,19 +2,17 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 
 	"github.com/rs/zerolog"
 
 	"github.com/brightpuddle/clara/agent"
 	"github.com/brightpuddle/clara/internal/config"
+	"github.com/brightpuddle/clara/internal/service"
 )
 
 func main() {
@@ -33,20 +31,24 @@ func main() {
 
 	logger := buildLogger(cfg, *debugFlag)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-quit
-		logger.Info().Msg("received shutdown signal")
-		cancel()
-	}()
-
 	a := agent.New(cfg, logger)
-	if err := a.Run(ctx); err != nil {
-		logger.Fatal().Err(err).Msg("agent failed")
+
+	// Handle service commands. If no command is provided, it runs the service.
+	cmd := flag.Arg(0)
+	handled, err := service.HandleCommand(a, service.Config{
+		Name:        "clara-agent",
+		DisplayName: "Clara Agent",
+		Description: "Clara background agent daemon",
+		UserName:    "", // Default to current user.
+		Arguments:   []string{},
+	}, logger, cmd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "service command %q failed: %v\n", cmd, err)
+		os.Exit(1)
+	}
+	if !handled {
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
+		os.Exit(1)
 	}
 }
 

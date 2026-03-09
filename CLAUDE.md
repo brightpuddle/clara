@@ -9,7 +9,8 @@ Clara is a terminal-centric "HUD" application that aggregates information from m
 ## Common Commands
 
 ```bash
-# Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, air, goreman)
+# Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, goreman)
+# Also install watchexec for file-watching: brew install watchexec
 make setup
 
 # Generate gRPC/protobuf Go stubs from .proto files
@@ -18,22 +19,47 @@ make proto
 # Compile all Go binaries
 make build
 
-# Run server, agent, and native worker together via goreman
+# Development workflow (recommended)
+# Terminal 1: start all services with auto-rebuild on .go/.proto changes
+make watch        # requires: brew install watchexec
+
+# Terminal 2: run the TUI (leave it running; auto-reconnects to agent)
+make dev-tui
+
+# Start services once (no file watching)
 make dev
 
-# Run individual components with hot-reload
-make dev-server   # Server with air (--debug enabled)
-make dev-agent    # Agent with air (--debug enabled)
-make dev-tui      # TUI directly (go run)
+# Auto-rebuild native worker on Swift changes (in a separate terminal)
+make watch-native   # requires: brew install watchexec
 
 # Build Swift native worker
 make swift-build         # Release build
 make swift-build-debug   # Debug build
 
+# Open GUI app in Xcode for development
+make gui-open
+
 # Clean and tidy
 make clean
 make tidy
 ```
+
+## Development Workflow
+
+**Normal Go dev loop:**
+1. `make watch` in Terminal 1 — starts server+agent+native; auto-kills/restarts on any `.go` or `.proto` change
+2. `make dev-tui` in Terminal 2 — start the TUI; leave it running (reconnects automatically when agent restarts)
+
+**Proto changes:**
+- Edit `.proto` files; `make watch` detects the change, runs `buf generate`, restarts all services
+
+**Swift changes:**
+- Run `make watch-native` in a separate terminal; it rebuilds the native worker binary on Swift source changes
+- The main `make watch` will restart the native worker process automatically when its binary is updated
+
+**Full restart needed when:**
+- Changing `go.mod` / `go.sum` (run `make tidy` first)
+- Changing config schema (run `make build` then restart)
 
 ## Architecture
 
@@ -79,7 +105,8 @@ make tidy
 
 - **Server** (`server/`): Vector embeddings, similarity search, LLM integration via Ollama
 - **Agent** (`agent/`): Local data access, file watching, background ingestion, connects to server for AI
-- **TUI** (`tui/`): Primary interface using Bubble Tea - master-detail layout with artifact list and related context panes
+- **TUI** (`tui/`): Terminal interface using Bubble Tea - 3-pane layout (artifacts/related/detail)
+- **GUI** (`gui/`): Native macOS SwiftUI app - Apple Notes/Mail-style 3-column layout; connects to same agent socket
 - **Native** (`native/`): macOS-specific: Reminders via EventKit, Spotlight search, system theme detection
 
 ### Key Internal Packages

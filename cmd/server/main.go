@@ -2,14 +2,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -17,11 +16,57 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/db"
+	"github.com/brightpuddle/clara/internal/service"
 
 	serverv1 "github.com/brightpuddle/clara/gen/server/v1"
 	claraserver "github.com/brightpuddle/clara/server"
 	"github.com/brightpuddle/clara/server/store"
 )
+
+type serverRunner struct {
+	cfg    *config.Config
+	logger zerolog.Logger
+}
+
+func (r *serverRunner) Run(ctx context.Context) error {
+	if err := os.MkdirAll(r.cfg.DataDir, 0o755); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
+
+	database, err := db.Open(r.cfg.DBPath())
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer database.Close()
+
+	s := store.New(database)
+	srv := claraserver.New(s, r.logger)
+
+	grpcServer := grpc.NewServer()
+	serverv1.RegisterServerServiceServer(grpcServer, srv)
+
+	lis, err := net.Listen("tcp", r.cfg.Server.Addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", r.cfg.Server.Addr, err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		r.logger.Info().Str("addr", r.cfg.Server.Addr).Msg("clara-server listening")
+		if err := grpcServer.Serve(lis); err != nil {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		r.logger.Info().Msg("shutting down server")
+		grpcServer.GracefulStop()
+		return nil
+	case err := <-errCh:
+		return fmt.Errorf("grpc serve: %w", err)
+	}
+}
 
 func main() {
 	debugFlag := flag.Bool("debug", false, "write logs to both file and stderr (console)")
@@ -40,40 +85,25 @@ func main() {
 	logger := buildLogger(cfg, *debugFlag)
 	log.Logger = logger
 
-	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		logger.Fatal().Err(err).Msg("create data dir")
-	}
+	runner := &serverRunner{cfg: cfg, logger: logger}
 
-	database, err := db.Open(cfg.DBPath())
+	// Handle service commands. If no command is provided, it runs the service.
+	cmd := flag.Arg(0)
+	handled, err := service.HandleCommand(runner, service.Config{
+		Name:        "clara-server",
+		DisplayName: "Clara Server",
+		Description: "Clara AI embedding server",
+		UserName:    "", // Default to current user.
+		Arguments:   []string{},
+	}, logger, cmd)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("open database")
+		fmt.Fprintf(os.Stderr, "service command %q failed: %v\n", cmd, err)
+		os.Exit(1)
 	}
-	defer database.Close()
-
-	s := store.New(database)
-	srv := claraserver.New(s, logger)
-
-	grpcServer := grpc.NewServer()
-	serverv1.RegisterServerServiceServer(grpcServer, srv)
-
-	lis, err := net.Listen("tcp", cfg.Server.Addr)
-	if err != nil {
-		logger.Fatal().Err(err).Str("addr", cfg.Server.Addr).Msg("listen")
+	if !handled {
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
+		os.Exit(1)
 	}
-
-	go func() {
-		logger.Info().Str("addr", cfg.Server.Addr).Msg("clara-server listening")
-		if err := grpcServer.Serve(lis); err != nil {
-			logger.Error().Err(err).Msg("grpc serve")
-		}
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	logger.Info().Msg("shutting down server")
-	grpcServer.GracefulStop()
 }
 
 func buildLogger(cfg *config.Config, debug bool) zerolog.Logger {
@@ -94,7 +124,6 @@ func buildLogger(cfg *config.Config, debug bool) zerolog.Logger {
 		if mkErr := os.MkdirAll(logDir, 0o755); mkErr == nil {
 			if f, openErr := os.OpenFile(cfg.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); openErr == nil {
 				if debug {
-					// Write to both file and console when --debug.
 					multi := zerolog.MultiLevelWriter(console, f)
 					return zerolog.New(multi).Level(level).With().Timestamp().Logger()
 				}
@@ -106,5 +135,4 @@ func buildLogger(cfg *config.Config, debug bool) zerolog.Logger {
 	return zerolog.New(console).Level(level).With().Timestamp().Logger()
 }
 
-// ensure io is used (MultiLevelWriter needs io.Writer).
 var _ io.Writer = os.Stderr

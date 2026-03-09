@@ -1,0 +1,3 @@
+module NIOEmbedded {
+    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/NIOEmbedded.build/include/NIOEmbedded-Swift.h"
+}

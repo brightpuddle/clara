@@ -1,0 +1,3 @@
+module NIOCertificateHelpers {
+    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/NIOCertificateHelpers.build/include/NIOCertificateHelpers-Swift.h"
+}

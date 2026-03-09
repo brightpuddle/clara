@@ -1,0 +1,3 @@
+module GRPCProtobufCodeGen {
+    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCProtobufCodeGen-tool.build/include/GRPCProtobufCodeGen-Swift.h"
+}
