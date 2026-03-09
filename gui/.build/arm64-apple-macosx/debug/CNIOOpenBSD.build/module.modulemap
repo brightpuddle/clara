@@ -1,4 +1,0 @@
-module CNIOOpenBSD {
-    umbrella header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-nio/Sources/CNIOOpenBSD/include/CNIOOpenBSD.h"
-    export *
-}

@@ -1,4 +1,0 @@
-module CNIOPosix {
-    umbrella header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-nio/Sources/CNIOPosix/include/CNIOPosix.h"
-    export *
-}

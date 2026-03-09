@@ -1,4 +1,0 @@
-module CNIOAtomics {
-    umbrella header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/checkouts/swift-nio/Sources/CNIOAtomics/include/CNIOAtomics.h"
-    export *
-}

@@ -4,102 +4,118 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Clara is a terminal-centric "HUD" application that aggregates information from multiple sources (reminders, files, notes, email), prioritizes what needs attention using AI/embeddings, and automates data organization. It consists of three Go components plus a Swift native worker.
+Clara is a productivity HUD that aggregates information from multiple sources (reminders, files, notes), prioritizes what needs attention using AI/embeddings, and automates data organization. It consists of a Go agent with SQLite+Ollama, a Bubble Tea TUI, a Wails desktop app (Svelte+TypeScript), and a Swift native worker for macOS system integration.
 
 ## Common Commands
 
 ```bash
-# Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, goreman)
-# Also install watchexec for file-watching: brew install watchexec
+# Install required toolchain (buf, protoc-gen-go, protoc-gen-go-grpc, goreman, wails)
 make setup
 
 # Generate gRPC/protobuf Go stubs from .proto files
 make proto
 
-# Compile all Go binaries
+# Compile all Go binaries (agent + TUI)
 make build
 
-# Development workflow (recommended)
-# Terminal 1: start all services with auto-rebuild on .go/.proto changes
-make watch        # requires: brew install watchexec
-
-# Terminal 2: run the TUI (leave it running; auto-reconnects to agent)
-make dev-tui
-
-# Start services once (no file watching)
-make dev
-
-# Auto-rebuild native worker on Swift changes (in a separate terminal)
-make watch-native   # requires: brew install watchexec
+# Development workflow
+make watch        # Auto-rebuild agent+native on .go/.proto changes (requires: brew install watchexec)
+make dev-tui      # Run TUI (auto-reconnects when agent restarts)
+make app-dev      # Run Clara desktop app in dev mode with hot reload (requires: wails)
 
 # Build Swift native worker
 make swift-build         # Release build
 make swift-build-debug   # Debug build
 
-# Open GUI app in Xcode for development
-make gui-open
+# Build and run desktop app
+make app-build    # Production build
+make app-run      # Build and open Clara.app
 
 # Clean and tidy
 make clean
 make tidy
+make test         # Run all Go tests
 ```
 
 ## Development Workflow
 
-**Normal Go dev loop:**
-1. `make watch` in Terminal 1 — starts server+agent+native; auto-kills/restarts on any `.go` or `.proto` change
-2. `make dev-tui` in Terminal 2 — start the TUI; leave it running (reconnects automatically when agent restarts)
+**TUI dev loop:**
+1. `make watch` in Terminal 1 — starts agent+native; auto-restarts on `.go`/`.proto` changes
+2. `make dev-tui` in Terminal 2 — start the TUI; auto-reconnects when agent restarts
+
+**Desktop app dev loop:**
+1. `make watch` in Terminal 1 — runs the agent+native worker
+2. `make app-dev` in Terminal 2 — runs Wails with hot reload (frontend changes reflect immediately)
 
 **Proto changes:**
-- Edit `.proto` files; `make watch` detects the change, runs `buf generate`, restarts all services
+- Edit `.proto` files; `make watch` detects the change, runs `buf generate`, restarts services
+- After proto changes, run `wails generate module` in `app/` to regenerate JS bindings
 
 **Swift changes:**
 - Run `make watch-native` in a separate terminal; it rebuilds the native worker binary on Swift source changes
-- The main `make watch` will restart the native worker process automatically when its binary is updated
-
-**Full restart needed when:**
-- Changing `go.mod` / `go.sum` (run `make tidy` first)
-- Changing config schema (run `make build` then restart)
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         TUI (Bubble Tea)                        │
-│                    bin/clara-tui (Go)                           │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │ gRPC over Unix socket
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                          Agent (Go)                             │
-│                    bin/clara-agent (Go)                         │
-│  ┌──────────────┐  ┌───────────────┐  ┌────────────────────┐  │
-│  │ File Watcher │  │ Reminders     │  │ Ingestor           │  │
-│  │ (fsnotify)   │  │ (via native)  │  │ (background queue) │  │
-│  └──────────────┘  └───────────────┘  └────────────────────┘  │
-│  ┌──────────────┐  ┌───────────────┐                          │
-│  │ SQLite +     │  │ Ollama        │                          │
-│  │ sqlite-vec   │  │ (embeddings)  │                          │
-│  └──────────────┘  └───────────────┘                          │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │ gRPC over Unix socket
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Native Worker (Swift)                      │
-│            native/.build/debug/NativeWorker                    │
-│  ┌────────────────┐  ┌────────────────┐  ┌─────────────────┐  │
-│  │ EventKit       │  │ Spotlight      │  │ Theme Detection │  │
-│  │ (Reminders)   │  │ (mdfind)       │  │ (NSAppearance)  │  │
-│  └────────────────┘  └────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────┐  ┌─────────────────────────────────┐
+│        TUI (Bubble Tea)         │  │     Desktop App (Wails+Svelte)  │
+│      bin/clara-tui (Go)         │  │         app/ (Go+TS)            │
+└────────────────┬────────────────┘  └────────────────┬────────────────┘
+                 │ gRPC over Unix socket               │ gRPC over Unix socket
+                 └──────────────────┬─────────────────┘
+                                    ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                            Agent (Go)                                 │
+│                       bin/clara-agent (Go)                            │
+│  ┌──────────────┐  ┌───────────────┐  ┌────────────────────────────┐ │
+│  │ File Watcher │  │ Reminders     │  │ Ingestor (background queue)│ │
+│  │ (fsnotify)   │  │ (via native)  │  └────────────────────────────┘ │
+│  └──────────────┘  └───────────────┘                                 │
+│  ┌──────────────┐  ┌───────────────┐                                 │
+│  │ SQLite +     │  │ Ollama        │                                 │
+│  │ sqlite-vec   │  │ (embeddings)  │                                 │
+│  └──────────────┘  └───────────────┘                                 │
+└────────────────────────────────┬──────────────────────────────────────┘
+                                 │ gRPC over Unix socket
+                                 ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                       Native Worker (Swift)                           │
+│                 native/.build/debug/NativeWorker                     │
+│  ┌────────────────┐  ┌────────────────┐  ┌─────────────────────────┐ │
+│  │ EventKit       │  │ Spotlight      │  │ Theme Detection         │ │
+│  │ (Reminders)    │  │ (mdfind)       │  │ (NSAppearance)          │ │
+│  └────────────────┘  └────────────────┘  └─────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
 - **Agent** (`agent/`): Local data access, file watching, background ingestion; owns the SQLite+sqlite-vec database; calls Ollama directly for embeddings
 - **TUI** (`tui/`): Terminal interface using Bubble Tea - 3-pane layout (artifacts/related/detail)
-- **GUI** (`gui/`): Native macOS SwiftUI app - Apple Notes/Mail-style 3-column layout; connects to same agent socket
+- **Desktop App** (`app/`): Wails v2 desktop app with Svelte+TypeScript frontend; Apple Notes-style 3-column layout; connects to same agent socket as TUI
 - **Native** (`native/`): macOS-specific: Reminders via EventKit, Spotlight search, system theme detection
+
+### Desktop App Structure
+
+```
+app/
+├── app.go              # Wails App struct — bound methods exposed to frontend
+├── main.go             # Wails entry point — window/tray setup
+├── agent/
+│   └── client.go       # gRPC client to agent.sock
+└── frontend/
+    └── src/
+        ├── App.svelte          # Root component, layout orchestration
+        ├── lib/
+        │   ├── agent.ts        # Typed wrappers around Wails Go bindings + event listeners
+        │   └── store.ts        # Svelte stores: artifacts, selectedId, section, status
+        └── components/
+            ├── SidebarView.svelte
+            ├── ArtifactListView.svelte
+            ├── ArtifactRow.svelte
+            ├── ArtifactDetailView.svelte
+            └── SettingsModal.svelte
+```
 
 ### Key Internal Packages
 
@@ -110,9 +126,10 @@ make tidy
 
 ### Communication Protocol
 
-- **TUI/GUI ↔ Agent**: gRPC over Unix Domain Socket (`~/.local/share/clara/agent.sock`)
+- **TUI/Desktop App ↔ Agent**: gRPC over Unix Domain Socket (`~/.local/share/clara/agent.sock`)
 - **Agent ↔ Native Worker**: gRPC over Unix Domain Socket (`~/.local/share/clara/native.sock`)
 - **Agent ↔ Ollama**: HTTP REST (`http://localhost:11434` by default)
+- **Wails Frontend ↔ Go Backend**: Wails bindings (`window.go.main.App.*`) + event bus (`runtime.EventsEmit`)
 
 ## Configuration
 
@@ -139,9 +156,20 @@ Key settings:
 - `o`: Open in native application
 - `s`: Search within focused view
 
+## Desktop App Keybindings
+
+- `j`/`k`: Move up/down the artifact list
+- `h`/`l`: Move focus between sidebar / list / detail
+- `gg` / `G`: Jump to top / bottom of list
+- `Space`: Toggle item done
+- `Enter`: Open in `$EDITOR`
+- `Cmd+,`: Open Settings
+
 ## Development Notes
 
 - Protobuf definitions in `proto/` - regenerate with `make proto`
 - Swift native worker uses grpc-swift - rebuild with `make swift-build`
-- Server and Agent both support `--debug` flag for verbose logging
+- Agent supports `--debug` flag for verbose logging
 - Log files written to `~/.local/share/clara/logs/clara.log` by default
+- Wails app module lives at `app/` with its own `go.mod`; uses `replace github.com/brightpuddle/clara => ../` to import root module packages
+

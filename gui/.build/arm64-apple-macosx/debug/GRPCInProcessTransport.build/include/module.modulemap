@@ -1,3 +1,0 @@
-module GRPCInProcessTransport {
-    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/GRPCInProcessTransport.build/include/GRPCInProcessTransport-Swift.h"
-}

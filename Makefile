@@ -67,13 +67,17 @@ swift-build: ## Build the Swift native worker (release)
 swift-build-debug: ## Build the Swift native worker (debug)
 	cd native && swift build
 
-.PHONY: gui-open
-gui-open: ## Open the Clara GUI app in Xcode for development
-	open -a Xcode gui/
+.PHONY: app-dev
+app-dev: ## Run Clara desktop app in dev mode with hot reload
+	cd app && wails dev
 
-.PHONY: gui-build
-gui-build: ## Build the Clara GUI Swift package
-	cd gui && swift build
+.PHONY: app-build
+app-build: ## Build Clara desktop app for production
+	cd app && wails build
+
+.PHONY: app-run
+app-run: app-build ## Build and run Clara desktop app
+	open app/build/bin/Clara.app
 
 .PHONY: test
 test: ## Run all Go unit tests

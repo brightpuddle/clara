@@ -1,3 +1,0 @@
-module NIOWebSocket {
-    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/NIOWebSocket.build/include/NIOWebSocket-Swift.h"
-}

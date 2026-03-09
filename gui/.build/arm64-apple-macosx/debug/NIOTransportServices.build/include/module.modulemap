@@ -1,3 +1,0 @@
-module NIOTransportServices {
-    header "/Users/nathan/src/github.com/brightpuddle/clara/gui/.build/arm64-apple-macosx/debug/NIOTransportServices.build/include/NIOTransportServices-Swift.h"
-}
