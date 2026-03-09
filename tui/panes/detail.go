@@ -49,6 +49,11 @@ p.scrollY = 0
 p.settingsCategory = ""
 }
 
+// GetArtifact returns the currently displayed artifact, or nil if none.
+func (p *DetailPane) GetArtifact() *artifactv1.Artifact {
+return p.artifact
+}
+
 // SetSettingsView switches the pane to show the named settings category.
 func (p *DetailPane) SetSettingsView(category string, statusData *agentv1.GetStatusResponse, cfg *configpkg.Config) {
 p.settingsCategory = category

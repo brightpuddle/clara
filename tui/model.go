@@ -36,15 +36,8 @@ const PaneCount = 3
 
 type paneRect struct{ x, y, w, h int }
 
-// helpItems are the status bar entries in priority order (most important first).
-var helpItems = []string{
-"j/k:nav",
-"/:search",
-"Space:done",
-"Enter:edit",
-"o:open",
-"q:quit",
-}
+// helpItems are removed — status bar now shows context hint + "? help".
+// Detailed shortcuts are in the '?' help overlay.
 
 // Msg types.
 type artifactsLoadedMsg struct{ artifacts []*artifactv1.Artifact }
@@ -89,7 +82,8 @@ related   panes.RelatedPane
 settings  panes.SettingsPane
 detail    panes.DetailPane
 
-focus  focusedPane
+focus     focusedPane
+showHelp  bool
 width  int
 height int
 status string
@@ -209,6 +203,17 @@ return m, nil
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// Toggle help overlay on '?'
+if msg.String() == "?" && !m.isSearching() {
+m.showHelp = !m.showHelp
+return m, nil
+}
+// Any other key dismisses the help overlay
+if m.showHelp {
+m.showHelp = false
+return m, nil
+}
+
 switch msg.String() {
 case "ctrl+c", "ctrl+d", "q":
 if !m.isSearching() {
@@ -819,7 +824,14 @@ sidebar = lipgloss.NewStyle().Width(sidebarW).Render(sidebar)
 detail := m.detail.View()
 main := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, detail)
 
-return lipgloss.JoinVertical(lipgloss.Left, main, m.renderStatusBar())
+view := lipgloss.JoinVertical(lipgloss.Left, main, m.renderStatusBar())
+
+// Render help overlay on top when active
+if m.showHelp {
+return panes.RenderHelp(m.width, m.height)
+}
+
+return view
 }
 
 func (m Model) renderStatusBar() string {
@@ -827,37 +839,57 @@ statusText := m.status
 if m.err != "" {
 statusText = "ERR: " + m.err
 }
-prefix := fmt.Sprintf(" clara  %s  ", statusText)
-prefixW := lipgloss.Width(prefix)
 
-helpStr := buildHelpText(helpItems, m.width-prefixW)
+// Left side: status info
+left := fmt.Sprintf(" clara  %s", statusText)
 
+// Context hint based on focused pane
+hint := m.contextHint()
+
+// Right side: help shortcut
+right := "? help "
+
+sep := " │ "
+// Build: left + hint (if room) + flex + right
+middle := ""
+if hint != "" {
+middle = sep + hint
+}
+
+total := lipgloss.Width(left) + lipgloss.Width(middle) + lipgloss.Width(sep) + lipgloss.Width(right)
+spacer := ""
+if m.width > total {
+spacer = strings.Repeat(" ", m.width-total)
+}
+
+bar := left + middle + spacer + sep + right
 return lipgloss.NewStyle().
 Width(m.width).
 Background(styles.ColorHelpBg).
 Foreground(styles.ColorHelpFg).
-Render(prefix + helpStr)
+Render(bar)
 }
 
-func buildHelpText(items []string, maxWidth int) string {
-if maxWidth <= 0 {
-return ""
+// contextHint returns a short context-sensitive hint for the current pane.
+func (m Model) contextHint() string {
+switch m.focus {
+case paneArtifacts:
+if sel := m.artifacts.Selected(); sel != nil {
+kind := strings.ToLower(strings.TrimPrefix(sel.Kind.String(), "ARTIFACT_KIND_"))
+title := sel.Title
+if len(title) > 40 {
+title = title[:40]
 }
-const sep = "  "
-const ellipsis = "…"
-
-for drop := 0; drop <= len(items); drop++ {
-visible := items[:len(items)-drop]
-if len(visible) == 0 {
-return ""
+return kind + ": " + title
 }
-suffix := ""
-if drop > 0 {
-suffix = ellipsis
-}
-full := strings.Join(visible, sep) + suffix
-if lipgloss.Width(full) <= maxWidth {
-return full
+return "j/k navigate  Space done  Enter edit"
+case paneRelated:
+return "j/k navigate  Enter select"
+case paneSettings:
+return "j/k navigate  Enter view"
+case paneDetail:
+if m.detail.GetArtifact() != nil {
+return "j/k scroll  o open  Space done"
 }
 }
 return ""

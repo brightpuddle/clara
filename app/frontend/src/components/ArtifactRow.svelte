@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '@iconify/svelte/dist/Icon.svelte'
   import type { Artifact } from '../lib/agent'
 
   export let artifact: Artifact
@@ -13,12 +14,12 @@
 
   function kindIcon(kind: string): string {
     switch (kind) {
-      case 'note':      return '📝'
-      case 'task':      return '✓'
-      case 'file':      return '📄'
-      case 'reminder':  return '🔔'
-      case 'email':     return '✉️'
-      default:          return '◎'
+      case 'note':     return 'mdi:note-text-outline'
+      case 'task':     return 'mdi:checkbox-marked-circle-outline'
+      case 'file':     return 'mdi:file-document-outline'
+      case 'reminder': return 'mdi:bell-outline'
+      case 'email':    return 'mdi:email-outline'
+      default:         return 'mdi:circle-outline'
     }
   }
 
@@ -45,7 +46,7 @@
 
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-1.5">
-        <span class="text-xs">{icon}</span>
+        <Icon icon={icon} class="w-3.5 h-3.5 text-base-content/50 shrink-0" />
         <span class="text-sm font-medium text-base-content truncate flex-1">{artifact.title}</span>
         {#if dueStr}
           <span class="text-xs text-warning shrink-0">{dueStr}</span>

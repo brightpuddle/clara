@@ -80,7 +80,19 @@ func (p *SettingsPane) View() string {
 	}
 
 	if p.height <= 3 {
-		rendered := borderStyle.Width(p.width - 2).Height(1).Render("")
+		preview := ""
+		if len(p.categories) > 0 {
+			maxW := p.width - 6
+			if maxW < 1 {
+				maxW = 1
+			}
+			label := p.categories[0].Label
+			if len(label) > maxW {
+				label = label[:maxW]
+			}
+			preview = "⚙ " + label
+		}
+		rendered := borderStyle.Width(p.width - 2).Height(1).Render(preview)
 		return styles.InjectBorderTitle(rendered, "3", fmt.Sprintf("Settings (%d)", len(p.categories)), p.width, p.focused)
 	}
 

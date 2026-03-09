@@ -197,9 +197,23 @@ func (p *RelatedPane) View() string {
 		borderStyle = styles.FocusedBorder
 	}
 
-	// Collapsed: render empty body with InjectBorderTitle.
+	// Collapsed: show first related item preview in the single interior line.
 	if p.height <= 3 {
-		rendered := borderStyle.Width(p.width - 2).Height(1).Render("")
+		preview := ""
+		if len(p.filtered) > 0 {
+			first := p.filtered[0]
+			icon := artifact.KindIcon(first.Kind)
+			maxW := p.width - 6
+			if maxW < 1 {
+				maxW = 1
+			}
+			title := first.Title
+			if len(title) > maxW {
+				title = title[:maxW]
+			}
+			preview = icon + " " + title
+		}
+		rendered := borderStyle.Width(p.width - 2).Height(1).Render(preview)
 		return styles.InjectBorderTitle(rendered, "2", fmt.Sprintf("Related (%d)", len(p.filtered)), p.width, p.focused)
 	}
 

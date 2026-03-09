@@ -29,6 +29,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "edit config at: %s\n", config.ConfigPath())
+		os.Exit(1)
+	}
+
 	logger := buildLogger(cfg, *debugFlag)
 
 	a := agent.New(cfg, logger)

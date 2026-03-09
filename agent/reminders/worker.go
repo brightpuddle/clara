@@ -1,5 +1,7 @@
-// Package reminders polls the Swift native worker for Apple Reminders
-// and ingests them as artifacts in the local database.
+// Package reminders syncs Apple Reminders from the native worker as artifacts.
+// On startup, reminders are fetched once via ListReminders. Future event-driven
+// updates will use a streaming WatchReminders RPC once added to the native proto.
+// The native bridge will push changes via that stream when implemented.
 package reminders
 
 import (
@@ -15,9 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const pollInterval = 30 * time.Second
-
-// Worker polls the native worker for reminders and syncs them to the DB.
+// Worker syncs reminders from the native bridge to the local DB.
 type Worker struct {
 	native   nativev1.NativeWorkerServiceClient
 	db       *db.DB
@@ -40,21 +40,18 @@ func (w *Worker) Notifications() <-chan *artifactv1.Artifact {
 	return w.notifyCh
 }
 
-// Run begins polling at regular intervals until ctx is cancelled.
+// Run syncs reminders once on startup, then waits for context cancellation.
+// When the native bridge gains a WatchReminders streaming RPC, this should
+// call that stream to receive push events instead of re-scanning on a timer.
 func (w *Worker) Run(ctx context.Context) {
 	w.sync(ctx)
+	// Future: stream from native bridge via WatchReminders RPC.
+	<-ctx.Done()
+}
 
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			w.sync(ctx)
-		}
-	}
+// Trigger re-syncs reminders on demand (e.g. after a reconnect to the native bridge).
+func (w *Worker) Trigger(ctx context.Context) {
+	go w.sync(ctx)
 }
 
 func (w *Worker) sync(ctx context.Context) {

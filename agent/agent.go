@@ -104,7 +104,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			} else {
 				go ing.Run(ctx, fsWatcher.Events())
 				go a.forwardNotifications(ctx, agentSrv, ing.Notifications())
-				go ing.ScanDirs(ctx, a.cfg.Integrations.Filesystem.WatchDirs)
+				// QuickScan first for immediate display, then ScanDirs for embeddings.
+				go func() {
+					ing.QuickScan(ctx, a.cfg.Integrations.Filesystem.WatchDirs)
+					ing.ScanDirs(ctx, a.cfg.Integrations.Filesystem.WatchDirs)
+				}()
 			}
 		}
 	}

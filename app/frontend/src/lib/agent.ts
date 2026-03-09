@@ -100,3 +100,9 @@ export function onConnectionChange(cb: (connected: boolean) => void): () => void
     offDisconn()
   }
 }
+
+// Listen for system theme changes emitted by the Go backend (via native bridge)
+// Payload: true = dark, false = light
+export function onThemeChange(cb: (dark: boolean) => void): () => void {
+  return EventsOn('theme:changed', (dark: boolean) => cb(dark))
+}

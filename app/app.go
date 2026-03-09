@@ -15,6 +15,7 @@ import (
 	agentclient "github.com/brightpuddle/clara/app/agent"
 	agentv1 "github.com/brightpuddle/clara/gen/agent/v1"
 	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
+	claraconfig "github.com/brightpuddle/clara/internal/config"
 )
 
 // Artifact is the frontend-facing artifact struct (JSON-serialised by Wails).
@@ -75,6 +76,13 @@ func NewApp() *App {
 // startup is called by Wails when the application starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx, a.cancel = context.WithCancel(ctx)
+	// Validate config and emit an error event if invalid
+	cfg, err := claraconfig.Load()
+	if err != nil {
+		runtime.EventsEmit(ctx, "config:error", err.Error())
+	} else if err := cfg.Validate(); err != nil {
+		runtime.EventsEmit(ctx, "config:error", err.Error())
+	}
 	go a.connectLoop()
 }
 
@@ -121,11 +129,44 @@ func (a *App) connectLoop() {
 		a.mu.Unlock()
 
 		runtime.EventsEmit(a.ctx, "agent:connected", nil)
+
+		// Emit current theme on connect and start watching for changes
+		go a.watchTheme(client)
+
 		a.runSubscribeLoop(client)
 
 		a.mu.Lock()
 		a.client = nil
 		a.mu.Unlock()
+	}
+}
+
+// watchTheme polls the system theme every 5 seconds and emits theme:changed on changes.
+func (a *App) watchTheme(client *agentclient.Client) {
+	var lastDark *bool
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	// Emit immediately on connect
+	check := func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 3*time.Second)
+		defer cancel()
+		dark, err := client.GetSystemTheme(ctx)
+		if err != nil {
+			return
+		}
+		if lastDark == nil || *lastDark != dark {
+			lastDark = &dark
+			runtime.EventsEmit(a.ctx, "theme:changed", dark)
+		}
+	}
+	check()
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-ticker.C:
+			check()
+		}
 	}
 }
 

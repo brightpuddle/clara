@@ -25,6 +25,7 @@ type IntegrationsConfig struct {
 Filesystem  FilesystemConfig  `mapstructure:"filesystem"`
 Reminders   RemindersConfig   `mapstructure:"reminders"`
 Taskwarrior TaskwarriorConfig `mapstructure:"taskwarrior"`
+Sync        SyncConfig        `mapstructure:"sync"`
 }
 
 type FilesystemConfig struct {
@@ -41,6 +42,13 @@ type TaskwarriorConfig struct {
 Enabled    bool   `mapstructure:"enabled"`
 BinaryPath string `mapstructure:"binary_path"`
 DataDir    string `mapstructure:"data_dir"`
+}
+
+// SyncConfig controls bidirectional sync between integrations.
+type SyncConfig struct {
+Enabled                  bool `mapstructure:"enabled"`
+RemindersToTaskwarrior   bool `mapstructure:"reminders_to_taskwarrior"`
+TaskwarriorToReminders   bool `mapstructure:"taskwarrior_to_reminders"`
 }
 
 type OllamaConfig struct {
@@ -76,6 +84,9 @@ v.SetDefault("integrations.filesystem.ingest_concurrency", 4)
 v.SetDefault("integrations.reminders.enabled", true)
 v.SetDefault("integrations.taskwarrior.enabled", true)
 v.SetDefault("integrations.taskwarrior.binary_path", "task")
+v.SetDefault("integrations.sync.enabled", false)
+v.SetDefault("integrations.sync.reminders_to_taskwarrior", false)
+v.SetDefault("integrations.sync.taskwarrior_to_reminders", false)
 
 v.SetConfigName("config")
 v.SetConfigType("yaml")
@@ -241,4 +252,44 @@ if err != nil {
 return ".config/clara"
 }
 return filepath.Join(home, ".config", "clara")
+}
+
+// ValidationError is a list of configuration problems found by Validate.
+type ValidationError struct {
+Errors []string
+}
+
+func (ve *ValidationError) Error() string {
+return "invalid configuration: " + strings.Join(ve.Errors, "; ")
+}
+
+// Validate checks the configuration for obvious problems.
+// Returns a *ValidationError listing all problems (not just the first).
+func (c *Config) Validate() error {
+var errs []string
+
+// data_dir must be non-empty and parent must exist or be createable
+if c.DataDir == "" {
+errs = append(errs, "data_dir must not be empty")
+} else {
+parent := filepath.Dir(c.DataDir)
+if _, err := os.Stat(parent); err != nil {
+errs = append(errs, "data_dir parent directory does not exist: "+parent)
+}
+}
+
+// ollama.url must be a parseable absolute URL
+if c.Ollama.URL == "" {
+errs = append(errs, "ollama.url must not be empty")
+} else if !strings.HasPrefix(c.Ollama.URL, "http://") && !strings.HasPrefix(c.Ollama.URL, "https://") {
+errs = append(errs, "ollama.url must start with http:// or https://: "+c.Ollama.URL)
+}
+
+// watch_dirs must exist (warn only, not fatal) — skip missing dirs rather than error
+// No strict validation here; the filesystem watcher will log warnings at runtime.
+
+if len(errs) > 0 {
+return &ValidationError{Errors: errs}
+}
+return nil
 }

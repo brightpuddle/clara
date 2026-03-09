@@ -110,3 +110,12 @@ func (c *Client) Subscribe(ctx context.Context) (<-chan *agentv1.ArtifactEvent, 
 func (c *Client) GetStatus(ctx context.Context) (*agentv1.GetStatusResponse, error) {
 	return c.agent.GetStatus(ctx, &agentv1.GetStatusRequest{})
 }
+
+// GetSystemTheme returns true if the OS is in dark mode.
+func (c *Client) GetSystemTheme(ctx context.Context) (bool, error) {
+	resp, err := c.agent.GetSystemTheme(ctx, &agentv1.GetSystemThemeRequest{})
+	if err != nil {
+		return false, errors.Wrap(err, "get system theme")
+	}
+	return resp.GetDark(), nil
+}

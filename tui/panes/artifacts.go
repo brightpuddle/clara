@@ -237,9 +237,23 @@ func (p *ArtifactsPane) View() string {
 		borderStyle = styles.FocusedBorder
 	}
 
-	// Collapsed: only show header row inside border.
+	// Collapsed: show header with first item preview in the single interior line.
 	if p.height <= 3 {
-		rendered := borderStyle.Width(p.width - 2).Height(1).Render("")
+		preview := ""
+		if len(p.filtered) > 0 {
+			first := p.filtered[0]
+			icon := artifact.KindIcon(first.Kind)
+			maxW := p.width - 6
+			if maxW < 1 {
+				maxW = 1
+			}
+			title := first.Title
+			if len(title) > maxW {
+				title = title[:maxW]
+			}
+			preview = icon + " " + title
+		}
+		rendered := borderStyle.Width(p.width - 2).Height(1).Render(preview)
 		return styles.InjectBorderTitle(rendered, "1", fmt.Sprintf("Artifacts (%d)", len(p.filtered)), p.width, p.focused)
 	}
 

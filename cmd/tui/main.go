@@ -25,6 +25,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "configuration error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "edit config at: %s\n", config.ConfigPath())
+		os.Exit(1)
+	}
+
 	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).
 		Level(zerolog.WarnLevel).
 		With().Timestamp().Logger()

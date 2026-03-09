@@ -84,12 +84,101 @@ func (ing *Ingestor) Run(ctx context.Context, events <-chan watcher.FileEvent) {
 }
 
 // initialScanRate is the maximum number of files ingested per second during
-// the initial directory scan, to reduce startup impact on CPU and disk I/O.
+// the initial directory scan for full embedding processing.
 const initialScanRate = 5
 
-// ScanDirs walks all configured directories and ingests existing text files.
-// It is rate-limited to initialScanRate files per second and should be called
-// in a goroutine after the watcher is started.
+// quickScanRate is the maximum number of files scanned per second during the
+// fast initial pass (no embeddings, just read and store for immediate display).
+const quickScanRate = 100
+
+// QuickScan walks all configured directories and immediately stores all text
+// files in the database without generating embeddings. This ensures files are
+// visible in the UI right away. Call this before ScanDirs; ScanDirs will then
+// fill in embeddings at a slower rate.
+func (ing *Ingestor) QuickScan(ctx context.Context, dirs []string) {
+	ticker := time.NewTicker(time.Second / quickScanRate)
+	defer ticker.Stop()
+
+	count := 0
+	for _, dir := range dirs {
+		if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !isTextFile(path) {
+				return nil
+			}
+			select {
+			case <-ctx.Done():
+				return filepath.SkipAll
+			case <-ticker.C:
+				ing.quickIngestFile(ctx, path)
+				count++
+			}
+			return nil
+		}); err != nil {
+			ing.logger.Warn().Err(err).Str("dir", dir).Msg("quick scan walk error")
+		}
+	}
+	ing.logger.Info().Strs("dirs", dirs).Int("count", count).Msg("quick scan complete")
+}
+
+// quickIngestFile stores a file artifact in the DB without generating an embedding.
+// This makes the file immediately visible in the UI.
+func (ing *Ingestor) quickIngestFile(ctx context.Context, path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	if info.Size() > maxFileSize {
+		return
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	text := string(content)
+	title := filepath.Base(path)
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+	artifactID := "file:" + absPath
+
+	kind := artifactv1.ArtifactKind_ARTIFACT_KIND_FILE
+	if strings.HasSuffix(strings.ToLower(path), ".md") {
+		kind = artifactv1.ArtifactKind_ARTIFACT_KIND_NOTE
+		for _, line := range strings.Split(text, "\n") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+			if line != "" && line != "---" {
+				title = line
+				break
+			}
+		}
+	}
+
+	a := artifact.New(kind, title, text, path, "filesystem")
+	a.Id = artifactID
+	a.HeatScore = artifact.ComputeHeatScore(a)
+	a.CreatedAt = timestamppb.New(info.ModTime())
+	a.UpdatedAt = timestamppb.New(time.Now())
+
+	if err := ing.db.UpsertArtifact(ctx, a); err != nil {
+		return
+	}
+	select {
+	case ing.notifyCh <- a:
+	default:
+	}
+}
+
+// ScanDirs walks all configured directories and ingests existing text files
+// with full embedding generation. It is rate-limited to initialScanRate files
+// per second and should be called after QuickScan to add embeddings.
 func (ing *Ingestor) ScanDirs(ctx context.Context, dirs []string) {
 	ticker := time.NewTicker(time.Second / initialScanRate)
 	defer ticker.Stop()
