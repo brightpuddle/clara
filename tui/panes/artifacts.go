@@ -46,7 +46,7 @@ func (p *ArtifactsPane) SetArtifacts(arts []*artifactv1.Artifact) {
 		for i, a := range p.filtered {
 			if a.Id == selectedID {
 				p.cursor = i
-				visibleRows := p.height - 4
+				visibleRows := p.height - 3
 				if visibleRows < 1 {
 					visibleRows = 1
 				}
@@ -95,8 +95,8 @@ func (p *ArtifactsPane) Update(msg tea.KeyMsg) (action string) {
 	}
 
 	// visibleRows is needed to clamp scroll after cursor movement. Compute it
-	// from current height (same formula as View uses: height - 4).
-	visibleRows := p.height - 4
+	// from current height (same formula as View uses: height - 3).
+	visibleRows := p.height - 3
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -233,16 +233,14 @@ func (p *ArtifactsPane) View() string {
 	}
 
 	borderStyle := styles.UnfocusedBorder
-	titleStyle := styles.PaneTitle
 	if p.focused {
 		borderStyle = styles.FocusedBorder
-		titleStyle = styles.PaneTitleFocused
 	}
 
 	// Collapsed: only show header row inside border.
 	if p.height <= 3 {
-		header := titleStyle.Render(fmt.Sprintf(" Artifacts (%d) ", len(p.filtered)))
-		return borderStyle.Width(p.width - 2).Height(1).Render(header)
+		rendered := borderStyle.Width(p.width - 2).Height(1).Render("")
+		return styles.InjectBorderTitle(rendered, "1", fmt.Sprintf("Artifacts (%d)", len(p.filtered)), p.width, p.focused)
 	}
 
 	title := "Artifacts"
@@ -250,10 +248,10 @@ func (p *ArtifactsPane) View() string {
 		title = "/ " + p.searchBuf + "█"
 	}
 
-	header := titleStyle.Render(fmt.Sprintf(" %s (%d) ", title, len(p.filtered)))
+	titleStr := fmt.Sprintf("%s (%d)", title, len(p.filtered))
 
 	innerW := p.width - 4 // account for border+padding
-	innerH := p.height - 4 // account for border + header
+	innerH := p.height - 3 // account for border (no header row)
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -286,8 +284,8 @@ func (p *ArtifactsPane) View() string {
 	}
 
 	body := strings.Join(rows, "\n")
-	inner := lipgloss.JoinVertical(lipgloss.Left, header, body)
-	return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+	rendered := borderStyle.Width(p.width - 2).Height(p.height - 2).Render(body)
+	return styles.InjectBorderTitle(rendered, "1", titleStr, p.width, p.focused)
 }
 
 func kindColor(kind artifactv1.ArtifactKind) lipgloss.Color {
@@ -318,4 +316,45 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return string(runes[:max-1]) + "…"
+}
+
+// SelectAtRow selects the artifact at content row (0-indexed, relative to pane top border).
+// Returns true if the selection changed.
+func (p *ArtifactsPane) SelectAtRow(row int) bool {
+	idx := p.offset + row
+	if idx < 0 || idx >= len(p.filtered) {
+		return false
+	}
+	if idx == p.cursor {
+		return false
+	}
+	p.cursor = idx
+	return true
+}
+
+// Offset returns the current scroll offset.
+func (p *ArtifactsPane) Offset() int { return p.offset }
+
+// ScrollDown moves the cursor down by one.
+func (p *ArtifactsPane) ScrollDown() {
+	if p.cursor < len(p.filtered)-1 {
+		p.cursor++
+		visibleRows := p.height - 3
+		if visibleRows < 1 {
+			visibleRows = 1
+		}
+		p.clampScroll(visibleRows)
+	}
+}
+
+// ScrollUp moves the cursor up by one.
+func (p *ArtifactsPane) ScrollUp() {
+	if p.cursor > 0 {
+		p.cursor--
+		visibleRows := p.height - 3
+		if visibleRows < 1 {
+			visibleRows = 1
+		}
+		p.clampScroll(visibleRows)
+	}
 }

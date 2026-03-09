@@ -53,7 +53,7 @@ defer serverConn.Close()
 }
 
 embedder := embedding.New(a.cfg.Ollama.URL, a.cfg.Ollama.EmbedModel)
-ing := ingestor.New(embedder, serverClient, a.cfg.Integrations.Filesystem.IngestConcurrency, a.logger)
+ing := ingestor.New(database, embedder, serverClient, a.cfg.Integrations.Filesystem.IngestConcurrency, a.logger)
 
 agentSrv := agentgrpc.NewAgentServer(database, serverClient, a.logger)
 

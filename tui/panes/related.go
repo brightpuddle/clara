@@ -95,7 +95,7 @@ func (p *RelatedPane) Update(msg tea.KeyMsg) string {
 	if p.searching {
 		return p.updateSearch(msg)
 	}
-	visibleRows := p.height - 4
+	visibleRows := p.height - 3
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -193,16 +193,14 @@ func (p *RelatedPane) View() string {
 	}
 
 	borderStyle := styles.UnfocusedBorder
-	titleStyle := styles.PaneTitle
 	if p.focused {
 		borderStyle = styles.FocusedBorder
-		titleStyle = styles.PaneTitleFocused
 	}
 
-	// Collapsed: only show header row inside border.
+	// Collapsed: render empty body with InjectBorderTitle.
 	if p.height <= 3 {
-		header := titleStyle.Render(fmt.Sprintf(" Related (%d) ", len(p.filtered)))
-		return borderStyle.Width(p.width - 2).Height(1).Render(header)
+		rendered := borderStyle.Width(p.width - 2).Height(1).Render("")
+		return styles.InjectBorderTitle(rendered, "2", fmt.Sprintf("Related (%d)", len(p.filtered)), p.width, p.focused)
 	}
 
 	title := "Related"
@@ -210,10 +208,10 @@ func (p *RelatedPane) View() string {
 		title = "s " + p.searchBuf + "█"
 	}
 
-	header := titleStyle.Render(fmt.Sprintf(" %s (%d) ", title, len(p.filtered)))
+	titleStr := fmt.Sprintf("%s (%d)", title, len(p.filtered))
 
 	innerW := p.width - 4
-	innerH := p.height - 4
+	innerH := p.height - 3
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -244,6 +242,47 @@ func (p *RelatedPane) View() string {
 	}
 
 	body := strings.Join(rows, "\n")
-	inner := lipgloss.JoinVertical(lipgloss.Left, header, body)
-	return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+	rendered := borderStyle.Width(p.width - 2).Height(p.height - 2).Render(body)
+	return styles.InjectBorderTitle(rendered, "2", titleStr, p.width, p.focused)
+}
+
+// SelectAtRow selects the artifact at content row (0-indexed).
+// Returns true if the selection changed.
+func (p *RelatedPane) SelectAtRow(row int) bool {
+	idx := p.offset + row
+	if idx < 0 || idx >= len(p.filtered) {
+		return false
+	}
+	if idx == p.cursor {
+		return false
+	}
+	p.cursor = idx
+	return true
+}
+
+// Offset returns the current scroll offset.
+func (p *RelatedPane) Offset() int { return p.offset }
+
+// ScrollDown moves the cursor down by one.
+func (p *RelatedPane) ScrollDown() {
+	if p.cursor < len(p.filtered)-1 {
+		p.cursor++
+		visibleRows := p.height - 3
+		if visibleRows < 1 {
+			visibleRows = 1
+		}
+		p.clampScroll(visibleRows)
+	}
+}
+
+// ScrollUp moves the cursor up by one.
+func (p *RelatedPane) ScrollUp() {
+	if p.cursor > 0 {
+		p.cursor--
+		visibleRows := p.height - 3
+		if visibleRows < 1 {
+			visibleRows = 1
+		}
+		p.clampScroll(visibleRows)
+	}
 }

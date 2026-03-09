@@ -3,6 +3,8 @@
 package styles
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 	bubbletint "github.com/lrstanley/bubbletint/v2"
 )
@@ -167,6 +169,56 @@ func regenerateStyles() {
 	SearchPrompt = lipgloss.NewStyle().
 		Foreground(ColorBorderActive).
 		Bold(true)
+}
+
+// InjectBorderTitle replaces the top border line of a rendered lipgloss box
+// with a lazygit-style numbered title: ╭─[N]─Title─────╮
+// width is the total outer width of the box.
+func InjectBorderTitle(rendered, num, title string, width int, focused bool) string {
+	lines := strings.Split(rendered, "\n")
+	if len(lines) == 0 || width < 4 {
+		return rendered
+	}
+
+	borderColor := ColorBorderInactive
+	numColor := ColorFg
+	if focused {
+		borderColor = ColorBorderActive
+		numColor = ColorBorderActive
+	}
+
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+	nc := lipgloss.NewStyle().Bold(true).Foreground(numColor)
+
+	// Build: ╭─[N]─Title──────╮
+	// innerW = width - 2 (for ╭ and ╮)
+	innerW := width - 2
+	numStr := "[" + num + "]"
+	// prefix (after ╭): ─[N]─Title─
+	// count runes for visual width
+	prefixParts := []rune("─" + numStr + "─" + title + "─")
+	fillLen := innerW - len(prefixParts)
+	if fillLen < 0 {
+		// Truncate title to fit
+		maxTitle := innerW - len([]rune("─"+numStr+"──")) // ─[N]──
+		if maxTitle < 0 {
+			maxTitle = 0
+		}
+		titleRunes := []rune(title)
+		if len(titleRunes) > maxTitle {
+			title = string(titleRunes[:maxTitle])
+		}
+		fillLen = 0
+	}
+
+	topLine := bc.Render("╭") +
+		bc.Render("─") +
+		nc.Render(numStr) +
+		bc.Render("─"+title+"─"+strings.Repeat("─", fillLen)) +
+		bc.Render("╮")
+
+	lines[0] = topLine
+	return strings.Join(lines, "\n")
 }
 
 // HeatColor returns the color for a heat score in [0,1].

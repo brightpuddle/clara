@@ -6,6 +6,7 @@ import (
 "strings"
 "time"
 
+tea "github.com/charmbracelet/bubbletea"
 "github.com/charmbracelet/lipgloss"
 
 agentv1 "github.com/brightpuddle/clara/gen/agent/v1"
@@ -28,6 +29,12 @@ statusData       *agentv1.GetStatusResponse
 statusFetchedAt  time.Time // when statusData was last fetched (for local uptime counting)
 uptimeTick       int64     // increments each second via TickUptime
 config           *configpkg.Config
+// vim nav when focused
+searching      bool
+searchBuf      string
+searchMatches  []int
+searchIdx      int
+lastKey        string
 }
 
 // NewDetailPane creates an empty DetailPane.
@@ -116,15 +123,7 @@ return styles.FocusedBorder
 return styles.UnfocusedBorder
 }
 
-func (p *DetailPane) titleStyle() lipgloss.Style {
-if p.focused {
-return styles.PaneTitleFocused
-}
-return styles.PaneTitle
-}
-
 func (p *DetailPane) renderStatusView() string {
-header := p.titleStyle().Render(" Status ")
 innerW := p.width - 4
 if innerW < 1 {
 innerW = 1
@@ -173,12 +172,11 @@ lines = append(lines, styles.ItemNormal.Render(fmt.Sprintf("  %-14s %d", kind+":
 }
 }
 
-return p.wrapInBorder(header, lines, innerW)
+return p.wrapInBorder("Status", lines, innerW)
 }
 
 
 func (p *DetailPane) renderConfigView() string {
-header := p.titleStyle().Render(" Config ")
 innerW := p.width - 4
 if innerW < 1 {
 innerW = 1
@@ -209,18 +207,17 @@ lines = append(lines, styles.ItemNormal.Render(line))
 }
 }
 
-return p.wrapInBorder(header, lines, innerW)
+return p.wrapInBorder("Config", lines, innerW)
 }
 
 func (p *DetailPane) renderEmptySettings(category string) string {
-header := p.titleStyle().Render(" Settings ")
 innerW := p.width - 4
 lines := []string{styles.Muted.Render("  unknown category: " + category)}
-return p.wrapInBorder(header, lines, innerW)
+return p.wrapInBorder("Settings", lines, innerW)
 }
 
-func (p *DetailPane) wrapInBorder(header string, lines []string, innerW int) string {
-innerH := p.height - 4 - 1
+func (p *DetailPane) wrapInBorder(title string, lines []string, innerW int) string {
+innerH := p.height - 3 - 1
 if innerH < 1 {
 innerH = 1
 }
@@ -240,24 +237,25 @@ visLines = append(visLines, styles.ItemNormal.Width(innerW).Render(truncateStr(l
 }
 
 body := strings.Join(visLines, "\n")
-inner := lipgloss.JoinVertical(lipgloss.Left, header, body)
-return p.border().Width(p.width - 2).Height(p.height - 2).Render(inner)
+rendered := p.border().Width(p.width - 2).Height(p.height - 2).Render(body)
+
+displayTitle := title
+if p.searching {
+displayTitle = "/ " + p.searchBuf + "█"
+}
+return styles.InjectBorderTitle(rendered, "0", displayTitle, p.width, p.focused)
 }
 
 func (p *DetailPane) renderArtifact() string {
 borderStyle := styles.UnfocusedBorder
-titleStyle := styles.PaneTitle
 if p.focused {
 borderStyle = styles.FocusedBorder
-titleStyle = styles.PaneTitleFocused
 }
-
-header := titleStyle.Render(" Detail ")
 
 if p.artifact == nil {
 empty := styles.Muted.Render("  Select an artifact to preview")
-inner := lipgloss.JoinVertical(lipgloss.Left, header, empty)
-return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+rendered := borderStyle.Width(p.width - 2).Height(p.height - 2).Render(empty)
+return styles.InjectBorderTitle(rendered, "0", "Detail", p.width, p.focused)
 }
 
 a := p.artifact
@@ -307,7 +305,7 @@ meta = append(meta, styles.ItemNormal.Render(fmt.Sprintf("priority: %s", pri)))
 separator := strings.Repeat("─", p.width-4)
 
 contentLines := strings.Split(a.Content, "\n")
-innerH := p.height - 4 - len(meta) - 3
+innerH := p.height - 3 - len(meta) - 3
 if innerH < 1 {
 innerH = 1
 }
@@ -326,13 +324,20 @@ for _, line := range contentLines[start:end] {
 contentRows = append(contentRows, styles.ItemNormal.Width(p.width-4).Render(truncateStr(line, p.width-4)))
 }
 
-parts := []string{header, titleLine, ""}
+parts := []string{titleLine, ""}
 parts = append(parts, meta...)
 parts = append(parts, styles.Muted.Render(separator))
 parts = append(parts, contentRows...)
 
 inner := lipgloss.JoinVertical(lipgloss.Left, parts...)
-return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+rendered := borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+
+artTitle := truncateStr(a.Title, 40)
+displayTitle := artTitle
+if p.searching {
+displayTitle = "/ " + p.searchBuf + "█"
+}
+return styles.InjectBorderTitle(rendered, "0", displayTitle, p.width, p.focused)
 }
 
 func kindName(kind artifactv1.ArtifactKind) string {
@@ -373,4 +378,133 @@ if seconds < 3600 {
 return fmt.Sprintf("%dm%ds", seconds/60, seconds%60)
 }
 return fmt.Sprintf("%dh%dm", seconds/3600, (seconds%3600)/60)
+}
+
+// IsSearching returns true if the detail pane is in search mode.
+func (p *DetailPane) IsSearching() bool { return p.searching }
+
+// HandleKey processes vim navigation keys when the detail pane is focused.
+// Returns true if the key was consumed.
+func (p *DetailPane) HandleKey(msg tea.KeyMsg) bool {
+if p.searching {
+return p.handleSearchKey(msg)
+}
+
+totalLines := p.totalContentLines()
+visibleLines := p.height - 3
+
+switch msg.String() {
+case "j", "down":
+p.scrollY++
+return true
+case "k", "up":
+if p.scrollY > 0 {
+p.scrollY--
+}
+return true
+case "g":
+if p.lastKey == "g" {
+p.scrollY = 0
+p.lastKey = ""
+} else {
+p.lastKey = "g"
+}
+return true
+case "G":
+p.lastKey = ""
+if totalLines > visibleLines {
+p.scrollY = totalLines - visibleLines
+}
+return true
+case "/":
+p.lastKey = ""
+p.searching = true
+p.searchBuf = ""
+p.searchMatches = nil
+p.searchIdx = 0
+return true
+case "n":
+p.lastKey = ""
+if len(p.searchMatches) > 0 {
+p.searchIdx = (p.searchIdx + 1) % len(p.searchMatches)
+p.scrollY = p.searchMatches[p.searchIdx]
+}
+return true
+case "p":
+p.lastKey = ""
+if len(p.searchMatches) > 0 {
+p.searchIdx = (p.searchIdx - 1 + len(p.searchMatches)) % len(p.searchMatches)
+p.scrollY = p.searchMatches[p.searchIdx]
+}
+return true
+case "esc":
+p.lastKey = ""
+p.searching = false
+p.searchBuf = ""
+p.searchMatches = nil
+return false // signal model to unfocus detail pane
+}
+p.lastKey = ""
+return false
+}
+
+func (p *DetailPane) handleSearchKey(msg tea.KeyMsg) bool {
+switch msg.String() {
+case "esc", "ctrl+c":
+p.searching = false
+p.searchBuf = ""
+p.searchMatches = nil
+case "enter":
+p.searching = false
+case "backspace":
+if len(p.searchBuf) > 0 {
+p.searchBuf = p.searchBuf[:len(p.searchBuf)-1]
+}
+p.computeSearchMatches()
+default:
+if len(msg.Runes) > 0 {
+p.searchBuf += string(msg.Runes)
+p.computeSearchMatches()
+}
+}
+return true
+}
+
+func (p *DetailPane) computeSearchMatches() {
+if p.searchBuf == "" {
+p.searchMatches = nil
+p.searchIdx = 0
+return
+}
+q := strings.ToLower(p.searchBuf)
+lines := p.contentLines()
+p.searchMatches = nil
+for i, line := range lines {
+if strings.Contains(strings.ToLower(line), q) {
+p.searchMatches = append(p.searchMatches, i)
+}
+}
+p.searchIdx = 0
+if len(p.searchMatches) > 0 {
+p.scrollY = p.searchMatches[0]
+}
+}
+
+// contentLines returns all lines of current content for search purposes.
+func (p *DetailPane) contentLines() []string {
+if p.settingsCategory == "config" {
+content, err := os.ReadFile(configpkg.ConfigPath())
+if err != nil {
+return nil
+}
+return strings.Split(string(content), "\n")
+}
+if p.artifact != nil {
+return strings.Split(p.artifact.Content, "\n")
+}
+return nil
+}
+
+func (p *DetailPane) totalContentLines() int {
+return len(p.contentLines())
 }

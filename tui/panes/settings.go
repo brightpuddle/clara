@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/brightpuddle/clara/tui/styles"
 )
@@ -76,20 +75,17 @@ func (p *SettingsPane) View() string {
 	}
 
 	borderStyle := styles.UnfocusedBorder
-	titleStyle := styles.PaneTitle
 	if p.focused {
 		borderStyle = styles.FocusedBorder
-		titleStyle = styles.PaneTitleFocused
 	}
 
-	header := titleStyle.Render(fmt.Sprintf(" Settings (%d) ", len(p.categories)))
-
 	if p.height <= 3 {
-		return borderStyle.Width(p.width - 2).Height(1).Render(header)
+		rendered := borderStyle.Width(p.width - 2).Height(1).Render("")
+		return styles.InjectBorderTitle(rendered, "3", fmt.Sprintf("Settings (%d)", len(p.categories)), p.width, p.focused)
 	}
 
 	innerW := p.width - 4
-	innerH := p.height - 4
+	innerH := p.height - 3
 	if innerH < 1 {
 		innerH = 1
 	}
@@ -115,6 +111,33 @@ func (p *SettingsPane) View() string {
 	}
 
 	body := strings.Join(rows, "\n")
-	inner := lipgloss.JoinVertical(lipgloss.Left, header, body)
-	return borderStyle.Width(p.width - 2).Height(p.height - 2).Render(inner)
+	rendered := borderStyle.Width(p.width - 2).Height(p.height - 2).Render(body)
+	return styles.InjectBorderTitle(rendered, "3", fmt.Sprintf("Settings (%d)", len(p.categories)), p.width, p.focused)
+}
+
+// SelectAtRow selects the settings category at the given row index (0-indexed).
+// Returns true if the selection changed.
+func (p *SettingsPane) SelectAtRow(row int) bool {
+	if row < 0 || row >= len(p.categories) {
+		return false
+	}
+	if row == p.cursor {
+		return false
+	}
+	p.cursor = row
+	return true
+}
+
+// ScrollDown moves the cursor down by one.
+func (p *SettingsPane) ScrollDown() {
+	if p.cursor < len(p.categories)-1 {
+		p.cursor++
+	}
+}
+
+// ScrollUp moves the cursor up by one.
+func (p *SettingsPane) ScrollUp() {
+	if p.cursor > 0 {
+		p.cursor--
+	}
 }

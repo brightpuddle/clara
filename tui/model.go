@@ -34,6 +34,8 @@ paneDetail
 
 const PaneCount = 3
 
+type paneRect struct{ x, y, w, h int }
+
 // helpItems are the status bar entries in priority order (most important first).
 var helpItems = []string{
 "j/k:nav",
@@ -92,6 +94,11 @@ width  int
 height int
 status string
 err    string
+
+artifactsRect paneRect
+relatedRect   paneRect
+settingsRect  paneRect
+detailRect    paneRect
 }
 
 // New creates a new TUI Model.
@@ -132,6 +139,9 @@ case tea.WindowSizeMsg:
 m.width = msg.Width
 m.height = msg.Height
 m.updatePaneSizes()
+
+case tea.MouseMsg:
+return m.handleMouse(msg)
 
 case tea.KeyMsg:
 return m.handleKey(msg)
@@ -206,11 +216,25 @@ m.cancel()
 return m, tea.Quit
 }
 case "tab":
-m.cycleFocus(1)
-return m, nil
+return m, m.cycleFocus(1)
 case "shift+tab":
-m.cycleFocus(-1)
-return m, nil
+return m, m.cycleFocus(-1)
+case "1":
+if !m.isSearching() {
+return m, m.setFocus(paneArtifacts)
+}
+case "2":
+if !m.isSearching() {
+return m, m.setFocus(paneRelated)
+}
+case "3":
+if !m.isSearching() {
+return m, m.setFocus(paneSettings)
+}
+case "0":
+if !m.isSearching() {
+return m, m.setFocus(paneDetail)
+}
 case "l":
 // l moves to the next pane (down/right)
 if m.focus == paneArtifacts {
@@ -260,11 +284,9 @@ return m, m.handleAction(action)
 }
 
 case paneDetail:
-switch msg.String() {
-case "j", "down":
-m.detail.ScrollDown()
-case "k", "up":
-m.detail.ScrollUp()
+handled := m.detail.HandleKey(msg)
+if !handled && msg.String() == "esc" {
+return m, m.setFocus(paneArtifacts)
 }
 }
 
@@ -558,6 +580,26 @@ return nil
 var cmd *exec.Cmd
 switch sel.SourceApp {
 case "reminders":
+if sel.SourcePath != "" {
+script := fmt.Sprintf(
+`tell application "Reminders"
+activate
+repeat with theList in every list
+    set matches to (reminders of theList whose id is "%s")
+    if (count of matches) > 0 then
+        show item 1 of matches
+        exit repeat
+    end if
+end repeat
+end tell`, sel.SourcePath)
+return func() tea.Msg {
+osacmd := exec.Command("osascript", "-e", script) //nolint:gosec
+if err := osacmd.Start(); err != nil {
+_ = exec.Command("open", "-a", "Reminders").Start() //nolint:errcheck
+}
+return statusMsg{"opened reminder"}
+}
+}
 cmd = exec.Command("open", "-a", "Reminders")
 case "mail":
 cmd = exec.Command("open", "-a", "Mail")
@@ -587,6 +629,91 @@ return sel
 return nil
 }
 
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+// Handle scroll wheel (wheel events come as press events with special buttons).
+if msg.Button == tea.MouseButtonWheelDown {
+return m.handleMouseScroll(msg.X, msg.Y, 1)
+}
+if msg.Button == tea.MouseButtonWheelUp {
+return m.handleMouseScroll(msg.X, msg.Y, -1)
+}
+switch msg.Action {
+case tea.MouseActionPress:
+if msg.Button == tea.MouseButtonLeft {
+return m.handleMouseClick(msg.X, msg.Y)
+}
+}
+return m, nil
+}
+
+func (m Model) handleMouseClick(x, y int) (tea.Model, tea.Cmd) {
+switch {
+case x >= m.detailRect.x && x < m.detailRect.x+m.detailRect.w &&
+y >= m.detailRect.y && y < m.detailRect.y+m.detailRect.h:
+return m, m.setFocus(paneDetail)
+
+case x >= m.artifactsRect.x && x < m.artifactsRect.x+m.artifactsRect.w &&
+y >= m.artifactsRect.y && y < m.artifactsRect.y+m.artifactsRect.h:
+cmd := m.setFocus(paneArtifacts)
+row := y - m.artifactsRect.y - 1 // -1 for top border
+if m.artifacts.SelectAtRow(row) {
+if sel := m.artifacts.Selected(); sel != nil {
+return m, tea.Batch(cmd, m.loadDetail(sel.Id))
+}
+}
+return m, cmd
+
+case x >= m.relatedRect.x && x < m.relatedRect.x+m.relatedRect.w &&
+y >= m.relatedRect.y && y < m.relatedRect.y+m.relatedRect.h:
+cmd := m.setFocus(paneRelated)
+row := y - m.relatedRect.y - 1
+m.related.SelectAtRow(row)
+return m, cmd
+
+case x >= m.settingsRect.x && x < m.settingsRect.x+m.settingsRect.w &&
+y >= m.settingsRect.y && y < m.settingsRect.y+m.settingsRect.h:
+cmd := m.setFocus(paneSettings)
+row := y - m.settingsRect.y - 1
+if m.settings.SelectAtRow(row) {
+if sel := m.settings.Selected(); sel != nil {
+return m, tea.Batch(cmd, m.showSettings(sel.ID))
+}
+}
+return m, cmd
+}
+return m, nil
+}
+
+func (m Model) handleMouseScroll(x, y, delta int) (tea.Model, tea.Cmd) {
+switch {
+case x >= m.detailRect.x && y < m.detailRect.h:
+if delta > 0 {
+m.detail.ScrollDown()
+} else {
+m.detail.ScrollUp()
+}
+case y >= m.artifactsRect.y && y < m.artifactsRect.y+m.artifactsRect.h:
+if delta > 0 {
+m.artifacts.ScrollDown()
+} else {
+m.artifacts.ScrollUp()
+}
+case y >= m.relatedRect.y && y < m.relatedRect.y+m.relatedRect.h:
+if delta > 0 {
+m.related.ScrollDown()
+} else {
+m.related.ScrollUp()
+}
+case y >= m.settingsRect.y && y < m.settingsRect.y+m.settingsRect.h:
+if delta > 0 {
+m.settings.ScrollDown()
+} else {
+m.settings.ScrollUp()
+}
+}
+return m, nil
+}
+
 func (m *Model) isSearching() bool {
 	if m.focus == paneArtifacts {
 		return m.artifacts.IsSearching()
@@ -594,11 +721,14 @@ func (m *Model) isSearching() bool {
 	if m.focus == paneRelated {
 		return m.related.IsSearching()
 	}
+	if m.focus == paneDetail {
+		return m.detail.IsSearching()
+	}
 	return false
 }
 
-func (m *Model) cycleFocus(delta int) {
-m.setFocus(focusedPane((int(m.focus) + delta + PaneCount) % PaneCount)) //nolint:errcheck
+func (m *Model) cycleFocus(delta int) tea.Cmd {
+return m.setFocus(focusedPane((int(m.focus) + delta + PaneCount) % PaneCount))
 }
 
 func (m *Model) setFocus(f focusedPane) tea.Cmd {
@@ -607,6 +737,7 @@ m.focus = f
 m.artifacts.SetFocused(f == paneArtifacts)
 m.related.SetFocused(f == paneRelated)
 m.settings.SetFocused(f == paneSettings)
+m.detail.SetFocused(f == paneDetail)
 m.updatePaneSizes()
 if entering {
 // Auto-show the currently selected settings category and fetch data.
@@ -664,6 +795,12 @@ m.artifacts.SetSize(sidebarW, artifactsH)
 m.related.SetSize(sidebarW, relatedH)
 m.settings.SetSize(sidebarW, settingsH)
 m.detail.SetSize(detailW, m.height-1)
+
+// Track pane positions for mouse hit-testing.
+m.artifactsRect = paneRect{x: 0, y: 0, w: sidebarW, h: artifactsH}
+m.relatedRect = paneRect{x: 0, y: artifactsH, w: sidebarW, h: relatedH}
+m.settingsRect = paneRect{x: 0, y: artifactsH + relatedH, w: sidebarW, h: settingsH}
+m.detailRect = paneRect{x: sidebarW, y: 0, w: m.width - sidebarW, h: m.height - 1}
 }
 
 func (m Model) View() string {

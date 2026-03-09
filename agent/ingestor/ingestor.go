@@ -16,6 +16,7 @@ import (
 	serverv1 "github.com/brightpuddle/clara/gen/server/v1"
 	"github.com/brightpuddle/clara/agent/watcher"
 	"github.com/brightpuddle/clara/internal/artifact"
+	"github.com/brightpuddle/clara/internal/db"
 	"github.com/brightpuddle/clara/internal/embedding"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -24,6 +25,7 @@ const maxFileSize = 1 << 20 // 1 MiB - skip larger files
 // Ingestor reads file events, extracts text, generates embeddings,
 // and stores artifacts on the server.
 type Ingestor struct {
+	localDB     *db.DB // agent database for immediate storage (may be nil)
 	embedder    *embedding.Client
 	serverConn  serverv1.ServerServiceClient
 	concurrency int
@@ -32,11 +34,12 @@ type Ingestor struct {
 }
 
 // New creates a new Ingestor.
-func New(embedder *embedding.Client, serverConn serverv1.ServerServiceClient, concurrency int, logger zerolog.Logger) *Ingestor {
+func New(localDB *db.DB, embedder *embedding.Client, serverConn serverv1.ServerServiceClient, concurrency int, logger zerolog.Logger) *Ingestor {
 	if concurrency <= 0 {
 		concurrency = 4
 	}
 	return &Ingestor{
+		localDB:     localDB,
 		embedder:    embedder,
 		serverConn:  serverConn,
 		concurrency: concurrency,
@@ -169,6 +172,18 @@ func (ing *Ingestor) processFile(ctx context.Context, path string) {
 	now := time.Now()
 	a.CreatedAt = timestamppb.New(info.ModTime())
 	a.UpdatedAt = timestamppb.New(now)
+
+	// Immediately store in agent DB so the TUI can display it right away.
+	if ing.localDB != nil {
+		if err := ing.localDB.UpsertArtifact(ctx, a); err != nil {
+			log.Warn().Err(err).Msg("write to local db")
+		} else {
+			select {
+			case ing.notifyCh <- a:
+			default:
+			}
+		}
+	}
 
 	// Generate embedding.
 	embedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
