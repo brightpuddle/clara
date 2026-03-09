@@ -24,15 +24,6 @@ func configSchema() map[string]interface{} {
 				"type":        "string",
 				"description": "Path to the Clara native worker binary (macOS only)",
 			},
-			"server": map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"addr": map[string]interface{}{
-						"type":        "string",
-						"description": "gRPC server address (host:port)",
-					},
-				},
-			},
 			"ollama": map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

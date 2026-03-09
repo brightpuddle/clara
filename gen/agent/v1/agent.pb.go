@@ -742,7 +742,6 @@ func (x *ComponentStatus) GetFault() string {
 type GetStatusResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Agent          *ComponentStatus       `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
-	Server         *ComponentStatus       `protobuf:"bytes,2,opt,name=server,proto3" json:"server,omitempty"`
 	Native         *ComponentStatus       `protobuf:"bytes,3,opt,name=native,proto3" json:"native,omitempty"`
 	ArtifactCounts map[string]int32       `protobuf:"bytes,4,rep,name=artifact_counts,json=artifactCounts,proto3" json:"artifact_counts,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	unknownFields  protoimpl.UnknownFields
@@ -782,13 +781,6 @@ func (*GetStatusResponse) Descriptor() ([]byte, []int) {
 func (x *GetStatusResponse) GetAgent() *ComponentStatus {
 	if x != nil {
 		return x.Agent
-	}
-	return nil
-}
-
-func (x *GetStatusResponse) GetServer() *ComponentStatus {
-	if x != nil {
-		return x.Server
 	}
 	return nil
 }
@@ -965,10 +957,9 @@ const file_agent_v1_agent_proto_rawDesc = "" +
 	"\tconnected\x18\x01 \x01(\bR\tconnected\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12%\n" +
 	"\x0euptime_seconds\x18\x03 \x01(\x03R\ruptimeSeconds\x12\x14\n" +
-	"\x05fault\x18\x04 \x01(\tR\x05fault\"\xc7\x02\n" +
+	"\x05fault\x18\x04 \x01(\tR\x05fault\"\x94\x02\n" +
 	"\x11GetStatusResponse\x12/\n" +
 	"\x05agent\x18\x01 \x01(\v2\x19.agent.v1.ComponentStatusR\x05agent\x121\n" +
-	"\x06server\x18\x02 \x01(\v2\x19.agent.v1.ComponentStatusR\x06server\x121\n" +
 	"\x06native\x18\x03 \x01(\v2\x19.agent.v1.ComponentStatusR\x06native\x12X\n" +
 	"\x0fartifact_counts\x18\x04 \x03(\v2/.agent.v1.GetStatusResponse.ArtifactCountsEntryR\x0eartifactCounts\x1aA\n" +
 	"\x13ArtifactCountsEntry\x12\x10\n" +
@@ -1045,31 +1036,30 @@ var file_agent_v1_agent_proto_depIdxs = []int32{
 	0,  // 6: agent.v1.ArtifactEvent.type:type_name -> agent.v1.EventType
 	20, // 7: agent.v1.ArtifactEvent.artifact:type_name -> artifact.v1.Artifact
 	14, // 8: agent.v1.GetStatusResponse.agent:type_name -> agent.v1.ComponentStatus
-	14, // 9: agent.v1.GetStatusResponse.server:type_name -> agent.v1.ComponentStatus
-	14, // 10: agent.v1.GetStatusResponse.native:type_name -> agent.v1.ComponentStatus
-	18, // 11: agent.v1.GetStatusResponse.artifact_counts:type_name -> agent.v1.GetStatusResponse.ArtifactCountsEntry
-	21, // 12: agent.v1.UpdateReminderRequest.due_date:type_name -> google.protobuf.Timestamp
-	1,  // 13: agent.v1.AgentService.ListArtifacts:input_type -> agent.v1.ListArtifactsRequest
-	3,  // 14: agent.v1.AgentService.GetArtifact:input_type -> agent.v1.GetArtifactRequest
-	5,  // 15: agent.v1.AgentService.MarkDone:input_type -> agent.v1.MarkDoneRequest
-	7,  // 16: agent.v1.AgentService.Search:input_type -> agent.v1.SearchRequest
-	9,  // 17: agent.v1.AgentService.Subscribe:input_type -> agent.v1.SubscribeRequest
-	11, // 18: agent.v1.AgentService.GetSystemTheme:input_type -> agent.v1.GetSystemThemeRequest
-	13, // 19: agent.v1.AgentService.GetStatus:input_type -> agent.v1.GetStatusRequest
-	16, // 20: agent.v1.AgentService.UpdateReminder:input_type -> agent.v1.UpdateReminderRequest
-	2,  // 21: agent.v1.AgentService.ListArtifacts:output_type -> agent.v1.ListArtifactsResponse
-	4,  // 22: agent.v1.AgentService.GetArtifact:output_type -> agent.v1.GetArtifactResponse
-	6,  // 23: agent.v1.AgentService.MarkDone:output_type -> agent.v1.MarkDoneResponse
-	8,  // 24: agent.v1.AgentService.Search:output_type -> agent.v1.SearchResponse
-	10, // 25: agent.v1.AgentService.Subscribe:output_type -> agent.v1.ArtifactEvent
-	12, // 26: agent.v1.AgentService.GetSystemTheme:output_type -> agent.v1.GetSystemThemeResponse
-	15, // 27: agent.v1.AgentService.GetStatus:output_type -> agent.v1.GetStatusResponse
-	17, // 28: agent.v1.AgentService.UpdateReminder:output_type -> agent.v1.UpdateReminderResponse
-	21, // [21:29] is the sub-list for method output_type
-	13, // [13:21] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	14, // 9: agent.v1.GetStatusResponse.native:type_name -> agent.v1.ComponentStatus
+	18, // 10: agent.v1.GetStatusResponse.artifact_counts:type_name -> agent.v1.GetStatusResponse.ArtifactCountsEntry
+	21, // 11: agent.v1.UpdateReminderRequest.due_date:type_name -> google.protobuf.Timestamp
+	1,  // 12: agent.v1.AgentService.ListArtifacts:input_type -> agent.v1.ListArtifactsRequest
+	3,  // 13: agent.v1.AgentService.GetArtifact:input_type -> agent.v1.GetArtifactRequest
+	5,  // 14: agent.v1.AgentService.MarkDone:input_type -> agent.v1.MarkDoneRequest
+	7,  // 15: agent.v1.AgentService.Search:input_type -> agent.v1.SearchRequest
+	9,  // 16: agent.v1.AgentService.Subscribe:input_type -> agent.v1.SubscribeRequest
+	11, // 17: agent.v1.AgentService.GetSystemTheme:input_type -> agent.v1.GetSystemThemeRequest
+	13, // 18: agent.v1.AgentService.GetStatus:input_type -> agent.v1.GetStatusRequest
+	16, // 19: agent.v1.AgentService.UpdateReminder:input_type -> agent.v1.UpdateReminderRequest
+	2,  // 20: agent.v1.AgentService.ListArtifacts:output_type -> agent.v1.ListArtifactsResponse
+	4,  // 21: agent.v1.AgentService.GetArtifact:output_type -> agent.v1.GetArtifactResponse
+	6,  // 22: agent.v1.AgentService.MarkDone:output_type -> agent.v1.MarkDoneResponse
+	8,  // 23: agent.v1.AgentService.Search:output_type -> agent.v1.SearchResponse
+	10, // 24: agent.v1.AgentService.Subscribe:output_type -> agent.v1.ArtifactEvent
+	12, // 25: agent.v1.AgentService.GetSystemTheme:output_type -> agent.v1.GetSystemThemeResponse
+	15, // 26: agent.v1.AgentService.GetStatus:output_type -> agent.v1.GetStatusResponse
+	17, // 27: agent.v1.AgentService.UpdateReminder:output_type -> agent.v1.UpdateReminderResponse
+	20, // [20:28] is the sub-list for method output_type
+	12, // [12:20] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_agent_v1_agent_proto_init() }

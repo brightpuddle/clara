@@ -169,13 +169,6 @@ struct Agent_V1_GetStatusResponse: Sendable {
   var hasAgent: Bool { _agent != nil }
   mutating func clearAgent() { _agent = nil }
 
-  var server: Agent_V1_ComponentStatus {
-    get { _server ?? Agent_V1_ComponentStatus() }
-    set { _server = newValue }
-  }
-  var hasServer: Bool { _server != nil }
-  mutating func clearServer() { _server = nil }
-
   var native: Agent_V1_ComponentStatus {
     get { _native ?? Agent_V1_ComponentStatus() }
     set { _native = newValue }
@@ -187,7 +180,6 @@ struct Agent_V1_GetStatusResponse: Sendable {
   var unknownFields = SwiftProtobuf.UnknownStorage()
   init() {}
   fileprivate var _agent: Agent_V1_ComponentStatus? = nil
-  fileprivate var _server: Agent_V1_ComponentStatus? = nil
   fileprivate var _native: Agent_V1_ComponentStatus? = nil
 }
 
@@ -617,7 +609,6 @@ extension Agent_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._Mess
   static let protoMessageName: String = _protobuf_package + ".GetStatusResponse"
   static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
     1: .same(proto: "agent"),
-    2: .same(proto: "server"),
     3: .same(proto: "native"),
     4: .standard(proto: "artifact_counts"),
   ]
@@ -626,7 +617,6 @@ extension Agent_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._Mess
     while let fieldNumber = try decoder.nextFieldNumber() {
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._agent) }()
-      case 2: try { try decoder.decodeSingularMessageField(value: &self._server) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._native) }()
       case 4: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString, SwiftProtobuf.ProtobufInt32>.self, value: &self.artifactCounts) }()
       default: break
@@ -636,7 +626,6 @@ extension Agent_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._Mess
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     try { if let v = self._agent { try visitor.visitSingularMessageField(value: v, fieldNumber: 1) } }()
-    try { if let v = self._server { try visitor.visitSingularMessageField(value: v, fieldNumber: 2) } }()
     try { if let v = self._native { try visitor.visitSingularMessageField(value: v, fieldNumber: 3) } }()
     if !self.artifactCounts.isEmpty {
       try visitor.visitMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString, SwiftProtobuf.ProtobufInt32>.self, value: self.artifactCounts, fieldNumber: 4)
@@ -646,7 +635,6 @@ extension Agent_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._Mess
 
   static func ==(lhs: Agent_V1_GetStatusResponse, rhs: Agent_V1_GetStatusResponse) -> Bool {
     if lhs._agent != rhs._agent { return false }
-    if lhs._server != rhs._server { return false }
     if lhs._native != rhs._native { return false }
     if lhs.artifactCounts != rhs.artifactCounts { return false }
     if lhs.unknownFields != rhs.unknownFields { return false }

@@ -50,18 +50,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	defer database.Close()
 
-	serverClient, serverConn, err := agentgrpc.DialServer(a.cfg.Server.Addr)
-	if err != nil {
-		a.logger.Warn().Err(err).Str("addr", a.cfg.Server.Addr).Msg("could not connect to server; operating without AI features")
-	}
-	if serverConn != nil {
-		defer serverConn.Close()
-	}
-
 	embedder := embedding.New(a.cfg.Ollama.URL, a.cfg.Ollama.EmbedModel)
-	ing := ingestor.New(database, embedder, serverClient, a.cfg.Integrations.Filesystem.IngestConcurrency, a.logger)
+	ing := ingestor.New(database, embedder, a.cfg.Integrations.Filesystem.IngestConcurrency, a.logger)
 
-	agentSrv := agentgrpc.NewAgentServer(database, serverClient, a.logger)
+	agentSrv := agentgrpc.NewAgentServer(database, a.logger)
 
 	// Native worker (optional).
 	if runtime.GOOS == "darwin" && a.cfg.NativeWorkerPath != "" {

@@ -16,14 +16,9 @@ type Config struct {
 	LogFile          string             `mapstructure:"log_file"`
 	LogLevel         string             `mapstructure:"log_level"`
 	NativeWorkerPath string             `mapstructure:"native_worker_path"`
-	Server           ServerConfig       `mapstructure:"server"`
 	Ollama           OllamaConfig       `mapstructure:"ollama"`
 	TUI              TUIConfig          `mapstructure:"tui"`
 	Integrations     IntegrationsConfig `mapstructure:"integrations"`
-}
-
-type ServerConfig struct {
-Addr string `mapstructure:"addr"`
 }
 
 type IntegrationsConfig struct {
@@ -70,7 +65,6 @@ v.SetDefault("data_dir", dataDir)
 v.SetDefault("log_level", "info")
 v.SetDefault("log_file", filepath.Join(dataDir, "logs", "clara.log"))
 v.SetDefault("native_worker_path", "")
-v.SetDefault("server.addr", "localhost:50051")
 
 v.SetDefault("ollama.url", "http://localhost:11434")
 v.SetDefault("ollama.embed_model", "nomic-embed-text")
@@ -165,9 +159,6 @@ content := strings.Join([]string{
 "# data_dir: " + dataDir,
 "# log_level: info",
 "# log_file: " + filepath.Join(dataDir, "logs", "clara.log"),
-"",
-"# server:",
-"#   addr: localhost:50051",
 "",
 "# integrations:",
 "#   filesystem:",

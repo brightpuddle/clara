@@ -107,7 +107,6 @@ message ComponentStatus {
 
 message GetStatusResponse {
   ComponentStatus          agent           = 1;
-  ComponentStatus          server          = 2;
   ComponentStatus          native          = 3;
   map<string, int32>       artifact_counts = 4;
 }

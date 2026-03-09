@@ -159,7 +159,6 @@ lines = append(lines, styles.Muted.Render(fmt.Sprintf("  %-10s %s", "", c.Fault)
 }
 }
 renderComp("agent", p.statusData.Agent)
-renderComp("server", p.statusData.Server)
 renderComp("native", p.statusData.Native)
 
 if len(p.statusData.ArtifactCounts) > 0 {

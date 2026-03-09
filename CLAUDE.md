@@ -77,6 +77,10 @@ make tidy
 │  │ File Watcher │  │ Reminders     │  │ Ingestor           │  │
 │  │ (fsnotify)   │  │ (via native)  │  │ (background queue) │  │
 │  └──────────────┘  └───────────────┘  └────────────────────┘  │
+│  ┌──────────────┐  ┌───────────────┐                          │
+│  │ SQLite +     │  │ Ollama        │                          │
+│  │ sqlite-vec   │  │ (embeddings)  │                          │
+│  └──────────────┘  └───────────────┘                          │
 └─────────────────────────────┬───────────────────────────────────┘
                               │ gRPC over Unix socket
                               ▼
@@ -88,39 +92,27 @@ make tidy
 │  │ (Reminders)   │  │ (mdfind)       │  │ (NSAppearance)  │  │
 │  └────────────────┘  └────────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
-
-      │ gRPC (TCP, can be remote)
-      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Server (Go)                              │
-│                  bin/clara-server (Go)                          │
-│  ┌──────────────┐  ┌───────────────┐  ┌────────────────────┐  │
-│  │ SQLite +      │  │ Ollama        │  │ gRPC Server        │  │
-│  │ sqlite-vec    │  │ (embeddings)  │  │                    │  │
-│  └──────────────┘  └───────────────┘  └────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
-- **Server** (`server/`): Vector embeddings, similarity search, LLM integration via Ollama
-- **Agent** (`agent/`): Local data access, file watching, background ingestion, connects to server for AI
+- **Agent** (`agent/`): Local data access, file watching, background ingestion; owns the SQLite+sqlite-vec database; calls Ollama directly for embeddings
 - **TUI** (`tui/`): Terminal interface using Bubble Tea - 3-pane layout (artifacts/related/detail)
 - **GUI** (`gui/`): Native macOS SwiftUI app - Apple Notes/Mail-style 3-column layout; connects to same agent socket
 - **Native** (`native/`): macOS-specific: Reminders via EventKit, Spotlight search, system theme detection
 
 ### Key Internal Packages
 
-- `internal/db/`: SQLite + sqlite-vec database operations
-- `internal/embedding/`: Ollama client for embeddings
+- `internal/db/`: SQLite + sqlite-vec database operations (artifacts, embeddings, kNN search)
+- `internal/embedding/`: Ollama HTTP client for generating embedding vectors
 - `internal/artifact/`: Universal artifact model (unified representation of files, reminders, notes)
 - `internal/config/`: Configuration loading from YAML + environment
 
 ### Communication Protocol
 
-- **TUI ↔ Agent**: gRPC over Unix Domain Socket (`~/.local/share/clara/agent.sock`)
-- **Agent ↔ Server**: gRPC over TCP (`localhost:50051`) - server can run remotely
+- **TUI/GUI ↔ Agent**: gRPC over Unix Domain Socket (`~/.local/share/clara/agent.sock`)
 - **Agent ↔ Native Worker**: gRPC over Unix Domain Socket (`~/.local/share/clara/native.sock`)
+- **Agent ↔ Ollama**: HTTP REST (`http://localhost:11434` by default)
 
 ## Configuration
 

@@ -1,7 +1,6 @@
 .DEFAULT_GOAL := help
 
 BINARY_DIR    := bin
-SERVER_BIN    := $(BINARY_DIR)/clara-server
 AGENT_BIN     := $(BINARY_DIR)/clara-agent
 TUI_BIN       := $(BINARY_DIR)/clara-tui
 
@@ -32,13 +31,12 @@ proto: ## Generate gRPC/protobuf Go stubs from .proto files
 .PHONY: build
 build: proto ## Compile all Go binaries
 	@mkdir -p $(BINARY_DIR)
-	$(GO) build -o $(SERVER_BIN) ./cmd/server
 	$(GO) build -o $(AGENT_BIN)  ./cmd/agent
 	$(GO) build -o $(TUI_BIN)    ./cmd/tui
-	@echo "Built: $(SERVER_BIN), $(AGENT_BIN), $(TUI_BIN)"
+	@echo "Built: $(AGENT_BIN), $(TUI_BIN)"
 
 .PHONY: dev
-dev: ## Start server, agent, and native worker via goreman (no file watching)
+dev: ## Start agent and native worker via goreman (no file watching)
 	$(GOREMAN) start
 
 .PHONY: watch

@@ -19,3 +19,4 @@ native/*.resolved
 # Config (user-specific)
 config.local.yaml
 .aider*
+gui/.build/

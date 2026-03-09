@@ -9,39 +9,36 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
 
 	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
-	serverv1 "github.com/brightpuddle/clara/gen/server/v1"
 	"github.com/brightpuddle/clara/agent/watcher"
 	"github.com/brightpuddle/clara/internal/artifact"
 	"github.com/brightpuddle/clara/internal/db"
 	"github.com/brightpuddle/clara/internal/embedding"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
 const maxFileSize = 1 << 20 // 1 MiB - skip larger files
 
 // Ingestor reads file events, extracts text, generates embeddings,
-// and stores artifacts on the server.
+// and stores artifacts directly in the local database.
 type Ingestor struct {
-	localDB     *db.DB // agent database for immediate storage (may be nil)
+	db          *db.DB
 	embedder    *embedding.Client
-	serverConn  serverv1.ServerServiceClient
 	concurrency int
 	logger      zerolog.Logger
 	notifyCh    chan *artifactv1.Artifact // notifies subscribers of new artifacts
 }
 
 // New creates a new Ingestor.
-func New(localDB *db.DB, embedder *embedding.Client, serverConn serverv1.ServerServiceClient, concurrency int, logger zerolog.Logger) *Ingestor {
+func New(database *db.DB, embedder *embedding.Client, concurrency int, logger zerolog.Logger) *Ingestor {
 	if concurrency <= 0 {
 		concurrency = 4
 	}
 	return &Ingestor{
-		localDB:     localDB,
+		db:          database,
 		embedder:    embedder,
-		serverConn:  serverConn,
 		concurrency: concurrency,
 		logger:      logger,
 		notifyCh:    make(chan *artifactv1.Artifact, 64),
@@ -173,47 +170,32 @@ func (ing *Ingestor) processFile(ctx context.Context, path string) {
 	a.CreatedAt = timestamppb.New(info.ModTime())
 	a.UpdatedAt = timestamppb.New(now)
 
-	// Immediately store in agent DB so the TUI can display it right away.
-	if ing.localDB != nil {
-		if err := ing.localDB.UpsertArtifact(ctx, a); err != nil {
-			log.Warn().Err(err).Msg("write to local db")
-		} else {
-			select {
-			case ing.notifyCh <- a:
-			default:
-			}
-		}
+	// Store artifact immediately so the UI can display it right away.
+	if err := ing.db.UpsertArtifact(ctx, a); err != nil {
+		log.Warn().Err(err).Msg("write to db")
+		return
+	}
+	select {
+	case ing.notifyCh <- a:
+	default:
 	}
 
-	// Generate embedding.
+	// Generate and store embedding asynchronously (best-effort).
 	embedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	vec, err := ing.embedder.Embed(embedCtx, truncate(text, 4096))
 	if err != nil {
-		log.Warn().Err(err).Msg("embed failed; storing without embedding")
+		log.Warn().Err(err).Msg("embed failed; artifact stored without embedding")
+		return
 	}
 
-	// Store on server.
-	storeCtx, cancel2 := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel2()
-
-	req := &serverv1.StoreArtifactRequest{
-		Artifact:  a,
-		Embedding: vec,
-	}
-	_, err = ing.serverConn.StoreArtifact(storeCtx, req)
-	if err != nil {
-		log.Error().Err(errors.Wrap(err, "store artifact")).Msg("ingest failed")
+	if err := ing.db.UpsertEmbedding(ctx, a.Id, vec); err != nil {
+		log.Warn().Err(err).Msg("store embedding")
 		return
 	}
 
 	log.Info().Str("id", a.Id).Str("title", title).Float64("heat", a.HeatScore).Msg("ingested artifact")
-
-	select {
-	case ing.notifyCh <- a:
-	default: // drop notification if channel is full
-	}
 }
 
 // isTextFile returns true for text-like file extensions.

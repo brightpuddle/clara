@@ -18,7 +18,6 @@ import (
 	agentv1 "github.com/brightpuddle/clara/gen/agent/v1"
 	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
 	nativev1 "github.com/brightpuddle/clara/gen/native/v1"
-	serverv1 "github.com/brightpuddle/clara/gen/server/v1"
 	"github.com/brightpuddle/clara/internal/db"
 )
 
@@ -28,23 +27,21 @@ type taskwarriorWorker interface {
 
 type AgentServer struct {
 	agentv1.UnimplementedAgentServiceServer
-	db               *db.DB
-	serverClient     serverv1.ServerServiceClient
-	nativeClient     nativev1.NativeWorkerServiceClient
+	db                *db.DB
+	nativeClient      nativev1.NativeWorkerServiceClient
 	taskwarriorWorker taskwarriorWorker
-	startedAt        time.Time
-	mu              sync.RWMutex
-	subscribers     map[chan *agentv1.ArtifactEvent]struct{}
-	logger          zerolog.Logger
+	startedAt         time.Time
+	mu                sync.RWMutex
+	subscribers       map[chan *agentv1.ArtifactEvent]struct{}
+	logger            zerolog.Logger
 }
 
-func NewAgentServer(database *db.DB, serverClient serverv1.ServerServiceClient, logger zerolog.Logger) *AgentServer {
+func NewAgentServer(database *db.DB, logger zerolog.Logger) *AgentServer {
 	return &AgentServer{
-		db:           database,
-		serverClient: serverClient,
-		subscribers:  make(map[chan *agentv1.ArtifactEvent]struct{}),
-		logger:       logger,
-		startedAt:    time.Now(),
+		db:          database,
+		subscribers: make(map[chan *agentv1.ArtifactEvent]struct{}),
+		logger:      logger,
+		startedAt:   time.Now(),
 	}
 }
 
@@ -71,18 +68,19 @@ func (s *AgentServer) GetArtifact(ctx context.Context, req *agentv1.GetArtifactR
 	if err != nil {
 		return nil, status.Errorf(codes.NotFound, "artifact %s: %v", req.Id, errors.UnwrapAll(err))
 	}
+
+	// Find related artifacts via vector similarity (best-effort; silently skipped if no embedding).
 	var related []*artifactv1.Artifact
-	if s.serverClient != nil {
-		relResp, err := s.serverClient.GetRelated(ctx, &serverv1.GetRelatedRequest{
-			ArtifactId: req.Id,
-			K:          10,
-		})
-		if err == nil {
-			for _, r := range relResp.Results {
-				related = append(related, r.Artifact)
+	if vec, err := s.db.GetEmbedding(ctx, req.Id); err == nil {
+		if knnResults, err := s.db.KNNSearch(ctx, vec, 10, req.Id); err == nil {
+			for _, r := range knnResults {
+				if ra, err := s.db.GetArtifact(ctx, r.ArtifactID); err == nil {
+					related = append(related, ra)
+				}
 			}
 		}
 	}
+
 	return &agentv1.GetArtifactResponse{Artifact: a, Related: related}, nil
 }
 
@@ -168,12 +166,6 @@ func (s *AgentServer) GetStatus(ctx context.Context, _ *agentv1.GetStatusRequest
 		UptimeSeconds: uptime,
 	}
 
-	serverStatus := &agentv1.ComponentStatus{State: "disconnected"}
-	if s.serverClient != nil {
-		serverStatus.Connected = true
-		serverStatus.State = "running"
-	}
-
 	nativeStatus := &agentv1.ComponentStatus{State: "disconnected"}
 	if s.nativeClient != nil {
 		nativeStatus.Connected = true
@@ -197,7 +189,6 @@ func (s *AgentServer) GetStatus(ctx context.Context, _ *agentv1.GetStatusRequest
 
 	return &agentv1.GetStatusResponse{
 		Agent:          agentStatus,
-		Server:         serverStatus,
 		Native:         nativeStatus,
 		ArtifactCounts: counts,
 	}, nil
@@ -244,14 +235,6 @@ func (s *AgentServer) removeSubscriber(ch chan *agentv1.ArtifactEvent) {
 	delete(s.subscribers, ch)
 	close(ch)
 	s.mu.Unlock()
-}
-
-func DialServer(addr string) (serverv1.ServerServiceClient, *grpc.ClientConn, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "dial server")
-	}
-	return serverv1.NewServerServiceClient(conn), conn, nil
 }
 
 func DialNative(socketPath string) (nativev1.NativeWorkerServiceClient, *grpc.ClientConn, error) {
