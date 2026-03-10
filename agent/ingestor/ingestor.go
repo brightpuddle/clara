@@ -11,8 +11,8 @@ import (
 
 	"github.com/rs/zerolog"
 
-	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
 	"github.com/brightpuddle/clara/agent/watcher"
+	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
 	"github.com/brightpuddle/clara/internal/artifact"
 	"github.com/brightpuddle/clara/internal/db"
 	"github.com/brightpuddle/clara/internal/embedding"
@@ -32,7 +32,12 @@ type Ingestor struct {
 }
 
 // New creates a new Ingestor.
-func New(database *db.DB, embedder *embedding.Client, concurrency int, logger zerolog.Logger) *Ingestor {
+func New(
+	database *db.DB,
+	embedder *embedding.Client,
+	concurrency int,
+	logger zerolog.Logger,
+) *Ingestor {
 	if concurrency <= 0 {
 		concurrency = 4
 	}
@@ -284,7 +289,11 @@ func (ing *Ingestor) processFile(ctx context.Context, path string) {
 		return
 	}
 
-	log.Info().Str("id", a.Id).Str("title", title).Float64("heat", a.HeatScore).Msg("ingested artifact")
+	log.Info().
+		Str("id", a.Id).
+		Str("title", title).
+		Float64("heat", a.HeatScore).
+		Msg("ingested artifact")
 }
 
 // isTextFile returns true for text-like file extensions.

@@ -264,7 +264,7 @@ func (p *ArtifactsPane) View() string {
 
 	titleStr := fmt.Sprintf("%s (%d)", title, len(p.filtered))
 
-	innerW := p.width - 4 // account for border+padding
+	innerW := p.width - 4  // account for border+padding
 	innerH := p.height - 3 // account for border (no header row)
 	if innerH < 1 {
 		innerH = 1

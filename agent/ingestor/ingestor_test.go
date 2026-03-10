@@ -61,9 +61,9 @@ func TestIsTextFile_CaseInsensitive(t *testing.T) {
 
 func TestTruncate(t *testing.T) {
 	tests := []struct {
-		input   string
-		max     int
-		want    string
+		input string
+		max   int
+		want  string
 	}{
 		{"hello", 10, "hello"},
 		{"hello world", 5, "hello"},

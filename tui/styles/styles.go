@@ -11,10 +11,10 @@ import (
 
 // Active color palette — updated by SetTheme.
 var (
-	ColorBg            lipgloss.Color
-	ColorFg            lipgloss.Color
-	ColorMuted         lipgloss.Color
-	ColorBorderActive  lipgloss.Color // focused pane border
+	ColorBg             lipgloss.Color
+	ColorFg             lipgloss.Color
+	ColorMuted          lipgloss.Color
+	ColorBorderActive   lipgloss.Color // focused pane border
 	ColorBorderInactive lipgloss.Color // unfocused pane border
 
 	// Heat gradient: low → urgent.
@@ -72,29 +72,29 @@ func SetTheme(t *bubbletint.Tint) {
 // applyNative sets all colors to ANSI 16-color terminal values.
 // These render correctly in any terminal regardless of color scheme.
 func applyNative() {
-	ColorBg             = lipgloss.Color("0")
-	ColorFg             = lipgloss.Color("15")
-	ColorMuted          = lipgloss.Color("8")   // bright black / dark gray
-	ColorBorderActive   = lipgloss.Color("2")   // green
-	ColorBorderInactive = lipgloss.Color("7")   // white
-	ColorHelpBg         = lipgloss.Color("0")   // black
-	ColorHelpFg         = lipgloss.Color("15")  // fg
-	ColorItemActiveBg   = lipgloss.Color("6")   // cyan
+	ColorBg = lipgloss.Color("0")
+	ColorFg = lipgloss.Color("15")
+	ColorMuted = lipgloss.Color("8")          // bright black / dark gray
+	ColorBorderActive = lipgloss.Color("2")   // green
+	ColorBorderInactive = lipgloss.Color("7") // white
+	ColorHelpBg = lipgloss.Color("0")         // black
+	ColorHelpFg = lipgloss.Color("15")        // fg
+	ColorItemActiveBg = lipgloss.Color("6")   // cyan
 
 	// Heat: green → yellow → orange (256) → red
-	ColorHeatLow    = lipgloss.Color("2")
-	ColorHeatMed    = lipgloss.Color("3")
-	ColorHeatHigh   = lipgloss.Color("214")
+	ColorHeatLow = lipgloss.Color("2")
+	ColorHeatMed = lipgloss.Color("3")
+	ColorHeatHigh = lipgloss.Color("214")
 	ColorHeatUrgent = lipgloss.Color("1")
 
 	// Kinds
-	ColorReminder   = lipgloss.Color("1")   // red
-	ColorNote       = lipgloss.Color("2")   // green
-	ColorFile       = lipgloss.Color("4")   // blue
-	ColorEmail      = lipgloss.Color("5")   // magenta
-	ColorBookmark   = lipgloss.Color("3")   // yellow
-	ColorLog        = lipgloss.Color("214") // orange
-	ColorSuggestion = lipgloss.Color("6")   // cyan
+	ColorReminder = lipgloss.Color("1")   // red
+	ColorNote = lipgloss.Color("2")       // green
+	ColorFile = lipgloss.Color("4")       // blue
+	ColorEmail = lipgloss.Color("5")      // magenta
+	ColorBookmark = lipgloss.Color("3")   // yellow
+	ColorLog = lipgloss.Color("214")      // orange
+	ColorSuggestion = lipgloss.Color("6") // cyan
 }
 
 // fromTint converts a *bubbletint.Color to lipgloss.Color, falling back to
@@ -108,26 +108,26 @@ func fromTint(c *bubbletint.Color, ansiIndex string) lipgloss.Color {
 
 // applyTint maps a bubbletint palette onto our color vars.
 func applyTint(t *bubbletint.Tint) {
-	ColorBg             = fromTint(t.Bg, "0")
-	ColorFg             = fromTint(t.Fg, "15")
-	ColorMuted          = fromTint(t.BrightBlack, "8")
-	ColorBorderActive   = fromTint(t.Green, "2")
+	ColorBg = fromTint(t.Bg, "0")
+	ColorFg = fromTint(t.Fg, "15")
+	ColorMuted = fromTint(t.BrightBlack, "8")
+	ColorBorderActive = fromTint(t.Green, "2")
 	ColorBorderInactive = fromTint(t.White, "7")
-	ColorHelpBg         = fromTint(t.Black, "0")
-	ColorHelpFg         = fromTint(t.Fg, "15")
-	ColorItemActiveBg   = fromTint(t.Cyan, "6")
+	ColorHelpBg = fromTint(t.Black, "0")
+	ColorHelpFg = fromTint(t.Fg, "15")
+	ColorItemActiveBg = fromTint(t.Cyan, "6")
 
-	ColorHeatLow    = fromTint(t.Green, "2")
-	ColorHeatMed    = fromTint(t.Yellow, "3")
-	ColorHeatHigh   = fromTint(t.BrightYellow, "214")
+	ColorHeatLow = fromTint(t.Green, "2")
+	ColorHeatMed = fromTint(t.Yellow, "3")
+	ColorHeatHigh = fromTint(t.BrightYellow, "214")
 	ColorHeatUrgent = fromTint(t.Red, "1")
 
-	ColorReminder   = fromTint(t.Red, "1")
-	ColorNote       = fromTint(t.Green, "2")
-	ColorFile       = fromTint(t.Blue, "4")
-	ColorEmail      = fromTint(t.Purple, "5")
-	ColorBookmark   = fromTint(t.Yellow, "3")
-	ColorLog        = fromTint(t.BrightYellow, "214")
+	ColorReminder = fromTint(t.Red, "1")
+	ColorNote = fromTint(t.Green, "2")
+	ColorFile = fromTint(t.Blue, "4")
+	ColorEmail = fromTint(t.Purple, "5")
+	ColorBookmark = fromTint(t.Yellow, "3")
+	ColorLog = fromTint(t.BrightYellow, "214")
 	ColorSuggestion = fromTint(t.Cyan, "6")
 }
 
@@ -251,4 +251,3 @@ func HeatBar(score float64) string {
 	}
 	return lipgloss.NewStyle().Foreground(color).Render(bar)
 }
-

@@ -3,8 +3,8 @@ package panes
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	artifactv1 "github.com/brightpuddle/clara/gen/artifact/v1"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func makeArtifact(id, title string) *artifactv1.Artifact {

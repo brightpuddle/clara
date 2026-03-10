@@ -47,8 +47,8 @@ type ComponentStatus struct {
 
 // Status is the frontend-facing status struct.
 type Status struct {
-	Agent          ComponentStatus `json:"agent"`
-	Native         ComponentStatus `json:"native"`
+	Agent          ComponentStatus  `json:"agent"`
+	Native         ComponentStatus  `json:"native"`
 	ArtifactCounts map[string]int32 `json:"artifact_counts"`
 }
 
@@ -376,4 +376,3 @@ func homeDir() string {
 	}
 	return "/tmp"
 }
-

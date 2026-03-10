@@ -187,12 +187,12 @@ func (db *DB) LogOp(ctx context.Context, opType, artifactID string, payload any)
 func scanArtifact(row *sql.Row) (*artifactv1.Artifact, error) {
 	var (
 		id, title, content, sourcePath, sourceApp string
-		kind                                       int
-		heatScore                                  float64
-		done                                       int
-		tagsJSON, metaJSON                         string
-		createdAt, updatedAt                       int64
-		dueAt                                      sql.NullInt64
+		kind                                      int
+		heatScore                                 float64
+		done                                      int
+		tagsJSON, metaJSON                        string
+		createdAt, updatedAt                      int64
+		dueAt                                     sql.NullInt64
 	)
 	err := row.Scan(&id, &kind, &title, &content, &sourcePath, &sourceApp,
 		&heatScore, &done, &tagsJSON, &metaJSON, &createdAt, &updatedAt, &dueAt)
@@ -206,12 +206,12 @@ func scanArtifact(row *sql.Row) (*artifactv1.Artifact, error) {
 func scanArtifactRow(rows *sql.Rows) (*artifactv1.Artifact, error) {
 	var (
 		id, title, content, sourcePath, sourceApp string
-		kind                                       int
-		heatScore                                  float64
-		done                                       int
-		tagsJSON, metaJSON                         string
-		createdAt, updatedAt                       int64
-		dueAt                                      sql.NullInt64
+		kind                                      int
+		heatScore                                 float64
+		done                                      int
+		tagsJSON, metaJSON                        string
+		createdAt, updatedAt                      int64
+		dueAt                                     sql.NullInt64
 	)
 	err := rows.Scan(&id, &kind, &title, &content, &sourcePath, &sourceApp,
 		&heatScore, &done, &tagsJSON, &metaJSON, &createdAt, &updatedAt, &dueAt)

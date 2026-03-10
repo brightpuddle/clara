@@ -148,13 +148,13 @@ func TestCosineDistance(t *testing.T) {
 		a, b []float32
 		want float64
 	}{
-		{[]float32{1, 0}, []float32{1, 0}, 0.0},         // identical → distance 0
-		{[]float32{1, 0}, []float32{0, 1}, 1.0},         // orthogonal → distance 1
-		{[]float32{1, 0}, []float32{-1, 0}, 2.0},        // opposite → distance 2
-		{[]float32{1, 1}, []float32{1, 1}, 0.0},         // identical → distance 0
-		{nil, []float32{1, 0}, 1.0},                     // nil → max distance
-		{[]float32{}, []float32{}, 1.0},                  // empty → max distance
-		{[]float32{0, 0}, []float32{1, 0}, 1.0},         // zero vector → max distance
+		{[]float32{1, 0}, []float32{1, 0}, 0.0},  // identical → distance 0
+		{[]float32{1, 0}, []float32{0, 1}, 1.0},  // orthogonal → distance 1
+		{[]float32{1, 0}, []float32{-1, 0}, 2.0}, // opposite → distance 2
+		{[]float32{1, 1}, []float32{1, 1}, 0.0},  // identical → distance 0
+		{nil, []float32{1, 0}, 1.0},              // nil → max distance
+		{[]float32{}, []float32{}, 1.0},          // empty → max distance
+		{[]float32{0, 0}, []float32{1, 0}, 1.0},  // zero vector → max distance
 	}
 	for _, tc := range tests {
 		got := cosineDistance(tc.a, tc.b)
