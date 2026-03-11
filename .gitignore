@@ -1,0 +1,27 @@
+# Binaries
+clarad
+clara
+ClaraBridge
+
+# Build artifacts
+dist/
+*.test
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Swift build
+swift/.build/
+swift/*.resolved
+
+# Config (never commit real credentials)
+config.yaml
+
+# Logs
+*.log

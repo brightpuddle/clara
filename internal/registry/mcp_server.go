@@ -1,0 +1,106 @@
+// Package registry: MCPServer manages the lifecycle of a single stdio-based
+// MCP server subprocess and registers its tools in the Registry.
+package registry
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"github.com/cockroachdb/errors"
+	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/rs/zerolog"
+)
+
+// MCPServer manages a single stdio-based MCP server subprocess.
+type MCPServer struct {
+	name    string
+	command string
+	args    []string
+	env     []string // KEY=VALUE pairs injected into the subprocess
+	log     zerolog.Logger
+
+	mcpClient *client.Client
+}
+
+// NewMCPServer creates an MCPServer descriptor. Call Start to launch it.
+func NewMCPServer(name, command string, args []string, env map[string]string, log zerolog.Logger) *MCPServer {
+	envPairs := os.Environ()
+	for k, v := range env {
+		envPairs = append(envPairs, fmt.Sprintf("%s=%s", k, v))
+	}
+	return &MCPServer{
+		name:    name,
+		command: command,
+		args:    args,
+		env:     envPairs,
+		log:     log.With().Str("mcp_server", name).Logger(),
+	}
+}
+
+// Start launches the subprocess, negotiates the MCP handshake, discovers
+// available tools, and registers them in r.
+func (s *MCPServer) Start(ctx context.Context, r *Registry) error {
+	c, err := client.NewStdioMCPClient(s.command, s.env, s.args...)
+	if err != nil {
+		return errors.Wrap(err, "create stdio MCP client")
+	}
+	s.mcpClient = c
+
+	if err := c.Start(ctx); err != nil {
+		return errors.Wrap(err, "start MCP subprocess")
+	}
+
+	initReq := mcp.InitializeRequest{}
+	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initReq.Params.ClientInfo = mcp.Implementation{
+		Name:    "clara",
+		Version: "0.1.0",
+	}
+	if _, err := c.Initialize(ctx, initReq); err != nil {
+		return errors.Wrap(err, "MCP initialize handshake")
+	}
+
+	if err := s.registerTools(ctx, r); err != nil {
+		return errors.Wrap(err, "register MCP tools")
+	}
+
+	s.log.Info().Msg("MCP server started")
+	return nil
+}
+
+// Stop terminates the MCP subprocess.
+func (s *MCPServer) Stop() {
+	if s.mcpClient != nil {
+		s.mcpClient.Close()
+		s.log.Info().Msg("MCP server stopped")
+	}
+}
+
+func (s *MCPServer) registerTools(ctx context.Context, r *Registry) error {
+	result, err := s.mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+	if err != nil {
+		return errors.Wrap(err, "list tools")
+	}
+
+	for _, tool := range result.Tools {
+		toolName := s.name + "." + tool.Name
+		// Capture variables for the closure.
+		mcpClient := s.mcpClient
+		mcpToolName := tool.Name
+		r.Register(toolName, func(ctx context.Context, args map[string]any) (any, error) {
+			req := mcp.CallToolRequest{}
+			req.Params.Name = mcpToolName
+			req.Params.Arguments = args
+			res, err := mcpClient.CallTool(ctx, req)
+			if err != nil {
+				return nil, errors.Wrapf(err, "call MCP tool %q", mcpToolName)
+			}
+			return res, nil
+		})
+	}
+
+	s.log.Info().Int("count", len(result.Tools)).Msg("tools registered from MCP server")
+	return nil
+}

@@ -1,0 +1,43 @@
+# Clara Configuration Example
+#
+# Copy to ~/.config/clara/config.yaml and customize.
+# String values support ${ENV_VAR} expansion.
+
+# Log level: trace, debug, info, warn, error (default: info)
+log_level: info
+
+# Override the default runtime data directory
+# (default: ~/.local/share/clara)
+# data_dir: /custom/path/clara
+
+# MCP servers managed by the Clara daemon.
+# Each entry is a stdio-based subprocess.
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "${HOME}/Documents"
+
+  - name: taskwarrior
+    command: uvx
+    args:
+      - mcp-taskwarrior
+
+  - name: openai-embedder
+    command: uvx
+    args:
+      - mcp-nomic-embed
+    env:
+      NOMIC_API_KEY: ${NOMIC_API_KEY}
+
+# Swift native bridge (EventKit, CoreSpotlight, FileSystem events)
+bridge:
+  path: /usr/local/bin/ClaraBridge
+  # socket_path: ~/.local/share/clara/bridge.sock  # default
+
+# LLM used to convert Markdown intent files → Blueprint JSON
+llm:
+  provider: openai-embedder  # references an mcp_servers entry
+  model: gpt-4o
