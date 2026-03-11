@@ -75,22 +75,35 @@ func (s *Store) DB() *sql.DB {
 }
 
 // migrate creates the base schema if it does not exist.
+// If the legacy blueprint_runs table exists, its data is migrated to intent_runs.
 func (s *Store) migrate() error {
+	// Create new schema.
 	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS blueprint_runs (
-			id          TEXT    NOT NULL,
-			blueprint_id TEXT   NOT NULL,
-			state        TEXT   NOT NULL,
-			mem_json     TEXT   NOT NULL DEFAULT '{}',
-			started_at   INTEGER NOT NULL DEFAULT (unixepoch()),
-			updated_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+		CREATE TABLE IF NOT EXISTS intent_runs (
+			id         TEXT    NOT NULL,
+			intent_id  TEXT    NOT NULL,
+			state      TEXT    NOT NULL,
+			mem_json   TEXT    NOT NULL DEFAULT '{}',
+			started_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
 			PRIMARY KEY (id)
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_blueprint_runs_blueprint_id
-			ON blueprint_runs(blueprint_id);
+		CREATE INDEX IF NOT EXISTS idx_intent_runs_intent_id
+			ON intent_runs(intent_id);
 	`)
-	return errors.Wrap(err, "create schema")
+	if err != nil {
+		return errors.Wrap(err, "create schema")
+	}
+
+	// Migrate data from the legacy blueprint_runs table if it exists.
+	_, _ = s.db.Exec(`
+		INSERT OR IGNORE INTO intent_runs (id, intent_id, state, mem_json, started_at, updated_at)
+		SELECT id, blueprint_id, state, mem_json, started_at, updated_at FROM blueprint_runs
+	`)
+	_, _ = s.db.Exec(`DROP TABLE IF EXISTS blueprint_runs`)
+
+	return nil
 }
 
 // QueryTool returns a registry Tool that executes a read SQL query.
@@ -199,21 +212,21 @@ func (s *Store) VecSearchTool() func(ctx context.Context, args map[string]any) (
 	}
 }
 
-// SaveRunState persists the current execution state of a blueprint run to
+// SaveRunState persists the current execution state of an intent run to
 // survive daemon restarts.
-func (s *Store) SaveRunState(ctx context.Context, runID, blueprintID, state string, mem map[string]any) error {
+func (s *Store) SaveRunState(ctx context.Context, runID, intentID, state string, mem map[string]any) error {
 	memJSON, err := json.Marshal(mem)
 	if err != nil {
 		return errors.Wrap(err, "marshal mem")
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO blueprint_runs (id, blueprint_id, state, mem_json, updated_at)
+		INSERT INTO intent_runs (id, intent_id, state, mem_json, updated_at)
 		VALUES (?, ?, ?, ?, unixepoch())
 		ON CONFLICT(id) DO UPDATE SET
 			state      = excluded.state,
 			mem_json   = excluded.mem_json,
 			updated_at = unixepoch()
-	`, runID, blueprintID, state, string(memJSON))
+	`, runID, intentID, state, string(memJSON))
 	return errors.Wrap(err, "save run state")
 }
 
@@ -221,7 +234,7 @@ func (s *Store) SaveRunState(ctx context.Context, runID, blueprintID, state stri
 // Returns ("", nil, nil) if the run does not exist.
 func (s *Store) LoadRunState(ctx context.Context, runID string) (state string, mem map[string]any, err error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT state, mem_json FROM blueprint_runs WHERE id = ?`, runID,
+		`SELECT state, mem_json FROM intent_runs WHERE id = ?`, runID,
 	)
 	var memJSON string
 	if err = row.Scan(&state, &memJSON); err != nil {

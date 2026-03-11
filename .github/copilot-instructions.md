@@ -5,7 +5,7 @@
 **Clara** (`github.com/brightpuddle/clara`) is a local-first agentic orchestrator for macOS. It is a background daemon written in Go that:
 
 1. Proxies and aggregates MCP (Model Context Protocol) servers into a unified tool registry.
-2. Executes declarative **Blueprints** — JSON state machines authored by an LLM from natural-language Markdown intent files — using a safe, inspectable interpreter.
+2. Executes declarative **Intents** — JSON state machines authored by an LLM from natural-language Markdown intent files — using a safe, inspectable interpreter.
 3. Provides a native macOS capability bridge via a separate Swift binary communicating over gRPC/Unix Domain Socket (EventKit, FileSystem events, CoreSpotlight).
 4. Persists task state and vector embeddings in a CGO-free SQLite instance (with `sqlite-vec`).
 5. Exposes a `cobra`-based CLI (`clara`) for daemon control and introspection.
@@ -29,10 +29,10 @@ github.com/brightpuddle/clara/
 │   └── clara/           # CLI binary entry point
 ├── internal/
 │   ├── config/          # Config loader (config.yaml + os.ExpandEnv)
-│   ├── orchestrator/    # Blueprint, State, Transition structs (core domain types)
+│   ├── orchestrator/    # Intent, State, Transition structs (core domain types)
 │   ├── registry/        # Tool registry: MCP client management + Swift bridge wrapper
 │   ├── interpreter/     # State machine Execute loop (expr-lang/expr conditions)
-│   ├── supervisor/      # File watcher + LLM→Blueprint conversion + lifecycle management
+│   ├── supervisor/      # File watcher + LLM→Intent conversion + lifecycle management
 │   └── bridge/          # gRPC client for the Swift native bridge
 ├── proto/
 │   └── bridge.proto     # BridgeService protobuf definition
@@ -97,7 +97,7 @@ github.com/brightpuddle/clara/
 
 - Use `github.com/rs/zerolog` for all structured logging.
 - Log levels: `Trace` (verbose debug), `Debug`, `Info`, `Warn`, `Error`, `Fatal`.
-- Always include contextual fields (e.g. `blueprint_id`, `state`, `tool`) in log events — not just a message string.
+- Always include contextual fields (e.g. `intent_id`, `state`, `tool`) in log events — not just a message string.
 - The daemon runs as a background process; log to a file by default, with an option to log to stderr for development.
 
 ---
@@ -141,7 +141,7 @@ github.com/brightpuddle/clara/
 - 100% test coverage is **not** a goal, but critical code paths must have good test coverage. Focus on:
   - `internal/interpreter`: the `Execute` loop, transition evaluation, `Wait` mechanism.
   - `internal/config`: config loading and env var expansion.
-  - `internal/orchestrator`: Blueprint and State struct validation.
+  - `internal/orchestrator`: Intent and State struct validation.
   - `internal/registry`: tool registration and dispatch.
 - Use Go's standard `testing` package. Prefer table-driven tests.
 - Use `testify` (`github.com/stretchr/testify`) only if it meaningfully reduces boilerplate; the standard library is preferred.
@@ -149,9 +149,9 @@ github.com/brightpuddle/clara/
 
 ---
 
-## The Blueprint Schema
+## The Intent Schema
 
-A **Blueprint** is a JSON document representing a state machine. The Go daemon is the interpreter; the LLM is only ever the author.
+An **Intent** is a JSON document representing a state machine. The Go daemon is the interpreter; the LLM is only ever the author.
 
 ```json
 {
@@ -188,11 +188,12 @@ A **Blueprint** is a JSON document representing a state machine. The Go daemon i
 
 | Command | Description |
 |---|---|
-| `clara start` | Start the daemon |
-| `clara stop` | Stop the daemon |
-| `clara status` | Show daemon status and active blueprints |
-| `clara list` | List all registered blueprints |
-| `clara run <id>` | Manually trigger a blueprint by ID |
+| `clara agent start` | Start the agent |
+| `clara agent stop` | Stop the agent |
+| `clara agent status` | Show agent status and active intents |
+| `clara intent list` | List all active intents |
+| `clara intent run <id>` | Manually trigger an intent by ID |
+| `clara tool list` | List all registered tools |
 
 CLI is implemented with `github.com/alecthomas/kong`.
 

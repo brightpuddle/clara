@@ -85,7 +85,7 @@ func TestStore_SaveAndLoadRunState(t *testing.T) {
 	ctx := context.Background()
 
 	mem := map[string]any{"count": 3, "status": "ok"}
-	if err := s.SaveRunState(ctx, "run-1", "bp-1", "RECONCILE", mem); err != nil {
+	if err := s.SaveRunState(ctx, "run-1", "intent-1", "RECONCILE", mem); err != nil {
 		t.Fatalf("SaveRunState: %v", err)
 	}
 
@@ -116,8 +116,8 @@ func TestStore_SaveRunState_Upsert(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	s.SaveRunState(ctx, "run-2", "bp-1", "START", nil) //nolint:errcheck
-	s.SaveRunState(ctx, "run-2", "bp-1", "END", map[string]any{"done": true}) //nolint:errcheck
+	s.SaveRunState(ctx, "run-2", "intent-1", "START", nil) //nolint:errcheck
+	s.SaveRunState(ctx, "run-2", "intent-1", "END", map[string]any{"done": true}) //nolint:errcheck
 
 	state, mem, err := s.LoadRunState(ctx, "run-2")
 	if err != nil {

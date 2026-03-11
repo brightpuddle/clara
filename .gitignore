@@ -1,7 +1,7 @@
 # Binaries
-clarad
-clara
-ClaraBridge
+/clarad
+/clara
+/ClaraBridge
 
 # Build artifacts
 dist/

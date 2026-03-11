@@ -1,5 +1,5 @@
 // Package interpreter implements the Clara state machine execution engine.
-// It traverses a Blueprint graph, calls registered tools via the Registry,
+// It traverses an Intent graph, calls registered tools via the Registry,
 // accumulates results in a mem map, and evaluates transition conditions using
 // expr-lang/expr.
 package interpreter
@@ -29,7 +29,7 @@ type WaitFunc func(ctx context.Context, stateName string, mem map[string]any) (a
 // Useful for persisting run state for crash recovery.
 type StateChangeFunc func(ctx context.Context, runID, stateName string, mem map[string]any)
 
-// Interpreter executes Blueprint state machines.
+// Interpreter executes Intent state machines.
 type Interpreter struct {
 	reg     *registry.Registry
 	log     zerolog.Logger
@@ -57,7 +57,7 @@ func (it *Interpreter) WithOnChange(fn StateChangeFunc) *Interpreter {
 	return it
 }
 
-// RunOptions configures a single blueprint execution.
+// RunOptions configures a single intent execution.
 type RunOptions struct {
 	// RunID is a unique identifier for this execution (used for state persistence).
 	RunID string
@@ -65,17 +65,17 @@ type RunOptions struct {
 	InitialMem map[string]any
 }
 
-// Execute runs blueprint starting from startState.
+// Execute runs intent starting from startState.
 // It returns nil when a terminal state is reached, or an error if execution
 // cannot proceed.
 func (it *Interpreter) Execute(
 	ctx context.Context,
-	blueprint *orchestrator.Blueprint,
+	intent *orchestrator.Intent,
 	startState string,
 	opts RunOptions,
 ) error {
 	log := it.log.With().
-		Str("blueprint_id", blueprint.ID).
+		Str("intent_id", intent.ID).
 		Str("run_id", opts.RunID).
 		Logger()
 
@@ -97,9 +97,9 @@ func (it *Interpreter) Execute(
 		default:
 		}
 
-		state, ok := blueprint.States[currentState]
+		state, ok := intent.States[currentState]
 		if !ok {
-			return errors.Newf("state %q not found in blueprint %q", currentState, blueprint.ID)
+			return errors.Newf("state %q not found in intent %q", currentState, intent.ID)
 		}
 
 		log.Debug().Str("state", currentState).Msg("entering state")

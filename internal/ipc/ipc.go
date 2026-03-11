@@ -8,6 +8,7 @@ const (
 	MethodStatus   = "status"
 	MethodList     = "list"
 	MethodRun      = "run"
+	MethodToolList = "tool_list"
 )
 
 // Request is a command sent from the CLI to the daemon.
@@ -20,7 +21,7 @@ type Request struct {
 type Response struct {
 	// Message is a human-readable status string.
 	Message string `json:"message,omitempty"`
-	// Data carries structured payload (e.g. blueprint list, status info).
+	// Data carries structured payload (e.g. intent list, status info).
 	Data any `json:"data,omitempty"`
 	// Error is non-empty when the daemon encountered an error.
 	Error string `json:"error,omitempty"`

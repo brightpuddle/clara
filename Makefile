@@ -36,6 +36,7 @@ proto:
 	protoc \
 		-I proto \
 		--swift_out=swift/Sources/Proto \
+		--swift_opt=Visibility=Public \
 		--grpc-swift_out=Visibility=Public:swift/Sources/Proto \
 		--plugin=protoc-gen-grpc-swift=/opt/homebrew/bin/protoc-gen-grpc-swift-2 \
 		proto/bridge.proto

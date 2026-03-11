@@ -20,58 +20,58 @@ fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAP
   typealias Version = _2
 }
 
-struct Clara_Bridge_V1_CallToolRequest: Sendable {
+public struct Clara_Bridge_V1_CallToolRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   /// name identifies the native tool (e.g. "fetch_reminders").
-  var name: String = String()
+  public var name: String = String()
 
   /// args_json is a JSON-encoded map of tool arguments.
-  var argsJson: String = String()
+  public var argsJson: String = String()
 
-  var unknownFields = SwiftProtobuf.UnknownStorage()
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  init() {}
+  public init() {}
 }
 
-struct Clara_Bridge_V1_CallToolResponse: Sendable {
+public struct Clara_Bridge_V1_CallToolResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
   /// result_json is the JSON-encoded tool result on success.
-  var resultJson: String = String()
+  public var resultJson: String = String()
 
   /// error is non-empty when the tool invocation failed.
-  var error: String = String()
+  public var error: String = String()
 
-  var unknownFields = SwiftProtobuf.UnknownStorage()
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  init() {}
+  public init() {}
 }
 
-struct Clara_Bridge_V1_PingRequest: Sendable {
+public struct Clara_Bridge_V1_PingRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var unknownFields = SwiftProtobuf.UnknownStorage()
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  init() {}
+  public init() {}
 }
 
-struct Clara_Bridge_V1_PingResponse: Sendable {
+public struct Clara_Bridge_V1_PingResponse: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  var version: String = String()
+  public var version: String = String()
 
-  var unknownFields = SwiftProtobuf.UnknownStorage()
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
 
-  init() {}
+  public init() {}
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -79,10 +79,10 @@ struct Clara_Bridge_V1_PingResponse: Sendable {
 fileprivate let _protobuf_package = "clara.bridge.v1"
 
 extension Clara_Bridge_V1_CallToolRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  static let protoMessageName: String = _protobuf_package + ".CallToolRequest"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}args_json\0")
+  public static let protoMessageName: String = _protobuf_package + ".CallToolRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{3}args_json\0")
 
-  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
       // The use of inline closures is to circumvent an issue where the compiler
       // allocates stack space for every case branch when no optimizations are
@@ -95,7 +95,7 @@ extension Clara_Bridge_V1_CallToolRequest: SwiftProtobuf.Message, SwiftProtobuf.
     }
   }
 
-  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     if !self.name.isEmpty {
       try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
     }
@@ -105,7 +105,7 @@ extension Clara_Bridge_V1_CallToolRequest: SwiftProtobuf.Message, SwiftProtobuf.
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  static func ==(lhs: Clara_Bridge_V1_CallToolRequest, rhs: Clara_Bridge_V1_CallToolRequest) -> Bool {
+  public static func ==(lhs: Clara_Bridge_V1_CallToolRequest, rhs: Clara_Bridge_V1_CallToolRequest) -> Bool {
     if lhs.name != rhs.name {return false}
     if lhs.argsJson != rhs.argsJson {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
@@ -114,10 +114,10 @@ extension Clara_Bridge_V1_CallToolRequest: SwiftProtobuf.Message, SwiftProtobuf.
 }
 
 extension Clara_Bridge_V1_CallToolResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  static let protoMessageName: String = _protobuf_package + ".CallToolResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}result_json\0\u{1}error\0")
+  public static let protoMessageName: String = _protobuf_package + ".CallToolResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}result_json\0\u{1}error\0")
 
-  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
       // The use of inline closures is to circumvent an issue where the compiler
       // allocates stack space for every case branch when no optimizations are
@@ -130,7 +130,7 @@ extension Clara_Bridge_V1_CallToolResponse: SwiftProtobuf.Message, SwiftProtobuf
     }
   }
 
-  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     if !self.resultJson.isEmpty {
       try visitor.visitSingularStringField(value: self.resultJson, fieldNumber: 1)
     }
@@ -140,7 +140,7 @@ extension Clara_Bridge_V1_CallToolResponse: SwiftProtobuf.Message, SwiftProtobuf
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  static func ==(lhs: Clara_Bridge_V1_CallToolResponse, rhs: Clara_Bridge_V1_CallToolResponse) -> Bool {
+  public static func ==(lhs: Clara_Bridge_V1_CallToolResponse, rhs: Clara_Bridge_V1_CallToolResponse) -> Bool {
     if lhs.resultJson != rhs.resultJson {return false}
     if lhs.error != rhs.error {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
@@ -149,29 +149,29 @@ extension Clara_Bridge_V1_CallToolResponse: SwiftProtobuf.Message, SwiftProtobuf
 }
 
 extension Clara_Bridge_V1_PingRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  static let protoMessageName: String = _protobuf_package + ".PingRequest"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+  public static let protoMessageName: String = _protobuf_package + ".PingRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
 
-  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     // Load everything into unknown fields
     while try decoder.nextFieldNumber() != nil {}
   }
 
-  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  static func ==(lhs: Clara_Bridge_V1_PingRequest, rhs: Clara_Bridge_V1_PingRequest) -> Bool {
+  public static func ==(lhs: Clara_Bridge_V1_PingRequest, rhs: Clara_Bridge_V1_PingRequest) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
 }
 
 extension Clara_Bridge_V1_PingResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  static let protoMessageName: String = _protobuf_package + ".PingResponse"
-  static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0")
+  public static let protoMessageName: String = _protobuf_package + ".PingResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0")
 
-  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
       // The use of inline closures is to circumvent an issue where the compiler
       // allocates stack space for every case branch when no optimizations are
@@ -183,14 +183,14 @@ extension Clara_Bridge_V1_PingResponse: SwiftProtobuf.Message, SwiftProtobuf._Me
     }
   }
 
-  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
     if !self.version.isEmpty {
       try visitor.visitSingularStringField(value: self.version, fieldNumber: 1)
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
-  static func ==(lhs: Clara_Bridge_V1_PingResponse, rhs: Clara_Bridge_V1_PingResponse) -> Bool {
+  public static func ==(lhs: Clara_Bridge_V1_PingResponse, rhs: Clara_Bridge_V1_PingResponse) -> Bool {
     if lhs.version != rhs.version {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true

@@ -38,7 +38,7 @@ type Config struct {
 	// Bridge configures the Swift native bridge subprocess.
 	Bridge BridgeConfig `yaml:"bridge"`
 
-	// LLM configures the language model used for Blueprint generation.
+	// LLM configures the language model used for Intent generation.
 	LLM LLMConfig `yaml:"llm"`
 }
 
@@ -63,7 +63,7 @@ type BridgeConfig struct {
 	SocketPath string `yaml:"socket_path"`
 }
 
-// LLMConfig configures the language model used for Markdown→Blueprint conversion.
+// LLMConfig configures the language model used for Markdown→Intent conversion.
 type LLMConfig struct {
 	// Provider is the MCP server name that exposes the LLM tool.
 	Provider string `yaml:"provider"`

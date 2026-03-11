@@ -31,7 +31,7 @@ func TestInterpreter_HappyPath(t *testing.T) {
 		return "result-b", nil
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "test",
 		InitialState: "A",
 		States: map[string]orchestrator.State{
@@ -62,7 +62,7 @@ func TestInterpreter_TransitionCondition(t *testing.T) {
 		return "empty", nil
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "transition-test",
 		InitialState: "FETCH",
 		States: map[string]orchestrator.State{
@@ -90,7 +90,7 @@ func TestInterpreter_DeadEnd_NoWait(t *testing.T) {
 		return nil, nil
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "dead-end",
 		InitialState: "START",
 		States: map[string]orchestrator.State{
@@ -122,7 +122,7 @@ func TestInterpreter_WaitMechanism(t *testing.T) {
 		return "applied", nil
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "wait-test",
 		InitialState: "PROMPT_USER",
 		States: map[string]orchestrator.State{
@@ -155,7 +155,7 @@ func TestInterpreter_TemplateInjection(t *testing.T) {
 		return "ok", nil
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "template-test",
 		InitialState: "FETCH",
 		States: map[string]orchestrator.State{
@@ -186,7 +186,7 @@ func TestInterpreter_ToolError(t *testing.T) {
 		return nil, errors.New("tool failed")
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "tool-error",
 		InitialState: "RUN",
 		States: map[string]orchestrator.State{
@@ -203,7 +203,7 @@ func TestInterpreter_ToolError(t *testing.T) {
 func TestInterpreter_MissingTool(t *testing.T) {
 	it, _ := newTestInterpreter(t)
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "missing-tool",
 		InitialState: "RUN",
 		States: map[string]orchestrator.State{
@@ -220,7 +220,7 @@ func TestInterpreter_MissingTool(t *testing.T) {
 func TestInterpreter_MissingState(t *testing.T) {
 	it, _ := newTestInterpreter(t)
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "missing-state",
 		InitialState: "START",
 		States: map[string]orchestrator.State{
@@ -243,7 +243,7 @@ func TestInterpreter_ContextCancellation(t *testing.T) {
 		return nil, ctx.Err()
 	})
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "cancel-test",
 		InitialState: "BLOCK",
 		States: map[string]orchestrator.State{
@@ -272,7 +272,7 @@ func TestInterpreter_OnChange_Callback(t *testing.T) {
 	reg.Register("a", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
 	reg.Register("b", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "callback-test",
 		InitialState: "A",
 		States: map[string]orchestrator.State{
@@ -300,7 +300,7 @@ func TestInterpreter_InitialMem(t *testing.T) {
 	var seenValue any
 	reg.Register("check", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
 
-	bp := &orchestrator.Blueprint{
+	bp := &orchestrator.Intent{
 		ID:           "initial-mem-test",
 		InitialState: "CHECK",
 		States: map[string]orchestrator.State{
