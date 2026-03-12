@@ -37,7 +37,6 @@ func init() {
 	sqlite3.RuntimeConfig = wazero.NewRuntimeConfig().WithCoreFeatures(features)
 }
 
-
 type Store struct {
 	db  *sql.DB
 	log zerolog.Logger

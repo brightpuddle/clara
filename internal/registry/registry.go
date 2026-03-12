@@ -9,9 +9,11 @@ package registry
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
 
@@ -19,28 +21,60 @@ import (
 // call, Swift bridge call, local SQLite query — is wrapped as a Tool.
 type Tool func(ctx context.Context, args map[string]any) (any, error)
 
+// ToolInfo holds a tool's name and description for display purposes.
+type ToolInfo struct {
+	Name        string
+	Description string
+}
+
+// ServerCapabilities holds the full capability set discovered from an MCP server.
+type ServerCapabilities struct {
+	// Name is the registry alias for this server.
+	Name string
+	// Description is the human-readable summary (from config or built-in).
+	Description string
+	// Tools is the complete list of tools, including input schemas.
+	Tools []mcp.Tool
+	// Resources is the list of static resources exposed by the server.
+	Resources []mcp.Resource
+	// Prompts is the list of prompt templates exposed by the server.
+	Prompts []mcp.Prompt
+}
+
 // Registry holds the set of available Tools and MCP server managers.
 type Registry struct {
-	mu      sync.RWMutex
-	tools   map[string]Tool
-	servers []*MCPServer
-	log     zerolog.Logger
+	mu           sync.RWMutex
+	tools        map[string]Tool
+	descriptions map[string]string
+	servers      []*MCPServer
+	capabilities map[string]*ServerCapabilities
+	log          zerolog.Logger
 }
 
 // New creates an empty Registry.
 func New(log zerolog.Logger) *Registry {
 	return &Registry{
-		tools: make(map[string]Tool),
-		log:   log,
+		tools:        make(map[string]Tool),
+		descriptions: make(map[string]string),
+		capabilities: make(map[string]*ServerCapabilities),
+		log:          log,
 	}
 }
 
 // Register adds or replaces a Tool under the given name.
 // The name convention is "server.method" but any unique string is valid.
 func (r *Registry) Register(name string, tool Tool) {
+	r.RegisterWithDesc(name, "", tool)
+}
+
+// RegisterWithDesc adds or replaces a Tool with an optional description.
+func (r *Registry) RegisterWithDesc(name, description string, tool Tool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tools[name] = tool
+	if description != "" {
+		r.descriptions[name] = description
+	}
 	r.log.Debug().Str("tool", name).Msg("tool registered")
 }
 
@@ -69,7 +103,23 @@ func (r *Registry) Names() []string {
 	for name := range r.tools {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
+}
+
+// Tools returns a sorted list of ToolInfo for all registered tools.
+func (r *Registry) Tools() []ToolInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	infos := make([]ToolInfo, 0, len(r.tools))
+	for name := range r.tools {
+		infos = append(infos, ToolInfo{
+			Name:        name,
+			Description: r.descriptions[name],
+		})
+	}
+	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
+	return infos
 }
 
 // Has reports whether a tool with the given name is registered.
@@ -78,6 +128,32 @@ func (r *Registry) Has(name string) bool {
 	defer r.mu.RUnlock()
 	_, ok := r.tools[name]
 	return ok
+}
+
+// StoreCapabilities stores the full capability set discovered from a server.
+func (r *Registry) StoreCapabilities(caps *ServerCapabilities) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.capabilities[caps.Name] = caps
+}
+
+// GetCapabilities returns the capabilities for a named server, or nil if unknown.
+func (r *Registry) GetCapabilities(serverName string) *ServerCapabilities {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.capabilities[serverName]
+}
+
+// AllCapabilities returns capabilities for all known servers, sorted by name.
+func (r *Registry) AllCapabilities() []*ServerCapabilities {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]*ServerCapabilities, 0, len(r.capabilities))
+	for _, c := range r.capabilities {
+		result = append(result, c)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	return result
 }
 
 // AddServer registers an MCPServer and starts managing it. The server's tools

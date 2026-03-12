@@ -53,6 +53,8 @@ type MCPServerConfig struct {
 	// Env injects additional environment variables into the subprocess.
 	// Values support ${ENV_VAR} expansion.
 	Env map[string]string `yaml:"env"`
+	// Description is a human-readable summary of what this server provides.
+	Description string `yaml:"description"`
 }
 
 // BridgeConfig describes the Swift native bridge subprocess.

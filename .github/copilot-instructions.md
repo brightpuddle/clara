@@ -25,14 +25,22 @@
 ```
 github.com/brightpuddle/clara/
 ├── cmd/
-│   ├── clarad/          # Daemon binary entry point
-│   └── clara/           # CLI binary entry point
+│   └── clara/           # Unified binary: daemon + CLI (all subcommands)
+│       ├── main.go      # cobra root command, shared helpers
+│       ├── serve.go     # clara serve (daemon logic)
+│       ├── agent.go     # clara agent {start,stop,status}
+│       ├── intent.go    # clara intent {list,run}
+│       ├── run.go       # clara run <task-file>
+│       ├── tool.go      # clara tool list
+│       └── mcp.go       # clara mcp {fs,...}
 ├── internal/
 │   ├── config/          # Config loader (config.yaml + os.ExpandEnv)
 │   ├── orchestrator/    # Intent, State, Transition structs (core domain types)
 │   ├── registry/        # Tool registry: MCP client management + Swift bridge wrapper
 │   ├── interpreter/     # State machine Execute loop (expr-lang/expr conditions)
 │   ├── supervisor/      # File watcher + LLM→Intent conversion + lifecycle management
+│   ├── mcpserver/       # Built-in MCP servers
+│   │   └── fs/          # Filesystem MCP server (clara mcp fs)
 │   └── bridge/          # gRPC client for the Swift native bridge
 ├── proto/
 │   └── bridge.proto     # BridgeService protobuf definition
@@ -54,7 +62,7 @@ github.com/brightpuddle/clara/
 | SQLite (CGO-free) | `github.com/ncruces/go-sqlite3` |
 | Vector search extension | `github.com/asg017/sqlite-vec-go-bindings/ncruces` |
 | State machine logic evaluation | `github.com/expr-lang/expr` |
-| CLI | `github.com/alecthomas/kong` |
+| CLI | `github.com/spf13/cobra` |
 | MCP client | `github.com/mark3labs/mcp-go` |
 | Structured concurrency | `github.com/sourcegraph/conc` |
 | gRPC | `google.golang.org/grpc` |
@@ -188,14 +196,18 @@ An **Intent** is a JSON document representing a state machine. The Go daemon is 
 
 | Command | Description |
 |---|---|
-| `clara agent start` | Start the agent |
-| `clara agent stop` | Stop the agent |
+| `clara` | Interactive TUI HUD (placeholder: shows agent status) |
+| `clara serve` | Start the background agent in the foreground |
+| `clara agent start` | Check/report agent status; print instructions to start |
+| `clara agent stop` | Stop the running agent |
 | `clara agent status` | Show agent status and active intents |
 | `clara intent list` | List all active intents |
 | `clara intent run <id>` | Manually trigger an intent by ID |
-| `clara tool list` | List all registered tools |
+| `clara run <task-file>` | One-off execution of a JSON intent file |
+| `clara tool list` | List all registered tools with descriptions |
+| `clara mcp fs` | Start the built-in filesystem MCP server on stdio |
 
-CLI is implemented with `github.com/alecthomas/kong`.
+CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clara/` as a single unified binary — there is no separate `clarad` daemon binary.
 
 ---
 

@@ -2,9 +2,8 @@
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 
-## build: compile both Go binaries
+## build: compile the unified clara binary
 build:
-	go build -o clarad ./cmd/clarad
 	go build -o clara ./cmd/clara
 
 ## test: run all Go tests
@@ -48,5 +47,5 @@ bridge:
 
 ## clean: remove build artifacts
 clean:
-	rm -f clarad clara ClaraBridge
+	rm -f clara ClaraBridge
 	rm -rf swift/.build

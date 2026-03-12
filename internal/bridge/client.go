@@ -17,9 +17,9 @@ import (
 
 // Client is a gRPC client for the Swift ClaraBridge process.
 type Client struct {
-	conn   *grpc.ClientConn
-	svc    bridgepb.BridgeServiceClient
-	log    zerolog.Logger
+	conn *grpc.ClientConn
+	svc  bridgepb.BridgeServiceClient
+	log  zerolog.Logger
 }
 
 // New dials the ClaraBridge Unix Domain Socket and returns a ready Client.

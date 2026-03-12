@@ -40,7 +40,7 @@ func NewMCPServer(name, command string, args []string, env map[string]string, lo
 }
 
 // Start launches the subprocess, negotiates the MCP handshake, discovers
-// available tools, and registers them in r.
+// available tools, resources, and prompts, then registers tools in r.
 func (s *MCPServer) Start(ctx context.Context, r *Registry) error {
 	c, err := client.NewStdioMCPClient(s.command, s.env, s.args...)
 	if err != nil {
@@ -62,9 +62,12 @@ func (s *MCPServer) Start(ctx context.Context, r *Registry) error {
 		return errors.Wrap(err, "MCP initialize handshake")
 	}
 
-	if err := s.registerTools(ctx, r); err != nil {
-		return errors.Wrap(err, "register MCP tools")
+	caps, err := s.discoverCapabilities(ctx)
+	if err != nil {
+		return errors.Wrap(err, "discover capabilities")
 	}
+	r.StoreCapabilities(caps)
+	s.registerDiscoveredTools(r, caps.Tools)
 
 	s.log.Info().Msg("MCP server started")
 	return nil
@@ -78,18 +81,40 @@ func (s *MCPServer) Stop() {
 	}
 }
 
-func (s *MCPServer) registerTools(ctx context.Context, r *Registry) error {
-	result, err := s.mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
+// discoverCapabilities queries the server for all tools, resources, and prompts.
+func (s *MCPServer) discoverCapabilities(ctx context.Context) (*ServerCapabilities, error) {
+	caps := &ServerCapabilities{Name: s.name}
+
+	toolsResult, err := s.mcpClient.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		return errors.Wrap(err, "list tools")
+		return nil, errors.Wrap(err, "list tools")
+	}
+	caps.Tools = toolsResult.Tools
+
+	// Resources and prompts are optional capabilities; treat errors as empty.
+	if res, err := s.mcpClient.ListResources(ctx, mcp.ListResourcesRequest{}); err == nil {
+		caps.Resources = res.Resources
+	} else {
+		s.log.Debug().Err(err).Msg("server does not expose resources")
 	}
 
-	for _, tool := range result.Tools {
+	if res, err := s.mcpClient.ListPrompts(ctx, mcp.ListPromptsRequest{}); err == nil {
+		caps.Prompts = res.Prompts
+	} else {
+		s.log.Debug().Err(err).Msg("server does not expose prompts")
+	}
+
+	return caps, nil
+}
+
+// registerDiscoveredTools registers tool call handlers for the provided tool list.
+func (s *MCPServer) registerDiscoveredTools(r *Registry, tools []mcp.Tool) {
+	for _, tool := range tools {
 		toolName := s.name + "." + tool.Name
-		// Capture variables for the closure.
 		mcpClient := s.mcpClient
 		mcpToolName := tool.Name
-		r.Register(toolName, func(ctx context.Context, args map[string]any) (any, error) {
+		desc := tool.Description
+		r.RegisterWithDesc(toolName, desc, func(ctx context.Context, args map[string]any) (any, error) {
 			req := mcp.CallToolRequest{}
 			req.Params.Name = mcpToolName
 			req.Params.Arguments = args
@@ -100,7 +125,5 @@ func (s *MCPServer) registerTools(ctx context.Context, r *Registry) error {
 			return res, nil
 		})
 	}
-
-	s.log.Info().Int("count", len(result.Tools)).Msg("tools registered from MCP server")
-	return nil
+	s.log.Info().Int("count", len(tools)).Msg("tools registered from MCP server")
 }

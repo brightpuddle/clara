@@ -31,9 +31,9 @@ type StateChangeFunc func(ctx context.Context, runID, stateName string, mem map[
 
 // Interpreter executes Intent state machines.
 type Interpreter struct {
-	reg     *registry.Registry
-	log     zerolog.Logger
-	wait    WaitFunc
+	reg      *registry.Registry
+	log      zerolog.Logger
+	wait     WaitFunc
 	onChange StateChangeFunc
 }
 

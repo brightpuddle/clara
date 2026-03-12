@@ -116,7 +116,7 @@ func TestStore_SaveRunState_Upsert(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	s.SaveRunState(ctx, "run-2", "intent-1", "START", nil) //nolint:errcheck
+	s.SaveRunState(ctx, "run-2", "intent-1", "START", nil)                        //nolint:errcheck
 	s.SaveRunState(ctx, "run-2", "intent-1", "END", map[string]any{"done": true}) //nolint:errcheck
 
 	state, mem, err := s.LoadRunState(ctx, "run-2")

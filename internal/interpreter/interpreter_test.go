@@ -164,8 +164,8 @@ func TestInterpreter_TemplateInjection(t *testing.T) {
 				Next:   "PROCESS",
 			},
 			"PROCESS": {
-				Action: "process_file",
-				Args:   map[string]any{"file": `{{index .FETCH "path"}}`},
+				Action:   "process_file",
+				Args:     map[string]any{"file": `{{index .FETCH "path"}}`},
 				Terminal: true,
 			},
 		},

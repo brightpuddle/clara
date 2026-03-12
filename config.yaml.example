@@ -12,18 +12,28 @@ log_level: info
 
 # MCP servers managed by the Clara daemon.
 # Each entry is a stdio-based subprocess.
+# The 'description' field is optional and shown in 'clara tool list'.
 mcp_servers:
+  - name: fs
+    command: clara
+    args:
+      - mcp
+      - fs
+    description: "Built-in filesystem server (read, write, list, search, move, delete files)"
+
   - name: filesystem
     command: npx
     args:
       - "-y"
       - "@modelcontextprotocol/server-filesystem"
       - "${HOME}/Documents"
+    description: "External filesystem MCP server for ~/Documents"
 
   - name: taskwarrior
     command: uvx
     args:
       - mcp-taskwarrior
+    description: "Taskwarrior task management"
 
   - name: openai-embedder
     command: uvx
@@ -31,6 +41,7 @@ mcp_servers:
       - mcp-nomic-embed
     env:
       NOMIC_API_KEY: ${NOMIC_API_KEY}
+    description: "Nomic text embedding server"
 
 # Swift native bridge (EventKit, CoreSpotlight, FileSystem events)
 bridge:
