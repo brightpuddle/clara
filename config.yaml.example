@@ -10,9 +10,9 @@ log_level: info
 # (default: ~/.local/share/clara)
 # data_dir: /custom/path/clara
 
-# MCP servers managed by the Clara daemon.
-# Each entry is a stdio-based subprocess.
-# The 'description' field is optional and shown in 'clara tool list'.
+# MCP services managed by the Clara daemon.
+# Every intent-visible capability should be exposed via one of these services,
+# including built-in Clara services like filesystem, SQLite, and macOS bridge tools.
 mcp_servers:
   - name: fs
     command: clara
@@ -20,6 +20,19 @@ mcp_servers:
       - mcp
       - fs
     description: "Built-in filesystem server (read, write, list, search, move, delete files)"
+
+  - name: db
+    command: clara
+    args:
+      - mcp
+      - db
+      - ${HOME}/.local/share/clara/data.db
+    description: "Built-in SQLite tool server for user-facing query/exec/vector tools"
+
+  - name: bridge
+    command: /usr/local/bin/ClaraBridge
+    args: []
+    description: "Native macOS MCP server (EventKit, notifications, and other local capabilities); the wrapper should exec the app-bundled bridge binary"
 
   - name: filesystem
     command: npx
@@ -30,10 +43,11 @@ mcp_servers:
     description: "External filesystem MCP server for ~/Documents"
 
   - name: taskwarrior
-    command: uvx
+    command: clara
     args:
-      - mcp-taskwarrior
-    description: "Taskwarrior task management"
+      - mcp
+      - taskwarrior
+    description: "Built-in Taskwarrior MCP server for CRUD, filtering, and due-task checks"
 
   - name: openai-embedder
     command: uvx
@@ -43,12 +57,8 @@ mcp_servers:
       NOMIC_API_KEY: ${NOMIC_API_KEY}
     description: "Nomic text embedding server"
 
-# Swift native bridge (EventKit, CoreSpotlight, FileSystem events)
-bridge:
-  path: /usr/local/bin/ClaraBridge
-  # socket_path: ~/.local/share/clara/bridge.sock  # default
-
-# LLM used to convert Markdown intent files → Intent JSON
+# LLM used to convert Markdown intent files → Intent JSON.
+# Provider must match one of the configured MCP service names above.
 llm:
-  provider: openai-embedder  # references an mcp_servers entry
+  provider: openai-embedder
   model: gpt-4o

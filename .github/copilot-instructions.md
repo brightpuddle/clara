@@ -6,50 +6,57 @@
 
 1. Proxies and aggregates MCP (Model Context Protocol) servers into a unified tool registry.
 2. Executes declarative **Intents** — JSON state machines authored by an LLM from natural-language Markdown intent files — using a safe, inspectable interpreter.
-3. Provides a native macOS capability bridge via a separate Swift binary communicating over gRPC/Unix Domain Socket (EventKit, FileSystem events, CoreSpotlight).
-4. Persists task state and vector embeddings in a CGO-free SQLite instance (with `sqlite-vec`).
-5. Exposes a `cobra`-based CLI (`clara`) for daemon control and introspection.
+3. Persists its own operational state (runs, checkpoints, metadata) in an internal SQLite store that is **not** exposed directly to intents.
+4. Treats every intent-visible capability as an MCP service, including built-in Clara services such as filesystem access, SQLite tooling, and the native macOS bridge.
+5. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, and launching built-in MCP servers.
+
+The architectural rule is:
+
+> If a capability is available to intents, it should be delivered through MCP.
+
+Clara's Go daemon is therefore a **policy/orchestration engine**, not a grab-bag of directly embedded tools.
 
 ---
 
 ## Language & Runtime
 
-- **Go 1.24+** for the daemon and CLI.
-- **Swift 6.0+** for the native macOS bridge.
+- **Go 1.24+** for the daemon, CLI, and built-in MCP servers.
+- **Swift 6.0+** for the standalone macOS MCP bridge.
 - Go module name: `github.com/brightpuddle/clara`.
 
 ---
 
 ## Project Structure
 
-```
+```text
 github.com/brightpuddle/clara/
 ├── cmd/
-│   └── clara/           # Unified binary: daemon + CLI (all subcommands)
+│   └── clara/           # Unified binary: daemon + CLI + built-in MCP launchers
 │       ├── main.go      # cobra root command, shared helpers
 │       ├── serve.go     # clara serve (daemon logic)
 │       ├── agent.go     # clara agent {start,stop,status}
 │       ├── intent.go    # clara intent {list,run}
 │       ├── run.go       # clara run <task-file>
-│       ├── tool.go      # clara tool list
-│       └── mcp.go       # clara mcp {fs,...}
+│       ├── tool.go      # clara tool {list,show,call}
+│       └── mcp.go       # clara mcp {fs,db,...}
 ├── internal/
 │   ├── config/          # Config loader (config.yaml + os.ExpandEnv)
 │   ├── orchestrator/    # Intent, State, Transition structs (core domain types)
-│   ├── registry/        # Tool registry: MCP client management + Swift bridge wrapper
+│   ├── registry/        # MCP client management + unified tool registry
 │   ├── interpreter/     # State machine Execute loop (expr-lang/expr conditions)
 │   ├── supervisor/      # File watcher + LLM→Intent conversion + lifecycle management
 │   ├── mcpserver/       # Built-in MCP servers
-│   │   └── fs/          # Filesystem MCP server (clara mcp fs)
-│   └── bridge/          # gRPC client for the Swift native bridge
-├── proto/
-│   └── bridge.proto     # BridgeService protobuf definition
-├── swift/               # Swift native bridge (separate binary, managed by daemon)
+│   │   ├── fs/          # Filesystem MCP server (clara mcp fs)
+│   │   └── db/          # SQLite MCP server (clara mcp db)
+│   └── store/           # Internal daemon persistence only (intent_runs, metadata)
+├── swift/               # Standalone Swift MCP server for native macOS capabilities
 │   ├── Package.swift
 │   └── Sources/ClaraBridge/
 ├── config.yaml.example
 └── go.mod
 ```
+
+Note: during migrations, legacy bridge/proto artifacts may still exist in the repo. Prefer the MCP-first architecture above when making changes.
 
 ---
 
@@ -63,11 +70,19 @@ github.com/brightpuddle/clara/
 | Vector search extension | `github.com/asg017/sqlite-vec-go-bindings/ncruces` |
 | State machine logic evaluation | `github.com/expr-lang/expr` |
 | CLI | `github.com/spf13/cobra` |
-| MCP client | `github.com/mark3labs/mcp-go` |
+| MCP client/server | `github.com/mark3labs/mcp-go` |
 | Structured concurrency | `github.com/sourcegraph/conc` |
-| gRPC | `google.golang.org/grpc` |
-| Protobuf codegen | `google.golang.org/protobuf` |
 | YAML config parsing | `gopkg.in/yaml.v3` |
+
+---
+
+## Architectural Principles
+
+- **Intent-visible services must be MCP services.** Do not add new direct daemon-only tools for use in intents.
+- **The internal store is private.** Clara's internal SQLite database exists for orchestration/runtime persistence only.
+- **Built-in services are still services.** Even when shipped inside the Clara repo/binary (for example `clara mcp fs` or `clara mcp db`), they should behave like standalone MCP servers and be usable independently of the daemon.
+- **Prefer service composition over special cases.** If a new capability can be expressed as an MCP server, do that instead of wiring custom transport paths into the daemon.
+- **Keep the daemon simple.** Its responsibilities are config loading, subprocess orchestration, intent execution, state persistence, and policy enforcement across MCP services.
 
 ---
 
@@ -107,15 +122,34 @@ github.com/brightpuddle/clara/
 - Log levels: `Trace` (verbose debug), `Debug`, `Info`, `Warn`, `Error`, `Fatal`.
 - Always include contextual fields (e.g. `intent_id`, `state`, `tool`) in log events — not just a message string.
 - The daemon runs as a background process; log to a file by default, with an option to log to stderr for development.
+- MCP servers must avoid writing human-oriented logs to stdout because stdout is reserved for the protocol. Use stderr for diagnostics when needed.
 
 ---
 
 ## Configuration
 
 - Config is loaded from `config.yaml` (default path: `~/.config/clara/config.yaml`).
-- Runtime data (DB, sockets, logs) is stored under `~/.local/share/clara/`.
+- Runtime data (internal DB, control socket, logs, tasks) is stored under `~/.local/share/clara/` by default.
+- Intent-visible services are configured under `mcp_servers`.
 - Use `os.ExpandEnv` when parsing string values to support `${ENV_VAR}` credential injection.
 - **Never** commit real credentials or API keys. The `config.yaml.example` file shows only placeholder `${VAR}` references.
+
+Example service entries:
+
+```yaml
+mcp_servers:
+  - name: fs
+    command: clara
+    args: [mcp, fs]
+
+  - name: db
+    command: clara
+    args: [mcp, db, ${HOME}/.local/share/clara/data.db]
+
+  - name: bridge
+    command: /usr/local/bin/ClaraBridge
+    args: []
+```
 
 ---
 
@@ -127,20 +161,13 @@ github.com/brightpuddle/clara/
 
 ---
 
-## gRPC / Proto
-
-- The Swift bridge communicates with the Go daemon over a **Unix Domain Socket** using gRPC.
-- Proto files live in `proto/`. Generated Go code lives in `internal/bridge/gen/` (committed to the repo).
-- Regenerate with: `protoc --go_out=. --go-grpc_out=. proto/bridge.proto`
-
----
-
 ## SQLite / sqlite-vec
 
 - Use `github.com/ncruces/go-sqlite3` (CGO-free, pure Go WASM backend) — this is required for cross-compilation.
 - Enable the `sqlite-vec` extension via `github.com/asg017/sqlite-vec-go-bindings/ncruces`.
-- DB file path: `~/.local/share/clara/clara.db`.
-- Vector tables use the `vec0` virtual table interface. Wrap SQL queries in the `registry` Tool interface so the interpreter never writes raw SQL.
+- Clara's **internal** daemon DB lives at `~/.local/share/clara/clara.db` by default and stores orchestration state only.
+- The built-in SQLite MCP server (`clara mcp db`) is a **separate** service and may point at its own file path or default to an in-memory database.
+- Vector tables use the `vec0` virtual table interface.
 
 ---
 
@@ -150,10 +177,11 @@ github.com/brightpuddle/clara/
   - `internal/interpreter`: the `Execute` loop, transition evaluation, `Wait` mechanism.
   - `internal/config`: config loading and env var expansion.
   - `internal/orchestrator`: Intent and State struct validation.
-  - `internal/registry`: tool registration and dispatch.
+  - `internal/registry`: MCP server registration, discovery, and dispatch.
+  - `internal/mcpserver/*`: built-in MCP tool behavior for filesystem, SQLite, and future services.
 - Use Go's standard `testing` package. Prefer table-driven tests.
 - Use `testify` (`github.com/stretchr/testify`) only if it meaningfully reduces boilerplate; the standard library is preferred.
-- Tests must not require network access or external services. Use interfaces and test doubles for MCP clients and the bridge.
+- Tests must not require network access or external services. Use interfaces and test doubles for MCP clients.
 
 ---
 
@@ -185,7 +213,7 @@ An **Intent** is a JSON document representing a state machine. The Go daemon is 
 }
 ```
 
-- `action` maps to a registered Tool in the Registry.
+- `action` maps to a registered MCP-derived tool in the Registry.
 - `args` values support `{{handlebars}}`-style template injection from `mem`.
 - `transitions` are evaluated in order using `expr-lang/expr` against the current `mem` map.
 - The special `PROMPT_USER` pattern uses a "Wait" mechanism that suspends the goroutine until external input arrives via a channel.
@@ -204,8 +232,11 @@ An **Intent** is a JSON document representing a state machine. The Go daemon is 
 | `clara intent list` | List all active intents |
 | `clara intent run <id>` | Manually trigger an intent by ID |
 | `clara run <task-file>` | One-off execution of a JSON intent file |
-| `clara tool list` | List all registered tools with descriptions |
+| `clara tool list` | List all registered tools with signatures |
+| `clara tool show <tool>` | Show full MCP-style details for one tool |
+| `clara tool call <tool> ...` | Call a registered tool directly |
 | `clara mcp fs` | Start the built-in filesystem MCP server on stdio |
+| `clara mcp db [path]` | Start the built-in SQLite MCP server on stdio |
 
 CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clara/` as a single unified binary — there is no separate `clarad` daemon binary.
 
@@ -213,8 +244,9 @@ CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clar
 
 ## Swift Bridge
 
-- The Swift bridge is a **separate binary** (`ClaraBridge`) managed as a subprocess by the Go daemon.
-- It implements the `BridgeService` gRPC server on a Unix Domain Socket.
-- Initial capability: `CallTool("fetch_reminders", args)` via EventKit.
+- `ClaraBridge` is a **standalone Swift MCP server**.
+- It communicates over **stdio**, not gRPC.
+- Configure it under `mcp_servers` like any other service.
+- Initial capability: `fetch_reminders` via EventKit.
+- Future native capabilities (Notifications, Spotlight, filesystem events, etc.) should also be exposed as MCP tools/resources/prompts rather than custom daemon transports.
 - Swift 6.0 strict concurrency model must be followed (no `@unchecked Sendable` shortcuts).
-- The Go daemon is responsible for starting and monitoring the Swift bridge process.

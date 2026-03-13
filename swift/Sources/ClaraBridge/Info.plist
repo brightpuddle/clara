@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>ClaraBridge</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.brightpuddle.clara.bridge</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>ClaraBridge needs Reminders access to read and manage reminder items through MCP tools.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>ClaraBridge needs Calendar access to read and manage events through MCP tools.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>ClaraBridge needs Reminders access to read and manage reminder items through MCP tools.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>ClaraBridge needs Calendar access to read and manage events through MCP tools.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>ClaraBridge may automate local macOS capabilities requested through MCP tools.</string>
+</dict>
+</plist>

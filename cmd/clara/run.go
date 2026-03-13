@@ -65,7 +65,6 @@ func runOneOff(cmd *cobra.Command, args []string) error {
 	defer db.Close()
 
 	reg := registry.New(logger)
-	registerBuiltinTools(reg, db, cfg, logger)
 
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(

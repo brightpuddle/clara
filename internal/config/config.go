@@ -35,10 +35,7 @@ type Config struct {
 	// MCPServers lists the MCP servers the daemon manages.
 	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
 
-	// Bridge configures the Swift native bridge subprocess.
-	Bridge BridgeConfig `yaml:"bridge"`
-
-	// LLM configures the language model used for Intent generation.
+	// LLM configures the language model used for Markdown→Intent conversion.
 	LLM LLMConfig `yaml:"llm"`
 }
 
@@ -55,14 +52,6 @@ type MCPServerConfig struct {
 	Env map[string]string `yaml:"env"`
 	// Description is a human-readable summary of what this server provides.
 	Description string `yaml:"description"`
-}
-
-// BridgeConfig describes the Swift native bridge subprocess.
-type BridgeConfig struct {
-	// Path is the filesystem path to the ClaraBridge binary.
-	Path string `yaml:"path"`
-	// SocketPath overrides the default Unix Domain Socket path.
-	SocketPath string `yaml:"socket_path"`
 }
 
 // LLMConfig configures the language model used for Markdown→Intent conversion.
@@ -113,9 +102,6 @@ func applyDefaults(cfg *Config) {
 	if cfg.DataDir == "" {
 		cfg.DataDir = DefaultDataDir()
 	}
-	if cfg.Bridge.SocketPath == "" {
-		cfg.Bridge.SocketPath = filepath.Join(cfg.DataDir, "bridge.sock")
-	}
 }
 
 func defaults() *Config {
@@ -143,7 +129,8 @@ func (s *MCPServerConfig) ResolvedEnv() map[string]string {
 	return expandEnvInMap(s.Env)
 }
 
-// DBPath returns the absolute path to the SQLite database file.
+// DBPath returns the absolute path to the SQLite database file used internally
+// by the daemon for run-state persistence.
 func (c *Config) DBPath() string {
 	return filepath.Join(c.DataDir, "clara.db")
 }

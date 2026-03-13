@@ -1,6 +1,9 @@
-.PHONY: build test vet lint proto fmt clean
+.PHONY: build test vet lint proto fmt bridge clean
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
+BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
+BRIDGE_APP_EXE := $(BRIDGE_APP_DIR)/Contents/MacOS/ClaraBridge
+BRIDGE_WRAPPER := /usr/local/bin/ClaraBridge
 
 ## build: compile the unified clara binary
 build:
@@ -23,27 +26,17 @@ fmt:
 	golines $(GOLINES_FLAGS) -w ./...
 	goimports -w ./...
 
-## proto: regenerate Go and Swift protobuf bindings
-proto:
-	protoc \
-		-I proto \
-		--go_out=internal/bridge/gen \
-		--go_opt=module=github.com/brightpuddle/clara/internal/bridge/gen \
-		--go-grpc_out=internal/bridge/gen \
-		--go-grpc_opt=module=github.com/brightpuddle/clara/internal/bridge/gen \
-		proto/bridge.proto
-	protoc \
-		-I proto \
-		--swift_out=swift/Sources/Proto \
-		--swift_opt=Visibility=Public \
-		--grpc-swift_out=Visibility=Public:swift/Sources/Proto \
-		--plugin=protoc-gen-grpc-swift=/opt/homebrew/bin/protoc-gen-grpc-swift-2 \
-		proto/bridge.proto
-
 ## bridge: build the Swift ClaraBridge binary
 bridge:
 	cd swift && swift build -c release
-	cp swift/.build/release/ClaraBridge ./ClaraBridge
+	rm -rf "$(BRIDGE_APP_DIR)"
+	mkdir -p "$(BRIDGE_APP_DIR)/Contents/MacOS"
+	cp swift/.build/release/ClaraBridge "$(BRIDGE_APP_EXE)"
+	cp swift/Sources/ClaraBridge/Info.plist "$(BRIDGE_APP_DIR)/Contents/Info.plist"
+	codesign --force --deep --sign - "$(BRIDGE_APP_DIR)"
+	cp "$(BRIDGE_APP_EXE)" ./ClaraBridge
+	printf '#!/bin/sh\nexec \"%s\" \"$@\"\n' "$(BRIDGE_APP_EXE)" > "$(BRIDGE_WRAPPER)"
+	chmod +x "$(BRIDGE_WRAPPER)"
 
 ## clean: remove build artifacts
 clean:

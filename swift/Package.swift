@@ -4,32 +4,22 @@ import PackageDescription
 let package = Package(
     name: "ClaraBridge",
     platforms: [.macOS(.v15)],
-    dependencies: [
-        .package(url: "https://github.com/grpc/grpc-swift.git", from: "2.0.0"),
-        .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "1.0.0"),
-        .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.29.0"),
+    products: [
+        .executable(name: "ClaraBridge", targets: ["ClaraBridge"]),
     ],
     targets: [
         .executableTarget(
             name: "ClaraBridge",
-            dependencies: [
-                .product(name: "GRPCCore", package: "grpc-swift"),
-                .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
-                .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
-                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-                .target(name: "Proto"),
-            ],
-            path: "Sources/ClaraBridge"
-        ),
-        .target(
-            name: "Proto",
-            dependencies: [
-                .product(name: "GRPCCore", package: "grpc-swift"),
-                .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
-                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
-            ],
-            path: "Sources/Proto"
+            path: "Sources/ClaraBridge",
+            exclude: ["Info.plist"],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Sources/ClaraBridge/Info.plist",
+                ])
+            ]
         ),
     ]
 )

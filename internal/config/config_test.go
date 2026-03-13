@@ -78,9 +78,6 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.DataDir == "" {
 		t.Error("DataDir should have a default value")
 	}
-	if cfg.Bridge.SocketPath == "" {
-		t.Error("Bridge.SocketPath should have a default value")
-	}
 }
 
 func TestLoad_DefaultLogLevel(t *testing.T) {
@@ -141,10 +138,6 @@ func TestLogLevelNormalized(t *testing.T) {
 		{"DEBUG", "debug"},
 	}
 	for _, tc := range cases {
-		cfg := &config.Config{LogLevel: tc.input}
-		// Access via exported method
-		_ = cfg
-		// test via Load
 		yaml := "log_level: " + tc.input
 		f := writeTempFile(t, yaml)
 		loaded, err := config.Load(f)
