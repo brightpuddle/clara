@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/brightpuddle/clara/internal/interpreter"
@@ -61,13 +63,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	defer db.Close()
 
 	reg := registry.New(logger)
-	reg.RegisterWithDesc("db.query", "Execute a read-only SQL SELECT against the Clara database.", db.QueryTool())
-	reg.RegisterWithDesc("db.exec", "Execute a SQL write statement against the Clara database.", db.ExecTool())
-	reg.RegisterWithDesc(
-		"db.vec_search",
-		"Perform a vector similarity search over embeddings in the Clara database.",
-		db.VecSearchTool(),
-	)
+	registerBuiltinTools(reg, db, cfg, logger)
 
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
@@ -157,13 +153,11 @@ func buildHandler(
 			return &ipc.Response{Error: "intent " + id + " not found"}
 
 		case ipc.MethodToolList:
-			tools := reg.Tools()
+			filter, _ := req.Params["filter"].(string)
+			tools := filterTools(reg.Tools(), filter)
 			result := make([]map[string]any, len(tools))
-			for i, t := range tools {
-				result[i] = map[string]any{
-					"name":        t.Name,
-					"description": t.Description,
-				}
+			for i, tool := range tools {
+				result[i] = serializeToolInfo(tool)
 			}
 			return &ipc.Response{Data: result}
 
@@ -172,7 +166,32 @@ func buildHandler(
 			if name == "" {
 				return &ipc.Response{Error: "missing name parameter"}
 			}
-			return handleToolShow(reg, name)
+			tool, ok := reg.Tool(name)
+			if !ok {
+				return &ipc.Response{Error: "tool " + name + " not found"}
+			}
+			return &ipc.Response{Data: serializeToolInfo(tool)}
+
+		case ipc.MethodToolCall:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				return &ipc.Response{Error: "missing name parameter"}
+			}
+
+			args := map[string]any{}
+			if rawArgs, ok := req.Params["args"]; ok && rawArgs != nil {
+				parsedArgs, ok := rawArgs.(map[string]any)
+				if !ok {
+					return &ipc.Response{Error: "args parameter must be an object"}
+				}
+				args = parsedArgs
+			}
+
+			result, err := reg.Call(ctx, name, args)
+			if err != nil {
+				return &ipc.Response{Error: err.Error()}
+			}
+			return &ipc.Response{Data: result}
 
 		default:
 			return &ipc.Response{Error: "unknown method: " + req.Method}
@@ -208,99 +227,59 @@ func buildLogger() zerolog.Logger {
 	return zerolog.New(os.Stdout).Level(level).With().Timestamp().Logger()
 }
 
-// handleToolShow returns detailed capabilities for a server or a single tool.
-// name can be a server name ("fs") or a qualified tool name ("fs.read_file").
-func handleToolShow(reg *registry.Registry, name string) *ipc.Response {
-	// Try exact server match first.
-	if caps := reg.GetCapabilities(name); caps != nil {
-		return &ipc.Response{Data: serializeCaps(caps)}
+func filterTools(tools []registry.ToolInfo, filter string) []registry.ToolInfo {
+	filter = strings.TrimSpace(filter)
+	if filter == "" {
+		return tools
 	}
 
-	// Try matching as a specific tool (server.toolname).
-	tools := reg.Tools()
-	for _, t := range tools {
-		if t.Name == name {
-			return &ipc.Response{Data: map[string]any{
-				"name":        t.Name,
-				"description": t.Description,
-			}}
+	prefix := strings.TrimSuffix(filter, ".")
+	if prefix == "" {
+		return tools
+	}
+	if !strings.Contains(prefix, ".") {
+		prefix += "."
+	}
+
+	filtered := make([]registry.ToolInfo, 0, len(tools))
+	for _, tool := range tools {
+		if strings.HasPrefix(tool.Name, prefix) {
+			filtered = append(filtered, tool)
 		}
 	}
-
-	// Check if the name is a server prefix (e.g. querying "fs" when capabilities
-	// weren't stored, but tools like "fs.read_file" exist — fallback).
-	var matched []map[string]any
-	prefix := name + "."
-	for _, t := range tools {
-		if len(t.Name) > len(prefix) && t.Name[:len(prefix)] == prefix {
-			matched = append(matched, map[string]any{
-				"name":        t.Name,
-				"description": t.Description,
-			})
-		}
-	}
-	if len(matched) > 0 {
-		return &ipc.Response{Data: map[string]any{
-			"name":  name,
-			"tools": matched,
-		}}
-	}
-
-	return &ipc.Response{Error: "server or tool " + name + " not found"}
+	return filtered
 }
 
-// serializeCaps converts a ServerCapabilities into a plain map for JSON transport.
-func serializeCaps(caps *registry.ServerCapabilities) map[string]any {
-	tools := make([]map[string]any, 0, len(caps.Tools))
-	for _, t := range caps.Tools {
-		params := extractParams(t)
-		entry := map[string]any{
-			"name":        t.Name,
-			"description": t.Description,
-		}
-		if len(params) > 0 {
-			entry["parameters"] = params
-		}
-		tools = append(tools, entry)
+func serializeToolInfo(info registry.ToolInfo) map[string]any {
+	entry := map[string]any{
+		"name":        info.Name,
+		"description": info.Description,
 	}
 
-	resources := make([]map[string]any, 0, len(caps.Resources))
-	for _, r := range caps.Resources {
-		resources = append(resources, map[string]any{
-			"name":        r.Name,
-			"uri":         r.URI,
-			"description": r.Description,
-			"mime_type":   r.MIMEType,
-		})
+	params := extractParams(info.Spec)
+	if len(params) > 0 {
+		entry["parameters"] = params
+	}
+	if len(info.Examples) > 0 {
+		entry["examples"] = info.Examples
 	}
 
-	prompts := make([]map[string]any, 0, len(caps.Prompts))
-	for _, p := range caps.Prompts {
-		prompts = append(prompts, map[string]any{
-			"name":        p.Name,
-			"description": p.Description,
-		})
-	}
-
-	return map[string]any{
-		"name":        caps.Name,
-		"description": caps.Description,
-		"tools":       tools,
-		"resources":   resources,
-		"prompts":     prompts,
-	}
+	return entry
 }
 
-// extractParams pulls parameter info from a tool's input schema.
-func extractParams(t mcp.Tool) []map[string]any {
-	schema := t.InputSchema
-	var params []map[string]any
+func extractParams(spec mcp.Tool) []map[string]any {
+	schema := spec.InputSchema
+	params := make([]map[string]any, 0, len(schema.Properties))
 	required := make(map[string]bool, len(schema.Required))
-	for _, r := range schema.Required {
-		required[r] = true
+	for _, name := range schema.Required {
+		required[name] = true
 	}
+
 	for name, prop := range schema.Properties {
-		entry := map[string]any{"name": name, "required": required[name]}
+		entry := map[string]any{
+			"name":     name,
+			"required": required[name],
+		}
 		if m, ok := prop.(map[string]any); ok {
 			if typ, ok := m["type"].(string); ok {
 				entry["type"] = typ
@@ -311,5 +290,17 @@ func extractParams(t mcp.Tool) []map[string]any {
 		}
 		params = append(params, entry)
 	}
+
+	sort.Slice(params, func(i, j int) bool {
+		leftRequired, _ := params[i]["required"].(bool)
+		rightRequired, _ := params[j]["required"].(bool)
+		if leftRequired != rightRequired {
+			return leftRequired
+		}
+		leftName, _ := params[i]["name"].(string)
+		rightName, _ := params[j]["name"].(string)
+		return leftName < rightName
+	})
+
 	return params
 }

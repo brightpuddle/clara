@@ -94,7 +94,7 @@ func isRunning(socketPath string) bool {
 }
 
 // sendRequest dials the agent control socket and sends a JSON-encoded request.
-func sendRequest(socketPath string, req ipc.Request) (*ipc.Response, error) {
+func sendRawRequest(socketPath string, req ipc.Request) (*ipc.Response, error) {
 	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
 	if err != nil {
 		return nil, err
@@ -109,10 +109,19 @@ func sendRequest(socketPath string, req ipc.Request) (*ipc.Response, error) {
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	if resp.Error != "" {
-		return &resp, fmt.Errorf("agent error: %s", resp.Error)
-	}
 	return &resp, nil
+}
+
+// sendRequest dials the agent control socket and sends a JSON-encoded request.
+func sendRequest(socketPath string, req ipc.Request) (*ipc.Response, error) {
+	resp, err := sendRawRequest(socketPath, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Error != "" {
+		return resp, fmt.Errorf("agent error: %s", resp.Error)
+	}
+	return resp, nil
 }
 
 func prettyPrint(v any) {

@@ -10,6 +10,7 @@ const (
 	MethodRun      = "run"
 	MethodToolList = "tool_list"
 	MethodToolShow = "tool_show"
+	MethodToolCall = "tool_call"
 )
 
 // Request is a command sent from the CLI to the daemon.

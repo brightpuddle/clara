@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
 
@@ -92,5 +93,36 @@ func TestRegistry_Register_Overwrites(t *testing.T) {
 	result, _ := reg.Call(context.Background(), "tool", nil)
 	if result != "v2" {
 		t.Errorf("expected v2, got %v", result)
+	}
+}
+
+func TestRegistry_RegisterWithSpecStoresMetadata(t *testing.T) {
+	reg := registry.New(zerolog.Nop())
+	spec := mcp.NewTool("db.query",
+		mcp.WithDescription("Execute a SQL query and return the results."),
+		mcp.WithString("sql", mcp.Required(), mcp.Description("SQL query text.")),
+	)
+
+	reg.RegisterWithSpecAndExamples(spec, []string{"db.query(sql: str)"}, func(
+		_ context.Context, _ map[string]any,
+	) (any, error) {
+		return nil, nil
+	})
+
+	info, ok := reg.Tool("db.query")
+	if !ok {
+		t.Fatal("expected tool info to be available")
+	}
+	if info.Description != spec.Description {
+		t.Fatalf("description: got %q want %q", info.Description, spec.Description)
+	}
+	if info.Spec.Name != "db.query" {
+		t.Fatalf("spec name: got %q want %q", info.Spec.Name, "db.query")
+	}
+	if len(info.Spec.InputSchema.Required) != 1 || info.Spec.InputSchema.Required[0] != "sql" {
+		t.Fatalf("required params: got %v want [sql]", info.Spec.InputSchema.Required)
+	}
+	if len(info.Examples) != 1 || info.Examples[0] != "db.query(sql: str)" {
+		t.Fatalf("examples: got %v", info.Examples)
 	}
 }

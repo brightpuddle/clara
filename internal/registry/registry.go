@@ -25,6 +25,8 @@ type Tool func(ctx context.Context, args map[string]any) (any, error)
 type ToolInfo struct {
 	Name        string
 	Description string
+	Spec        mcp.Tool
+	Examples    []string
 }
 
 // ServerCapabilities holds the full capability set discovered from an MCP server.
@@ -46,6 +48,8 @@ type Registry struct {
 	mu           sync.RWMutex
 	tools        map[string]Tool
 	descriptions map[string]string
+	specs        map[string]mcp.Tool
+	examples     map[string][]string
 	servers      []*MCPServer
 	capabilities map[string]*ServerCapabilities
 	log          zerolog.Logger
@@ -56,6 +60,8 @@ func New(log zerolog.Logger) *Registry {
 	return &Registry{
 		tools:        make(map[string]Tool),
 		descriptions: make(map[string]string),
+		specs:        make(map[string]mcp.Tool),
+		examples:     make(map[string][]string),
 		capabilities: make(map[string]*ServerCapabilities),
 		log:          log,
 	}
@@ -69,13 +75,39 @@ func (r *Registry) Register(name string, tool Tool) {
 
 // RegisterWithDesc adds or replaces a Tool with an optional description.
 func (r *Registry) RegisterWithDesc(name, description string, tool Tool) {
+	spec := mcp.NewTool(name)
+	spec.Description = description
+	r.RegisterWithSpec(spec, tool)
+}
+
+// RegisterWithSpec adds or replaces a Tool with an MCP-style spec.
+func (r *Registry) RegisterWithSpec(spec mcp.Tool, tool Tool) {
+	r.RegisterWithSpecAndExamples(spec, nil, tool)
+}
+
+// RegisterWithSpecAndExamples adds or replaces a Tool with an MCP-style spec
+// and optional example usage strings.
+func (r *Registry) RegisterWithSpecAndExamples(spec mcp.Tool, examples []string, tool Tool) {
+	if spec.Name == "" {
+		panic("registry: tool spec name is required")
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tools[name] = tool
-	if description != "" {
-		r.descriptions[name] = description
+
+	r.tools[spec.Name] = tool
+	if spec.Description != "" {
+		r.descriptions[spec.Name] = spec.Description
+	} else {
+		delete(r.descriptions, spec.Name)
 	}
-	r.log.Debug().Str("tool", name).Msg("tool registered")
+	r.specs[spec.Name] = spec
+	if len(examples) > 0 {
+		r.examples[spec.Name] = append([]string(nil), examples...)
+	} else {
+		delete(r.examples, spec.Name)
+	}
+	r.log.Debug().Str("tool", spec.Name).Msg("tool registered")
 }
 
 // Get returns the Tool registered under name, or false if not found.
@@ -113,13 +145,43 @@ func (r *Registry) Tools() []ToolInfo {
 	defer r.mu.RUnlock()
 	infos := make([]ToolInfo, 0, len(r.tools))
 	for name := range r.tools {
+		spec, ok := r.specs[name]
+		if !ok {
+			spec = mcp.NewTool(name)
+			spec.Description = r.descriptions[name]
+		}
 		infos = append(infos, ToolInfo{
 			Name:        name,
-			Description: r.descriptions[name],
+			Description: spec.Description,
+			Spec:        spec,
+			Examples:    append([]string(nil), r.examples[name]...),
 		})
 	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
 	return infos
+}
+
+// Tool returns the full metadata for a registered tool.
+func (r *Registry) Tool(name string) (ToolInfo, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if _, ok := r.tools[name]; !ok {
+		return ToolInfo{}, false
+	}
+
+	spec, ok := r.specs[name]
+	if !ok {
+		spec = mcp.NewTool(name)
+		spec.Description = r.descriptions[name]
+	}
+
+	return ToolInfo{
+		Name:        name,
+		Description: spec.Description,
+		Spec:        spec,
+		Examples:    append([]string(nil), r.examples[name]...),
+	}, true
 }
 
 // Has reports whether a tool with the given name is registered.

@@ -111,10 +111,11 @@ func (s *MCPServer) discoverCapabilities(ctx context.Context) (*ServerCapabiliti
 func (s *MCPServer) registerDiscoveredTools(r *Registry, tools []mcp.Tool) {
 	for _, tool := range tools {
 		toolName := s.name + "." + tool.Name
+		spec := tool
+		spec.Name = toolName
 		mcpClient := s.mcpClient
 		mcpToolName := tool.Name
-		desc := tool.Description
-		r.RegisterWithDesc(toolName, desc, func(ctx context.Context, args map[string]any) (any, error) {
+		r.RegisterWithSpec(spec, func(ctx context.Context, args map[string]any) (any, error) {
 			req := mcp.CallToolRequest{}
 			req.Params.Name = mcpToolName
 			req.Params.Arguments = args

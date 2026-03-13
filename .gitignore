@@ -4,6 +4,7 @@
 /ClaraBridge
 
 # Build artifacts
+tmp/
 dist/
 *.test
 

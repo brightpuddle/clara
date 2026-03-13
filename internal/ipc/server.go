@@ -5,6 +5,7 @@ package ipc
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"os"
 
@@ -78,6 +79,9 @@ func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
 
 	var req Request
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
+		if errors.Is(err, io.EOF) {
+			return
+		}
 		s.log.Warn().Err(err).Msg("decode request")
 		return
 	}

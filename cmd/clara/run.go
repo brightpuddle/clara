@@ -65,13 +65,7 @@ func runOneOff(cmd *cobra.Command, args []string) error {
 	defer db.Close()
 
 	reg := registry.New(logger)
-	reg.RegisterWithDesc("db.query", "Execute a read-only SQL SELECT against the Clara database.", db.QueryTool())
-	reg.RegisterWithDesc("db.exec", "Execute a SQL write statement against the Clara database.", db.ExecTool())
-	reg.RegisterWithDesc(
-		"db.vec_search",
-		"Perform a vector similarity search over embeddings in the Clara database.",
-		db.VecSearchTool(),
-	)
+	registerBuiltinTools(reg, db, cfg, logger)
 
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
