@@ -213,7 +213,11 @@ func (s *Store) VecSearchTool() func(ctx context.Context, args map[string]any) (
 
 // SaveRunState persists the current execution state of an intent run to
 // survive daemon restarts.
-func (s *Store) SaveRunState(ctx context.Context, runID, intentID, state string, mem map[string]any) error {
+func (s *Store) SaveRunState(
+	ctx context.Context,
+	runID, intentID, state string,
+	mem map[string]any,
+) error {
 	memJSON, err := json.Marshal(mem)
 	if err != nil {
 		return errors.Wrap(err, "marshal mem")
@@ -231,7 +235,10 @@ func (s *Store) SaveRunState(ctx context.Context, runID, intentID, state string,
 
 // LoadRunState loads a previously-saved run state for resumption after restart.
 // Returns ("", nil, nil) if the run does not exist.
-func (s *Store) LoadRunState(ctx context.Context, runID string) (state string, mem map[string]any, err error) {
+func (s *Store) LoadRunState(
+	ctx context.Context,
+	runID string,
+) (state string, mem map[string]any, err error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT state, mem_json FROM intent_runs WHERE id = ?`, runID,
 	)

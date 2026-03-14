@@ -61,30 +61,56 @@ func (s *Service) Close() error {
 func (s *Service) NewServer() *server.MCPServer {
 	mcpServer := server.NewMCPServer("clara-db", "0.1.0", server.WithToolCapabilities(true))
 
-	mcpServer.AddTool(mcp.NewTool("query",
+	mcpServer.AddTool(mcp.NewTool(
+		"query",
 		mcp.WithDescription("Execute a SQL query and return the results."),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("SQL query text to execute.")),
-		mcp.WithArray("params", mcp.Description("Optional positional parameters bound to the SQL query.")),
+		mcp.WithArray(
+			"params",
+			mcp.Description("Optional positional parameters bound to the SQL query."),
+		),
 	), s.handleQuery)
 
-	mcpServer.AddTool(mcp.NewTool("exec",
+	mcpServer.AddTool(mcp.NewTool(
+		"exec",
 		mcp.WithDescription("Execute a SQL statement and return the number of affected rows."),
 		mcp.WithString("sql", mcp.Required(), mcp.Description("SQL statement text to execute.")),
-		mcp.WithArray("params", mcp.Description("Optional positional parameters bound to the SQL statement.")),
+		mcp.WithArray(
+			"params",
+			mcp.Description("Optional positional parameters bound to the SQL statement."),
+		),
 	), s.handleExec)
 
-	mcpServer.AddTool(mcp.NewTool("vec_search",
+	mcpServer.AddTool(mcp.NewTool(
+		"vec_search",
 		mcp.WithDescription("Perform a vector similarity search over a sqlite-vec table."),
-		mcp.WithString("table", mcp.Required(), mcp.Description("Name of the vec0 virtual table to query.")),
-		mcp.WithArray("vector", mcp.Required(), mcp.Description("Query vector represented as a JSON array of floats or raw bytes.")),
-		mcp.WithNumber("limit", mcp.Description("Maximum number of matches to return. Defaults to 10.")),
-		mcp.WithNumber("min_score", mcp.Description("Optional maximum distance threshold for returned matches.")),
+		mcp.WithString(
+			"table",
+			mcp.Required(),
+			mcp.Description("Name of the vec0 virtual table to query."),
+		),
+		mcp.WithArray(
+			"vector",
+			mcp.Required(),
+			mcp.Description("Query vector represented as a JSON array of floats or raw bytes."),
+		),
+		mcp.WithNumber(
+			"limit",
+			mcp.Description("Maximum number of matches to return. Defaults to 10."),
+		),
+		mcp.WithNumber(
+			"min_score",
+			mcp.Description("Optional maximum distance threshold for returned matches."),
+		),
 	), s.handleVecSearch)
 
 	return mcpServer
 }
 
-func (s *Service) handleQuery(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleQuery(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	query, err := stringArg(req, "sql")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -103,7 +129,10 @@ func (s *Service) handleQuery(ctx context.Context, req mcp.CallToolRequest) (*mc
 	return mcp.NewToolResultStructuredOnly(result), nil
 }
 
-func (s *Service) handleExec(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleExec(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	query, err := stringArg(req, "sql")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -117,7 +146,10 @@ func (s *Service) handleExec(ctx context.Context, req mcp.CallToolRequest) (*mcp
 	return mcp.NewToolResultStructuredOnly(map[string]any{"rows_affected": rowsAffected}), nil
 }
 
-func (s *Service) handleVecSearch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleVecSearch(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	table, err := stringArg(req, "table")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

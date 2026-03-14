@@ -1,0 +1,219 @@
+package tui
+
+import (
+	"sort"
+	"strings"
+)
+
+type CompletionItem struct {
+	Display string
+	Insert  string
+}
+
+func completeInput(client *IPCClient, input string, specs []CommandSpec) []CompletionItem {
+	if !strings.HasPrefix(input, "/") {
+		return nil
+	}
+
+	tokens, current, trailingSpace := completionTokens(input)
+	if len(tokens) == 0 && current == "" {
+		return commandWordSuggestions(specs, nil, "")
+	}
+
+	switch {
+	case len(tokens) >= 2 && tokens[0] == "tool" && tokens[1] == "call":
+		return completeToolCallInput(client, tokens, current, trailingSpace)
+	case len(tokens) >= 2 && tokens[0] == "intent" && tokens[1] == "run":
+		return completeIntentRunInput(client, current)
+	default:
+		return commandWordSuggestions(specs, tokens, current)
+	}
+}
+
+func completionTokens(input string) (tokens []string, current string, trailingSpace bool) {
+	trimmed := strings.TrimLeft(input, " ")
+	trailingSpace = strings.HasSuffix(trimmed, " ")
+	parsed, err := splitCommandLine(strings.TrimSpace(trimmed))
+	if err != nil || len(parsed) == 0 {
+		return nil, "", trailingSpace
+	}
+
+	parsed[0] = strings.TrimPrefix(parsed[0], "/")
+	if trailingSpace {
+		return parsed, "", true
+	}
+	if len(parsed) == 1 {
+		return nil, parsed[0], false
+	}
+	return parsed[:len(parsed)-1], parsed[len(parsed)-1], false
+}
+
+func commandWordSuggestions(
+	specs []CommandSpec,
+	completed []string,
+	current string,
+) []CompletionItem {
+	candidates := map[string]struct{}{}
+	for _, spec := range specs {
+		parts := splitSpecPath(spec.Path)
+		if len(parts) <= len(completed) {
+			continue
+		}
+
+		match := true
+		for i := range completed {
+			if parts[i] != completed[i] {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+
+		next := parts[len(completed)]
+		if strings.HasPrefix(next, current) {
+			candidates[next] = struct{}{}
+		}
+	}
+
+	items := make([]CompletionItem, 0, len(candidates))
+	for candidate := range candidates {
+		all := append([]string{}, completed...)
+		all = append(all, candidate)
+		items = append(items, CompletionItem{
+			Display: candidate,
+			Insert:  "/" + strings.Join(all, " ") + " ",
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Display < items[j].Display })
+	return items
+}
+
+func completeIntentRunInput(client *IPCClient, current string) []CompletionItem {
+	intents, err := client.ListIntents()
+	if err != nil {
+		return nil
+	}
+	items := make([]CompletionItem, 0, len(intents))
+	for _, intent := range intents {
+		if !strings.HasPrefix(intent.ID, current) {
+			continue
+		}
+		items = append(items, CompletionItem{
+			Display: intent.ID,
+			Insert:  "/intent run " + intent.ID + " ",
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Display < items[j].Display })
+	return items
+}
+
+func completeToolCallInput(
+	client *IPCClient,
+	tokens []string,
+	current string,
+	trailingSpace bool,
+) []CompletionItem {
+	if len(tokens) == 2 && trailingSpace {
+		return toolNameSuggestions(client, "")
+	}
+	if len(tokens) == 2 {
+		return toolNameSuggestions(client, current)
+	}
+
+	toolName := tokens[2]
+	specified := []string{}
+	if len(tokens) > 3 {
+		specified = append(specified, tokens[3:]...)
+	}
+	return toolParamSuggestions(client, toolName, specified, current, trailingSpace)
+}
+
+func toolNameSuggestions(client *IPCClient, prefix string) []CompletionItem {
+	tools, err := client.ListTools(prefix)
+	if err != nil {
+		return nil
+	}
+	items := make([]CompletionItem, 0, len(tools))
+	for _, tool := range tools {
+		if !strings.HasPrefix(tool.Name, prefix) {
+			continue
+		}
+		items = append(items, CompletionItem{
+			Display: tool.Name,
+			Insert:  "/tool call " + tool.Name + " ",
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Display < items[j].Display })
+	return items
+}
+
+func toolParamSuggestions(
+	client *IPCClient,
+	toolName string,
+	specified []string,
+	current string,
+	trailingSpace bool,
+) []CompletionItem {
+	tool, err := client.ShowTool(toolName)
+	if err != nil {
+		return nil
+	}
+
+	currentName := current
+	if key, _, ok := strings.Cut(currentName, "="); ok {
+		currentName = key
+	}
+
+	used := map[string]struct{}{}
+	for _, token := range specified {
+		key, _, ok := strings.Cut(token, "=")
+		if ok && key != "" {
+			used[key] = struct{}{}
+		}
+	}
+	if !trailingSpace && currentName != "" {
+		delete(used, currentName)
+	}
+
+	params := append([]ToolParam(nil), tool.Parameters...)
+	sort.Slice(params, func(i, j int) bool {
+		if params[i].Required != params[j].Required {
+			return params[i].Required
+		}
+		return params[i].Name < params[j].Name
+	})
+
+	items := make([]CompletionItem, 0, len(params))
+	for _, param := range params {
+		if _, exists := used[param.Name]; exists {
+			continue
+		}
+		if currentName != "" && !strings.HasPrefix(param.Name, currentName) {
+			continue
+		}
+
+		insertSpecified := append([]string{}, specified...)
+		if !trailingSpace && len(insertSpecified) > 0 {
+			insertSpecified = insertSpecified[:len(insertSpecified)-1]
+		}
+
+		insert := "/tool call " + toolName
+		if len(insertSpecified) > 0 {
+			insert += " " + strings.Join(insertSpecified, " ")
+		}
+		insert = strings.TrimSpace(insert) + " " + param.Name + "="
+
+		items = append(items, CompletionItem{
+			Display: param.Name + "=",
+			Insert:  insert,
+		})
+	}
+
+	return items
+}
+
+func splitSpecPath(path string) []string {
+	return strings.Fields(strings.TrimPrefix(path, "/"))
+}

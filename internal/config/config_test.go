@@ -120,6 +120,9 @@ func TestConfigDerivedPaths(t *testing.T) {
 	if cfg.ControlSocketPath() != "/tmp/clara-paths/clara.sock" {
 		t.Errorf("ControlSocketPath: got %q", cfg.ControlSocketPath())
 	}
+	if cfg.DynamicMCPSocketPath() != "/tmp/clara-paths/clara-mcp.sock" {
+		t.Errorf("DynamicMCPSocketPath: got %q", cfg.DynamicMCPSocketPath())
+	}
 	if cfg.TasksDir() != "/tmp/clara-paths/tasks" {
 		t.Errorf("TasksDir: got %q", cfg.TasksDir())
 	}

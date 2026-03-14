@@ -66,9 +66,11 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
-			srv.Name, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
+			srv.Name, srv.Description, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
 		)
-		reg.AddServer(mcpSrv)
+		if err := reg.AddServer(mcpSrv); err != nil {
+			return err
+		}
 	}
 
 	it := interpreter.New(reg, logger).
@@ -79,8 +81,9 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		})
 
 	sup := supervisor.New(cfg.TasksDir(), reg, it, logger)
+	attachServer := registry.NewDynamicAttachServer(cfg.DynamicMCPSocketPath(), reg, logger)
 
-	handler := buildHandler(reg, sup, logger)
+	handler := buildHandler(reg, sup, attachServer, logger)
 	controlServer := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 
 	wg := conc.NewWaitGroup()
@@ -98,6 +101,12 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	})
 
 	wg.Go(func() {
+		if err := attachServer.ListenAndServe(ctx); err != nil {
+			logger.Error().Err(err).Msg("dynamic MCP attach server error")
+		}
+	})
+
+	wg.Go(func() {
 		if err := sup.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("supervisor error")
 		}
@@ -110,6 +119,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 func buildHandler(
 	reg *registry.Registry,
 	sup *supervisor.Supervisor,
+	attach *registry.DynamicAttachServer,
 	log zerolog.Logger,
 ) ipc.HandlerFunc {
 	return func(ctx context.Context, req *ipc.Request) *ipc.Response {
@@ -122,8 +132,11 @@ func buildHandler(
 			return &ipc.Response{
 				Message: "running",
 				Data: map[string]any{
+					"servers":        reg.ActiveServerCount(),
+					"intents":        len(intents),
 					"active_intents": len(intents),
 					"tools":          len(reg.Names()),
+					"dynamic_mcp":    len(reg.DynamicServerNames()),
 				},
 			}
 
@@ -153,6 +166,18 @@ func buildHandler(
 
 		case ipc.MethodToolList:
 			filter, _ := req.Params["filter"].(string)
+			view, _ := req.Params["view"].(string)
+			if filter == "" && view != "tools" {
+				caps := reg.AllCapabilities()
+				result := make([]map[string]any, 0, len(caps))
+				for _, cap := range caps {
+					result = append(result, map[string]any{
+						"name":        cap.Name,
+						"description": cap.Description,
+					})
+				}
+				return &ipc.Response{Data: result}
+			}
 			tools := filterTools(reg.Tools(), filter)
 			result := make([]map[string]any, len(tools))
 			for i, tool := range tools {
@@ -191,6 +216,36 @@ func buildHandler(
 				return &ipc.Response{Error: err.Error()}
 			}
 			return &ipc.Response{Data: result}
+
+		case ipc.MethodMCPRegister:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				return &ipc.Response{Error: "missing name parameter"}
+			}
+			registration, err := attach.Register(name)
+			if err != nil {
+				return &ipc.Response{Error: err.Error()}
+			}
+			return &ipc.Response{
+				Message: "dynamic MCP registration created",
+				Data:    registration,
+			}
+
+		case ipc.MethodMCPUnregister:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				return &ipc.Response{Error: "missing name parameter"}
+			}
+			if err := attach.Unregister(name); err != nil {
+				return &ipc.Response{Error: err.Error()}
+			}
+			return &ipc.Response{Message: "dynamic MCP registration removed"}
+
+		case ipc.MethodMCPList:
+			return &ipc.Response{Data: map[string]any{
+				"active":  reg.DynamicServerNames(),
+				"pending": attach.Registrations(),
+			}}
 
 		default:
 			return &ipc.Response{Error: "unknown method: " + req.Method}

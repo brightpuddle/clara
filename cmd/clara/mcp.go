@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/brightpuddle/clara/internal/config"
 	dbmcp "github.com/brightpuddle/clara/internal/mcpserver/db"
 	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
 	taskwmcp "github.com/brightpuddle/clara/internal/mcpserver/taskwarrior"
@@ -93,7 +95,7 @@ func runMCPDB(cmd *cobra.Command, args []string) error {
 
 	path := ""
 	if len(args) == 1 {
-		path = args[0]
+		path = resolveMCPDBPath(args[0])
 	}
 
 	svc, err := dbmcp.Open(path, zerolog.Nop())
@@ -128,4 +130,11 @@ func serveMCP(ctx context.Context, srv *server.MCPServer) error {
 
 func skipConfigLoad(cmd *cobra.Command, args []string) error {
 	return nil
+}
+
+func resolveMCPDBPath(path string) string {
+	if path == "" || path == ":memory:" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(config.DefaultDataDir(), path)
 }

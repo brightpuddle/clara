@@ -8,28 +8,13 @@ import (
 	"strings"
 
 	"github.com/brightpuddle/clara/internal/ipc"
+	"github.com/brightpuddle/clara/internal/toolcatalog"
 	"github.com/spf13/cobra"
 )
 
-const (
-	ansiBlue  = "\x1b[34m"
-	ansiGreen = "\x1b[32m"
-	ansiReset = "\x1b[0m"
-)
-
-type toolParam struct {
-	Name        string
-	Type        string
-	Description string
-	Required    bool
-}
-
-type toolDetails struct {
-	Name        string
-	Description string
-	Parameters  []toolParam
-	Examples    []string
-}
+type toolParam = toolcatalog.Param
+type toolDetails = toolcatalog.Tool
+type providerSummary = toolcatalog.Provider
 
 var toolCmd = &cobra.Command{
 	Use:   "tool",
@@ -96,11 +81,19 @@ func runToolList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("tool list request failed: %w", err)
 	}
 
+	if len(args) == 0 {
+		providers, err := decodeProviderList(resp.Data)
+		if err != nil {
+			return err
+		}
+		printProviderList(providers)
+		return nil
+	}
+
 	tools, err := decodeToolList(resp.Data)
 	if err != nil {
 		return err
 	}
-
 	printToolList(tools)
 	return nil
 }
@@ -260,104 +253,45 @@ func decodeToolParams(data any) ([]toolParam, error) {
 	return params, nil
 }
 
-func printToolList(tools []toolDetails) {
-	for i, tool := range tools {
-		fmt.Println(formatToolSignature(tool, useToolColors()))
-		if tool.Description != "" {
-			fmt.Printf("  %s\n", tool.Description)
-		}
-		if i < len(tools)-1 {
-			fmt.Println()
-		}
+func decodeProviderList(data any) ([]providerSummary, error) {
+	if data == nil {
+		return nil, nil
 	}
+	items, ok := data.([]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected provider list payload: %T", data)
+	}
+	providers := make([]providerSummary, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("unexpected provider payload: %T", item)
+		}
+		providers = append(providers, providerSummary{
+			Name:        stringValue(m["name"]),
+			Description: stringValue(m["description"]),
+		})
+	}
+	sort.Slice(providers, func(i, j int) bool { return providers[i].Name < providers[j].Name })
+	return providers, nil
+}
+
+func printProviderList(providers []providerSummary) {
+	if len(providers) == 0 {
+		return
+	}
+	fmt.Println(toolcatalog.FormatProviderList(providers, useToolColors()))
+}
+
+func printToolList(tools []toolDetails) {
+	if len(tools) == 0 {
+		return
+	}
+	fmt.Println(toolcatalog.FormatToolList(tools, useToolColors()))
 }
 
 func printToolDetails(tool toolDetails) {
-	useColor := useToolColors()
-	fmt.Println(formatToolSignature(tool, useColor))
-	if tool.Description != "" {
-		fmt.Printf("  %s\n", tool.Description)
-	}
-
-	fmt.Println()
-	if len(tool.Parameters) == 0 {
-		fmt.Println("Parameters: none")
-	} else {
-		fmt.Println("Parameters:")
-		for _, param := range tool.Parameters {
-			line := formatParamLabel(param, useColor)
-			if param.Required {
-				fmt.Printf("  %s (required)\n", line)
-			} else {
-				fmt.Printf("  %s (optional)\n", line)
-			}
-			if param.Description != "" {
-				fmt.Printf("    %s\n", param.Description)
-			}
-		}
-	}
-
-	if len(tool.Examples) == 0 {
-		return
-	}
-
-	fmt.Println()
-	fmt.Println("Examples:")
-	for _, example := range tool.Examples {
-		fmt.Printf("  %s\n", example)
-	}
-}
-
-func formatToolSignature(tool toolDetails, useColor bool) string {
-	parts := make([]string, 0, len(tool.Parameters))
-	for _, param := range tool.Parameters {
-		label := param.Name
-		if !param.Required {
-			label += "?"
-		}
-		label += ": " + formatTypeName(param.Type)
-		if useColor {
-			label = colorize(label, ansiGreen)
-		}
-		parts = append(parts, label)
-	}
-
-	name := tool.Name
-	if useColor {
-		name = colorize(name, ansiBlue)
-	}
-	return name + "(" + strings.Join(parts, ", ") + ")"
-}
-
-func formatParamLabel(param toolParam, useColor bool) string {
-	label := param.Name + ": " + formatTypeName(param.Type)
-	if !useColor {
-		return label
-	}
-	return colorize(label, ansiGreen)
-}
-
-func formatTypeName(typ string) string {
-	switch typ {
-	case "string":
-		return "str"
-	case "boolean":
-		return "bool"
-	case "integer":
-		return "int"
-	case "number":
-		return "number"
-	case "array":
-		return "list"
-	case "object":
-		return "object"
-	case "null":
-		return "null"
-	case "":
-		return "any"
-	default:
-		return typ
-	}
+	fmt.Println(toolcatalog.FormatToolDetails(tool, useToolColors()))
 }
 
 func useToolColors() bool {
@@ -369,10 +303,6 @@ func useToolColors() bool {
 		return false
 	}
 	return (fi.Mode() & os.ModeCharDevice) != 0
-}
-
-func colorize(value, color string) string {
-	return color + value + ansiReset
 }
 
 func stringValue(value any) string {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/ipc"
+	"github.com/brightpuddle/clara/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -64,21 +65,9 @@ func loadConfig() error {
 	return err
 }
 
-// runHUD is the default command: print a brief status summary.
-// This is a placeholder for a future interactive TUI.
+// runHUD is the default command: launch the interactive TUI.
 func runHUD(cmd *cobra.Command, args []string) error {
-	if !isRunning(cfg.ControlSocketPath()) {
-		fmt.Println("Clara agent is not running.")
-		fmt.Println("Start it with: clara serve")
-		return nil
-	}
-	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{Method: ipc.MethodStatus})
-	if err != nil {
-		return fmt.Errorf("status request failed: %w", err)
-	}
-	fmt.Println("Clara agent is running.")
-	prettyPrint(resp.Data)
-	return nil
+	return tui.Run(cfg)
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────

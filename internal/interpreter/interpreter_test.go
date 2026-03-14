@@ -298,7 +298,10 @@ func TestInterpreter_InitialMem(t *testing.T) {
 	it, reg := newTestInterpreter(t)
 
 	var seenValue any
-	reg.Register("check", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+	reg.Register(
+		"check",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
 
 	bp := &orchestrator.Intent{
 		ID:           "initial-mem-test",

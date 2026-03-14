@@ -163,7 +163,10 @@ func (s *Supervisor) convertToIntentWithLLM(
 
 	tool, ok := s.reg.Get(LLMTool)
 	if !ok {
-		return nil, errors.Newf("LLM tool %q not registered; cannot convert markdown to intent", LLMTool)
+		return nil, errors.Newf(
+			"LLM tool %q not registered; cannot convert markdown to intent",
+			LLMTool,
+		)
 	}
 
 	result, err := tool(ctx, map[string]any{

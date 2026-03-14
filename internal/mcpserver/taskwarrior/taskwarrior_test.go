@@ -52,10 +52,13 @@ esac
 	t.Setenv("PATH", dir)
 
 	svc := New(zerolog.Nop())
-	result, err := svc.handleListDue(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{
-		"tags":   []any{"home"},
-		"before": "2026-03-14T00:00:00Z",
-	}}})
+	result, err := svc.handleListDue(
+		context.Background(),
+		mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{
+			"tags":   []any{"home"},
+			"before": "2026-03-14T00:00:00Z",
+		}}},
+	)
 	if err != nil {
 		t.Fatalf("handleListDue returned error: %v", err)
 	}

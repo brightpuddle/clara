@@ -140,6 +140,12 @@ func (c *Config) ControlSocketPath() string {
 	return filepath.Join(c.DataDir, "clara.sock")
 }
 
+// DynamicMCPSocketPath returns the absolute path to the daemon socket used for
+// long-lived dynamic MCP peer attachments.
+func (c *Config) DynamicMCPSocketPath() string {
+	return filepath.Join(c.DataDir, "clara-mcp.sock")
+}
+
 // TasksDir returns the directory where Markdown intent files are watched.
 func (c *Config) TasksDir() string {
 	return filepath.Join(c.DataDir, "tasks")

@@ -10,9 +10,11 @@ package registry
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/cockroachdb/errors"
+	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
@@ -51,8 +53,14 @@ type Registry struct {
 	specs        map[string]mcp.Tool
 	examples     map[string][]string
 	servers      []*MCPServer
+	serverNames  map[string]struct{}
+	dynamic      map[string]dynamicServer
 	capabilities map[string]*ServerCapabilities
 	log          zerolog.Logger
+}
+
+type dynamicServer struct {
+	close func() error
 }
 
 // New creates an empty Registry.
@@ -62,6 +70,8 @@ func New(log zerolog.Logger) *Registry {
 		descriptions: make(map[string]string),
 		specs:        make(map[string]mcp.Tool),
 		examples:     make(map[string][]string),
+		serverNames:  make(map[string]struct{}),
+		dynamic:      make(map[string]dynamicServer),
 		capabilities: make(map[string]*ServerCapabilities),
 		log:          log,
 	}
@@ -218,13 +228,29 @@ func (r *Registry) AllCapabilities() []*ServerCapabilities {
 	return result
 }
 
+// HasServer reports whether a server alias is reserved or active.
+func (r *Registry) HasServer(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.serverNames[name]
+	return ok
+}
+
 // AddServer registers an MCPServer and starts managing it. The server's tools
 // are automatically registered in the registry under "name.toolname" when the
 // server connects.
-func (r *Registry) AddServer(srv *MCPServer) {
+func (r *Registry) AddServer(srv *MCPServer) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if srv == nil {
+		return errors.New("registry: nil MCP server")
+	}
+	if _, exists := r.serverNames[srv.name]; exists {
+		return errors.Newf("server %q already registered", srv.name)
+	}
+	r.serverNames[srv.name] = struct{}{}
 	r.servers = append(r.servers, srv)
-	r.mu.Unlock()
+	return nil
 }
 
 // Start launches all registered MCP servers and blocks until ctx is cancelled,
@@ -246,5 +272,145 @@ func (r *Registry) Start(ctx context.Context) error {
 	for _, srv := range servers {
 		srv.Stop()
 	}
+	return nil
+}
+
+// RegisterConnectedClient adds a connected MCP client to the registry under the
+// provided server name.
+func (r *Registry) RegisterConnectedClient(
+	serverName string,
+	mcpClient *client.Client,
+	caps *ServerCapabilities,
+	closeFn func() error,
+) error {
+	if caps == nil {
+		return errors.New("registry: capabilities are required")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.serverNames[serverName]; !exists {
+		r.serverNames[serverName] = struct{}{}
+	}
+	if closeFn != nil {
+		r.dynamic[serverName] = dynamicServer{close: closeFn}
+	}
+	if err := r.registerMCPToolsLocked(serverName, mcpClient, caps.Tools); err != nil {
+		if closeFn != nil {
+			delete(r.dynamic, serverName)
+		}
+		if _, hadCaps := r.capabilities[serverName]; !hadCaps {
+			delete(r.serverNames, serverName)
+		}
+		return err
+	}
+	r.capabilities[serverName] = caps
+	return nil
+}
+
+// UnregisterDynamicServer detaches an active dynamic MCP server and removes all
+// of its registered capabilities.
+func (r *Registry) UnregisterDynamicServer(name string) error {
+	srv, ok := r.removeDynamicServer(name)
+	if !ok {
+		return errors.Newf("dynamic MCP server %q not found", name)
+	}
+	if srv.close == nil {
+		return nil
+	}
+	if err := srv.close(); err != nil {
+		return errors.Wrapf(err, "close dynamic MCP server %q", name)
+	}
+	return nil
+}
+
+// CleanupDynamicServer removes a dynamic MCP server after the underlying
+// transport disconnects. Missing servers are ignored.
+func (r *Registry) CleanupDynamicServer(name string) {
+	r.removeDynamicServer(name)
+}
+
+// DynamicServerNames returns the active dynamic MCP server aliases.
+func (r *Registry) DynamicServerNames() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	names := make([]string, 0, len(r.dynamic))
+	for name := range r.dynamic {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ActiveServerCount returns the number of currently connected MCP servers.
+func (r *Registry) ActiveServerCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.capabilities)
+}
+
+func (r *Registry) removeDynamicServer(name string) (dynamicServer, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	srv, ok := r.dynamic[name]
+	if !ok {
+		return dynamicServer{}, false
+	}
+	delete(r.dynamic, name)
+	delete(r.serverNames, name)
+	delete(r.capabilities, name)
+
+	prefix := name + "."
+	for toolName := range r.tools {
+		if strings.HasPrefix(toolName, prefix) {
+			delete(r.tools, toolName)
+			delete(r.descriptions, toolName)
+			delete(r.specs, toolName)
+			delete(r.examples, toolName)
+		}
+	}
+
+	return srv, true
+}
+
+func (r *Registry) registerMCPToolsLocked(
+	serverName string,
+	mcpClient *client.Client,
+	tools []mcp.Tool,
+) error {
+	for _, tool := range tools {
+		fqName := serverName + "." + tool.Name
+		if _, exists := r.tools[fqName]; exists {
+			return errors.Newf("tool %q already registered", fqName)
+		}
+	}
+
+	for _, tool := range tools {
+		spec := tool
+		spec.Name = serverName + "." + tool.Name
+		mcpToolName := tool.Name
+		r.tools[spec.Name] = func(ctx context.Context, args map[string]any) (any, error) {
+			req := mcp.CallToolRequest{}
+			req.Params.Name = mcpToolName
+			req.Params.Arguments = args
+			res, err := mcpClient.CallTool(ctx, req)
+			if err != nil {
+				return nil, errors.Wrapf(err, "call MCP tool %q", mcpToolName)
+			}
+			return res, nil
+		}
+		if spec.Description != "" {
+			r.descriptions[spec.Name] = spec.Description
+		} else {
+			delete(r.descriptions, spec.Name)
+		}
+		r.specs[spec.Name] = spec
+		delete(r.examples, spec.Name)
+	}
+
+	r.log.Debug().Str("server", serverName).Int("count", len(tools)).Msg("MCP tools registered")
 	return nil
 }

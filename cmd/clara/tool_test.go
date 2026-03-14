@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/toolcatalog"
 )
 
 func TestParseToolCallArgs(t *testing.T) {
@@ -39,19 +40,20 @@ func TestParseToolCallArgsRejectsDuplicateKeys(t *testing.T) {
 	}
 }
 
-func TestFormatToolSignature(t *testing.T) {
+func TestFormatToolList(t *testing.T) {
 	tool := toolDetails{
-		Name: "db.query",
+		Name:        "db.query",
+		Description: "Execute a SQL query and return the results.",
 		Parameters: []toolParam{
 			{Name: "sql", Type: "string", Required: true},
 			{Name: "params", Type: "array", Required: false},
 		},
 	}
 
-	got := formatToolSignature(tool, false)
-	want := "db.query(sql: str, params?: list)"
+	got := toolcatalog.FormatToolList([]toolDetails{tool}, false)
+	want := "db.query\n  Execute a SQL query and return the results.\n  sql: str\n  params?: list"
 	if got != want {
-		t.Fatalf("signature: got %q want %q", got, want)
+		t.Fatalf("formatted list: got %q want %q", got, want)
 	}
 }
 

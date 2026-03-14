@@ -4,13 +4,16 @@ package ipc
 
 // Method constants for the control socket protocol.
 const (
-	MethodShutdown = "shutdown"
-	MethodStatus   = "status"
-	MethodList     = "list"
-	MethodRun      = "run"
-	MethodToolList = "tool_list"
-	MethodToolShow = "tool_show"
-	MethodToolCall = "tool_call"
+	MethodShutdown      = "shutdown"
+	MethodStatus        = "status"
+	MethodList          = "list"
+	MethodRun           = "run"
+	MethodToolList      = "tool_list"
+	MethodToolShow      = "tool_show"
+	MethodToolCall      = "tool_call"
+	MethodMCPRegister   = "mcp.register"
+	MethodMCPUnregister = "mcp.unregister"
+	MethodMCPList       = "mcp.list"
 )
 
 // Request is a command sent from the CLI to the daemon.

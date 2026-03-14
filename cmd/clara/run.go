@@ -68,9 +68,11 @@ func runOneOff(cmd *cobra.Command, args []string) error {
 
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
-			srv.Name, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
+			srv.Name, srv.Description, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
 		)
-		reg.AddServer(mcpSrv)
+		if err := reg.AddServer(mcpSrv); err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

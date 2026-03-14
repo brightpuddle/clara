@@ -33,8 +33,11 @@ func New() *server.MCPServer {
 		),
 	), handleReadFile)
 
-	s.AddTool(mcp.NewTool("write_file",
-		mcp.WithDescription("Write content to a file, creating it or overwriting it if it already exists."),
+	s.AddTool(mcp.NewTool(
+		"write_file",
+		mcp.WithDescription(
+			"Write content to a file, creating it or overwriting it if it already exists.",
+		),
 		mcp.WithString("path",
 			mcp.Required(),
 			mcp.Description("Absolute or relative path to the file to write."),
@@ -93,8 +96,11 @@ func New() *server.MCPServer {
 		),
 	), handleCreateDirectory)
 
-	s.AddTool(mcp.NewTool("get_file_info",
-		mcp.WithDescription("Get metadata about a file or directory (size, modification time, type)."),
+	s.AddTool(mcp.NewTool(
+		"get_file_info",
+		mcp.WithDescription(
+			"Get metadata about a file or directory (size, modification time, type).",
+		),
 		mcp.WithString("path",
 			mcp.Required(),
 			mcp.Description("Path to the file or directory."),
@@ -225,7 +231,10 @@ func handleDeleteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	return mcp.NewToolResultText("deleted successfully"), nil
 }
 
-func handleCreateDirectory(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleCreateDirectory(
+	_ context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	path, err := stringArg(req, "path")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

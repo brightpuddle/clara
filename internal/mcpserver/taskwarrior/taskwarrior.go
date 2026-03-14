@@ -31,21 +31,36 @@ func New(log zerolog.Logger) *Service {
 	if err != nil {
 		err = errors.Wrap(err, "task binary not found on PATH")
 	}
-	return &Service{taskPath: path, availabilityErr: err, log: log.With().Str("component", "mcp_taskwarrior").Logger()}
+	return &Service{
+		taskPath:        path,
+		availabilityErr: err,
+		log:             log.With().Str("component", "mcp_taskwarrior").Logger(),
+	}
 }
 
 func (s *Service) NewServer() *server.MCPServer {
-	mcpServer := server.NewMCPServer("clara-taskwarrior", "0.1.0", server.WithToolCapabilities(true))
+	mcpServer := server.NewMCPServer(
+		"clara-taskwarrior",
+		"0.1.0",
+		server.WithToolCapabilities(true),
+	)
 
-	mcpServer.AddTool(mcp.NewTool("task_add",
+	mcpServer.AddTool(mcp.NewTool(
+		"task_add",
 		mcp.WithDescription("Create a Taskwarrior task and return the created task JSON."),
 		mcp.WithString("description", mcp.Required(), mcp.Description("Task description.")),
 		mcp.WithString("project", mcp.Description("Optional project name.")),
 		mcp.WithArray("tags", mcp.Description("Optional list of tags to assign.")),
 		mcp.WithString("status", mcp.Description("Optional initial status (pending or waiting).")),
 		mcp.WithString("priority", mcp.Description("Optional priority, e.g. H, M, or L.")),
-		mcp.WithString("due", mcp.Description("Optional due timestamp in Taskwarrior or ISO-8601 format.")),
-		mcp.WithString("wait", mcp.Description("Optional wait/until timestamp in Taskwarrior or ISO-8601 format.")),
+		mcp.WithString(
+			"due",
+			mcp.Description("Optional due timestamp in Taskwarrior or ISO-8601 format."),
+		),
+		mcp.WithString(
+			"wait",
+			mcp.Description("Optional wait/until timestamp in Taskwarrior or ISO-8601 format."),
+		),
 	), s.handleTaskAdd)
 
 	mcpServer.AddTool(mcp.NewTool("task_get",
@@ -53,16 +68,32 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Task UUID.")),
 	), s.handleTaskGet)
 
-	mcpServer.AddTool(mcp.NewTool("task_update",
+	mcpServer.AddTool(mcp.NewTool(
+		"task_update",
 		mcp.WithDescription("Update fields on an existing task and return the updated task JSON."),
 		mcp.WithString("uuid", mcp.Required(), mcp.Description("Task UUID.")),
 		mcp.WithString("description", mcp.Description("Updated task description.")),
-		mcp.WithString("project", mcp.Description("Updated project name. Use an empty string to clear the project.")),
+		mcp.WithString(
+			"project",
+			mcp.Description("Updated project name. Use an empty string to clear the project."),
+		),
 		mcp.WithArray("tags", mcp.Description("Replacement set of task tags.")),
-		mcp.WithString("status", mcp.Description("Updated status. Supports pending, waiting, and completed.")),
-		mcp.WithString("priority", mcp.Description("Updated priority. Use an empty string to clear priority.")),
-		mcp.WithString("due", mcp.Description("Updated due timestamp. Use an empty string to clear due.")),
-		mcp.WithString("wait", mcp.Description("Updated wait timestamp. Use an empty string to clear wait.")),
+		mcp.WithString(
+			"status",
+			mcp.Description("Updated status. Supports pending, waiting, and completed."),
+		),
+		mcp.WithString(
+			"priority",
+			mcp.Description("Updated priority. Use an empty string to clear priority."),
+		),
+		mcp.WithString(
+			"due",
+			mcp.Description("Updated due timestamp. Use an empty string to clear due."),
+		),
+		mcp.WithString(
+			"wait",
+			mcp.Description("Updated wait timestamp. Use an empty string to clear wait."),
+		),
 	), s.handleTaskUpdate)
 
 	mcpServer.AddTool(mcp.NewTool("task_delete",
@@ -83,17 +114,24 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithArray("tags", mcp.Description("Optional list of required tags.")),
 	), s.handleListPending)
 
-	mcpServer.AddTool(mcp.NewTool("list_due",
+	mcpServer.AddTool(mcp.NewTool(
+		"list_due",
 		mcp.WithDescription("List due pending tasks filtered by project and tags."),
 		mcp.WithString("project", mcp.Description("Optional project name filter.")),
 		mcp.WithArray("tags", mcp.Description("Optional list of required tags.")),
-		mcp.WithString("before", mcp.Description("Optional upper-bound due timestamp; defaults to now.")),
+		mcp.WithString(
+			"before",
+			mcp.Description("Optional upper-bound due timestamp; defaults to now."),
+		),
 	), s.handleListDue)
 
 	return mcpServer
 }
 
-func (s *Service) handleTaskAdd(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleTaskAdd(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	if result := s.ensureAvailable(); result != nil {
 		return result, nil
 	}
@@ -123,7 +161,10 @@ func (s *Service) handleTaskAdd(ctx context.Context, req mcp.CallToolRequest) (*
 	return structuredResult(created)
 }
 
-func (s *Service) handleTaskGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleTaskGet(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	if result := s.ensureAvailable(); result != nil {
 		return result, nil
 	}
@@ -138,7 +179,10 @@ func (s *Service) handleTaskGet(ctx context.Context, req mcp.CallToolRequest) (*
 	return structuredResult(task)
 }
 
-func (s *Service) handleTaskUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleTaskUpdate(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	if result := s.ensureAvailable(); result != nil {
 		return result, nil
 	}
@@ -177,7 +221,10 @@ func (s *Service) handleTaskUpdate(ctx context.Context, req mcp.CallToolRequest)
 	return structuredResult(updated)
 }
 
-func (s *Service) handleTaskDelete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleTaskDelete(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	if result := s.ensureAvailable(); result != nil {
 		return result, nil
 	}
@@ -191,17 +238,26 @@ func (s *Service) handleTaskDelete(ctx context.Context, req mcp.CallToolRequest)
 	return structuredResult(map[string]any{"uuid": uuid, "deleted": true})
 }
 
-func (s *Service) handleListTasks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleListTasks(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	return s.handleTaskList(ctx, req.GetArguments(), false, false)
 }
 
-func (s *Service) handleListPending(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleListPending(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	args := cloneArgs(req.GetArguments())
 	args["status"] = "pending"
 	return s.handleTaskList(ctx, args, false, false)
 }
 
-func (s *Service) handleListDue(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (s *Service) handleListDue(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	args := cloneArgs(req.GetArguments())
 	args["status"] = "pending"
 	return s.handleTaskList(ctx, args, true, true)
@@ -225,10 +281,13 @@ func (s *Service) handleTaskList(
 	if dueOnly {
 		before := time.Now().UTC()
 		if useBeforeFilter {
-			if rawBefore, ok := stringArg(args, "before"); ok && strings.TrimSpace(rawBefore) != "" {
+			if rawBefore, ok := stringArg(args, "before"); ok &&
+				strings.TrimSpace(rawBefore) != "" {
 				before, err = parseTaskTime(rawBefore)
 				if err != nil {
-					return mcp.NewToolResultError(fmt.Sprintf("invalid before timestamp: %v", err)), nil
+					return mcp.NewToolResultError(
+						fmt.Sprintf("invalid before timestamp: %v", err),
+					), nil
 				}
 			}
 		}
@@ -280,7 +339,12 @@ func (s *Service) runTask(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, s.taskPath, append(baseArgs, args...)...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, errors.Wrapf(err, "run task command %q: %s", strings.Join(args, " "), strings.TrimSpace(string(output)))
+		return nil, errors.Wrapf(
+			err,
+			"run task command %q: %s",
+			strings.Join(args, " "),
+			strings.TrimSpace(string(output)),
+		)
 	}
 	return output, nil
 }

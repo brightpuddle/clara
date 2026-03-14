@@ -70,7 +70,10 @@ func TestRegistry_Has(t *testing.T) {
 	if reg.Has("nope") {
 		t.Error("expected false")
 	}
-	reg.Register("yes.tool", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+	reg.Register(
+		"yes.tool",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
 	if !reg.Has("yes.tool") {
 		t.Error("expected true")
 	}
@@ -78,8 +81,14 @@ func TestRegistry_Has(t *testing.T) {
 
 func TestRegistry_Names(t *testing.T) {
 	reg := registry.New(zerolog.Nop())
-	reg.Register("a.foo", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
-	reg.Register("b.bar", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+	reg.Register(
+		"a.foo",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
+	reg.Register(
+		"b.bar",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
 	names := reg.Names()
 	if len(names) != 2 {
 		t.Errorf("expected 2 names, got %d", len(names))
@@ -88,8 +97,14 @@ func TestRegistry_Names(t *testing.T) {
 
 func TestRegistry_Register_Overwrites(t *testing.T) {
 	reg := registry.New(zerolog.Nop())
-	reg.Register("tool", func(_ context.Context, _ map[string]any) (any, error) { return "v1", nil })
-	reg.Register("tool", func(_ context.Context, _ map[string]any) (any, error) { return "v2", nil })
+	reg.Register(
+		"tool",
+		func(_ context.Context, _ map[string]any) (any, error) { return "v1", nil },
+	)
+	reg.Register(
+		"tool",
+		func(_ context.Context, _ map[string]any) (any, error) { return "v2", nil },
+	)
 	result, _ := reg.Call(context.Background(), "tool", nil)
 	if result != "v2" {
 		t.Errorf("expected v2, got %v", result)
