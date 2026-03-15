@@ -256,23 +256,48 @@ func (r *Registry) AddServer(srv *MCPServer) error {
 // Start launches all registered MCP servers and blocks until ctx is cancelled,
 // then shuts them all down.
 func (r *Registry) Start(ctx context.Context) error {
+	servers := r.serversSnapshot()
+	if err := r.startServers(ctx, servers); err != nil {
+		return err
+	}
+
+	<-ctx.Done()
+	r.stopServers(servers)
+	return nil
+}
+
+// StartServers launches all registered MCP servers and returns after startup
+// and capability discovery complete.
+func (r *Registry) StartServers(ctx context.Context) error {
+	return r.startServers(ctx, r.serversSnapshot())
+}
+
+// StopServers terminates all configured MCP servers managed by the registry.
+func (r *Registry) StopServers() {
+	r.stopServers(r.serversSnapshot())
+}
+
+func (r *Registry) serversSnapshot() []*MCPServer {
 	r.mu.RLock()
 	servers := make([]*MCPServer, len(r.servers))
 	copy(servers, r.servers)
 	r.mu.RUnlock()
+	return servers
+}
 
+func (r *Registry) startServers(ctx context.Context, servers []*MCPServer) error {
 	for _, srv := range servers {
 		if err := srv.Start(ctx, r); err != nil {
 			return errors.Wrapf(err, "start MCP server %q", srv.name)
 		}
 	}
+	return nil
+}
 
-	<-ctx.Done()
-
+func (r *Registry) stopServers(servers []*MCPServer) {
 	for _, srv := range servers {
 		srv.Stop()
 	}
-	return nil
 }
 
 // RegisterConnectedClient adds a connected MCP client to the registry under the
@@ -400,7 +425,7 @@ func (r *Registry) registerMCPToolsLocked(
 			if err != nil {
 				return nil, errors.Wrapf(err, "call MCP tool %q", mcpToolName)
 			}
-			return res, nil
+			return normalizeCallToolResult(mcpToolName, res)
 		}
 		if spec.Description != "" {
 			r.descriptions[spec.Name] = spec.Description
@@ -413,4 +438,35 @@ func (r *Registry) registerMCPToolsLocked(
 
 	r.log.Debug().Str("server", serverName).Int("count", len(tools)).Msg("MCP tools registered")
 	return nil
+}
+
+func normalizeCallToolResult(toolName string, res *mcp.CallToolResult) (any, error) {
+	if res == nil {
+		return nil, nil
+	}
+	if res.IsError {
+		return nil, errors.Newf("%s: %s", toolName, extractCallToolText(res))
+	}
+	if res.StructuredContent != nil {
+		return res.StructuredContent, nil
+	}
+	if len(res.Content) == 1 {
+		if text, ok := res.Content[0].(mcp.TextContent); ok {
+			return text.Text, nil
+		}
+	}
+	if text := extractCallToolText(res); text != "" {
+		return text, nil
+	}
+	return res, nil
+}
+
+func extractCallToolText(res *mcp.CallToolResult) string {
+	parts := make([]string, 0, len(res.Content))
+	for _, item := range res.Content {
+		if text, ok := item.(mcp.TextContent); ok {
+			parts = append(parts, text.Text)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }

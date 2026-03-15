@@ -180,6 +180,81 @@ func TestInterpreter_TemplateInjection(t *testing.T) {
 	}
 }
 
+func TestInterpreter_ExprArgInjectionPreservesStructuredValues(t *testing.T) {
+	it, reg := newTestInterpreter(t)
+
+	var received []any
+	reg.Register("fetch_rows", func(_ context.Context, _ map[string]any) (any, error) {
+		return []any{
+			map[string]any{"id": "a"},
+			map[string]any{"id": "b"},
+		}, nil
+	})
+	reg.Register("process_rows", func(_ context.Context, args map[string]any) (any, error) {
+		received, _ = args["rows"].([]any)
+		return "ok", nil
+	})
+
+	intent := &orchestrator.Intent{
+		ID:           "expr-arg-test",
+		InitialState: "FETCH",
+		States: map[string]orchestrator.State{
+			"FETCH": {Action: "fetch_rows", Next: "PROCESS"},
+			"PROCESS": {
+				Action:   "process_rows",
+				Args:     map[string]any{"rows": map[string]any{"$expr": "FETCH"}},
+				Terminal: true,
+			},
+		},
+	}
+
+	if err := it.Execute(context.Background(), intent, "FETCH", interpreter.RunOptions{}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(received) != 2 {
+		t.Fatalf("expected 2 structured rows, got %#v", received)
+	}
+}
+
+func TestInterpreter_ForEachCollectsItemAndResult(t *testing.T) {
+	it, reg := newTestInterpreter(t)
+
+	var seen []string
+	reg.Register("list_ops", func(_ context.Context, _ map[string]any) (any, error) {
+		return []any{
+			map[string]any{"name": "first"},
+			map[string]any{"name": "second"},
+		}, nil
+	})
+	reg.Register("apply", func(_ context.Context, args map[string]any) (any, error) {
+		name, _ := args["name"].(string)
+		seen = append(seen, name)
+		return map[string]any{"applied": name}, nil
+	})
+
+	intent := &orchestrator.Intent{
+		ID:           "foreach-test",
+		InitialState: "LOAD",
+		States: map[string]orchestrator.State{
+			"LOAD": {Action: "list_ops", Next: "APPLY"},
+			"APPLY": {
+				Action:   "apply",
+				ForEach:  "LOAD",
+				Item:     "op",
+				Args:     map[string]any{"name": map[string]any{"$expr": `op["name"]`}},
+				Terminal: true,
+			},
+		},
+	}
+
+	if err := it.Execute(context.Background(), intent, "LOAD", interpreter.RunOptions{}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(seen) != 2 || seen[0] != "first" || seen[1] != "second" {
+		t.Fatalf("unexpected foreach calls: %v", seen)
+	}
+}
+
 func TestInterpreter_ToolError(t *testing.T) {
 	it, reg := newTestInterpreter(t)
 	reg.Register("failing.tool", func(_ context.Context, _ map[string]any) (any, error) {
@@ -265,7 +340,7 @@ func TestInterpreter_OnChange_Callback(t *testing.T) {
 
 	var changes []string
 	it := interpreter.New(reg, zerolog.Nop()).
-		WithOnChange(func(_ context.Context, runID, state string, _ map[string]any) {
+		WithOnChange(func(_ context.Context, runID, _ string, state string, _ map[string]any) {
 			changes = append(changes, runID+":"+state)
 		})
 

@@ -17,6 +17,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/tetratelabs/wazero v1.11.0
+	go.starlark.net v0.0.0-20231101134539-556fd59b42f6
 	gopkg.in/yaml.v3 v3.0.1
 )
 

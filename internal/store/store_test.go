@@ -130,3 +130,98 @@ func TestStore_SaveRunState_Upsert(t *testing.T) {
 		t.Errorf("mem.done: got %v want true", mem["done"])
 	}
 }
+
+func TestStore_RunEventsAndActiveStates(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	if err := s.SaveRunState(ctx, "run-3", "intent-3", "WAIT", map[string]any{"waiting": true}); err != nil {
+		t.Fatalf("SaveRunState: %v", err)
+	}
+	if err := s.AppendRunEvent(ctx, store.RunEvent{
+		RunID:    "run-3",
+		IntentID: "intent-3",
+		State:    "WAIT",
+		Action:   "prompt.user",
+		Args:     map[string]any{"message": "hello"},
+		Result:   map[string]any{"waiting": true},
+	}); err != nil {
+		t.Fatalf("AppendRunEvent: %v", err)
+	}
+
+	states, err := s.ActiveRunStates(ctx, "intent-3")
+	if err != nil {
+		t.Fatalf("ActiveRunStates: %v", err)
+	}
+	if len(states) != 1 || states[0].State != "WAIT" || states[0].Status != "running" {
+		t.Fatalf("unexpected active states: %#v", states)
+	}
+
+	events, err := s.RunEventsSince(ctx, 0, "intent-3")
+	if err != nil {
+		t.Fatalf("RunEventsSince: %v", err)
+	}
+	if len(events) != 1 || events[0].Action != "prompt.user" {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+
+	if err := s.FinishRun(ctx, "run-3", "completed", ""); err != nil {
+		t.Fatalf("FinishRun: %v", err)
+	}
+	events, err = s.RunEventsSince(ctx, 0, "intent-3")
+	if err != nil {
+		t.Fatalf("RunEventsSince after finish: %v", err)
+	}
+	if len(events) != 2 || events[1].Result == nil {
+		t.Fatalf("unexpected finish events: %#v", events)
+	}
+	states, err = s.ActiveRunStates(ctx, "intent-3")
+	if err != nil {
+		t.Fatalf("ActiveRunStates after finish: %v", err)
+	}
+	if len(states) != 0 {
+		t.Fatalf("expected no active states after finish, got %#v", states)
+	}
+}
+
+func TestStore_ReplayHistoryAndWaitingRun(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	if err := s.InitRun(ctx, "run-script", "intent-script", "SCRIPT", "starlark", `tool("echo")`, nil); err != nil {
+		t.Fatalf("InitRun: %v", err)
+	}
+	if err := s.AppendReplayHistory(ctx, store.ReplayHistoryEntry{
+		RunID:    "run-script",
+		IntentID: "intent-script",
+		Sequence: 0,
+		Kind:     "tool",
+		Name:     "echo",
+		Args:     map[string]any{"value": "ok"},
+		Result:   map[string]any{"value": "ok"},
+	}); err != nil {
+		t.Fatalf("AppendReplayHistory: %v", err)
+	}
+	if err := s.MarkRunWaiting(ctx, "run-script", "approval", map[string]any{"prompt": "Continue?"}); err != nil {
+		t.Fatalf("MarkRunWaiting: %v", err)
+	}
+
+	history, err := s.LoadReplayHistory(ctx, "run-script")
+	if err != nil {
+		t.Fatalf("LoadReplayHistory: %v", err)
+	}
+	if len(history) != 1 || history[0].Name != "echo" {
+		t.Fatalf("unexpected replay history: %#v", history)
+	}
+
+	state, mem, err := s.LoadLatestWaitingRun(ctx, "intent-script")
+	if err != nil {
+		t.Fatalf("LoadLatestWaitingRun: %v", err)
+	}
+	if state.Status != "waiting" || state.WaitName != "approval" || state.WorkflowType != "starlark" {
+		t.Fatalf("unexpected waiting state: %#v", state)
+	}
+	if len(mem) != 0 {
+		t.Fatalf("expected empty mem, got %#v", mem)
+	}
+}

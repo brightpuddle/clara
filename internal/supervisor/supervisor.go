@@ -29,14 +29,22 @@ const LLMTool = "llm.generate_intent"
 // Supervisor watches a directory for Markdown intent files and manages the
 // lifecycle of Intents derived from them.
 type Supervisor struct {
-	tasksDir    string
-	reg         *registry.Registry
-	interpreter *interpreter.Interpreter
-	log         zerolog.Logger
+	tasksDir   string
+	reg        *registry.Registry
+	runIntent  IntentRunner
+	log        zerolog.Logger
+	onFinished RunFinishedFunc
 
 	mu      sync.RWMutex
 	intents map[string]*managedIntent // keyed by intent ID
 }
+
+type RunFinishedFunc func(ctx context.Context, runID, intentID, status, errorText string)
+type IntentRunner func(
+	ctx context.Context,
+	intent *orchestrator.Intent,
+	runID string,
+) error
 
 type managedIntent struct {
 	intent *orchestrator.Intent
@@ -47,20 +55,25 @@ type managedIntent struct {
 func New(
 	tasksDir string,
 	reg *registry.Registry,
-	it *interpreter.Interpreter,
+	runner IntentRunner,
 	log zerolog.Logger,
 ) *Supervisor {
 	return &Supervisor{
-		tasksDir:    tasksDir,
-		reg:         reg,
-		interpreter: it,
-		log:         log.With().Str("component", "supervisor").Logger(),
-		intents:     make(map[string]*managedIntent),
+		tasksDir:  tasksDir,
+		reg:       reg,
+		runIntent: runner,
+		log:       log.With().Str("component", "supervisor").Logger(),
+		intents:   make(map[string]*managedIntent),
 	}
 }
 
+func (s *Supervisor) WithOnRunFinished(fn RunFinishedFunc) *Supervisor {
+	s.onFinished = fn
+	return s
+}
+
 // Start watches the tasks directory and blocks until ctx is cancelled.
-// Existing .md files are loaded on startup.
+// Existing supported intent files are loaded on startup.
 func (s *Supervisor) Start(ctx context.Context) error {
 	if err := os.MkdirAll(s.tasksDir, 0o750); err != nil {
 		return errors.Wrap(err, "create tasks dir")
@@ -72,7 +85,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 		return errors.Wrap(err, "read tasks dir")
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+		if !entry.IsDir() && isIntentFile(entry.Name()) {
 			path := filepath.Join(s.tasksDir, entry.Name())
 			s.log.Info().Str("path", path).Msg("loading existing task")
 			if err := s.processFile(ctx, path); err != nil {
@@ -104,7 +117,7 @@ func (s *Supervisor) Start(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			if !strings.HasSuffix(event.Name, ".md") {
+			if !isIntentFile(event.Name) {
 				continue
 			}
 			switch {
@@ -127,17 +140,17 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	}
 }
 
-// processFile reads a Markdown task file, converts it to an Intent via the
-// LLM tool, validates it, and starts its execution goroutine.
+// processFile reads an intent file, parses it directly when possible, or uses
+// the LLM conversion path for markdown-like task descriptions.
 func (s *Supervisor) processFile(ctx context.Context, path string) error {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return errors.Wrapf(err, "read task file %q", path)
 	}
 
-	intent, err := s.convertToIntentWithLLM(ctx, path, string(content))
+	intent, err := s.parseOrConvertIntent(ctx, path, content)
 	if err != nil {
-		return errors.Wrapf(err, "convert task file %q to intent", path)
+		return errors.Wrapf(err, "parse task file %q as intent", path)
 	}
 
 	if err := s.ValidateIntent(intent); err != nil {
@@ -148,17 +161,19 @@ func (s *Supervisor) processFile(ctx context.Context, path string) error {
 	return nil
 }
 
-// convertToIntentWithLLM calls the LLM tool to convert Markdown to Intent JSON.
-// Falls back to direct JSON parsing if the content is already valid JSON.
-func (s *Supervisor) convertToIntentWithLLM(
+// parseOrConvertIntent parses JSON/YAML intent files directly and uses the LLM
+// conversion path for markdown-like task descriptions.
+func (s *Supervisor) parseOrConvertIntent(
 	ctx context.Context,
 	path string,
-	content string,
+	content []byte,
 ) (*orchestrator.Intent, error) {
-	// If the content parses directly as Intent JSON, use it as-is.
-	// This supports manually-authored Intent JSON files with a .md extension.
-	if intent, err := orchestrator.ParseIntent([]byte(content)); err == nil {
+	if intent, err := orchestrator.ParseIntent(content); err == nil {
 		return intent, nil
+	}
+
+	if !isMarkdownIntentFile(path) {
+		return nil, errors.Newf("unsupported or invalid intent file %q", path)
 	}
 
 	tool, ok := s.reg.Get(LLMTool)
@@ -170,7 +185,7 @@ func (s *Supervisor) convertToIntentWithLLM(
 	}
 
 	result, err := tool(ctx, map[string]any{
-		"intent": content,
+		"intent": string(content),
 		"schema": intentSchemaHint,
 		"path":   path,
 	})
@@ -179,6 +194,21 @@ func (s *Supervisor) convertToIntentWithLLM(
 	}
 
 	return parseResultAsIntent(result)
+}
+
+func isIntentFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".md", ".markdown", ".json", ".yaml", ".yml":
+		return true
+	default:
+		return false
+	}
+}
+
+func isMarkdownIntentFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".markdown"
 }
 
 // ValidateIntent checks that all referenced tools in an Intent are
@@ -221,12 +251,23 @@ func (s *Supervisor) deployIntent(ctx context.Context, intent *orchestrator.Inte
 
 	wg := conc.NewWaitGroup()
 	wg.Go(func() {
-		err := s.interpreter.Execute(
-			runCtx,
-			intent,
-			intent.InitialState,
-			interpreter.RunOptions{RunID: fmt.Sprintf("%s-%d", intent.ID, now())},
-		)
+		runID := fmt.Sprintf("%s-%d", intent.ID, now())
+		err := s.runIntent(runCtx, intent, runID)
+		if s.onFinished != nil {
+			status := "completed"
+			errorText := ""
+			var pauseErr *interpreter.PauseError
+			switch {
+			case runCtx.Err() != nil:
+				status = "cancelled"
+			case errors.As(err, &pauseErr):
+				status = "waiting"
+			case err != nil:
+				status = "failed"
+				errorText = err.Error()
+			}
+			s.onFinished(context.WithoutCancel(runCtx), runID, intent.ID, status, errorText)
+		}
 		if err != nil && runCtx.Err() == nil {
 			s.log.Error().
 				Err(err).

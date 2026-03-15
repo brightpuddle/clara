@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sync"
 	"text/template"
 
@@ -27,7 +28,19 @@ type WaitFunc func(ctx context.Context, stateName string, mem map[string]any) (a
 
 // StateChangeFunc is an optional callback invoked after each state transition.
 // Useful for persisting run state for crash recovery.
-type StateChangeFunc func(ctx context.Context, runID, stateName string, mem map[string]any)
+type StateChangeFunc func(ctx context.Context, runID, intentID, stateName string, mem map[string]any)
+
+type StepEvent struct {
+	RunID    string
+	IntentID string
+	State    string
+	Action   string
+	Args     any
+	Result   any
+	Error    string
+}
+
+type StepFunc func(ctx context.Context, event StepEvent)
 
 // Interpreter executes Intent state machines.
 type Interpreter struct {
@@ -35,6 +48,7 @@ type Interpreter struct {
 	log      zerolog.Logger
 	wait     WaitFunc
 	onChange StateChangeFunc
+	onStep   StepFunc
 }
 
 // New creates an Interpreter backed by the provided Registry.
@@ -54,6 +68,11 @@ func (it *Interpreter) WithWait(fn WaitFunc) *Interpreter {
 // WithOnChange sets a callback invoked after each successful state transition.
 func (it *Interpreter) WithOnChange(fn StateChangeFunc) *Interpreter {
 	it.onChange = fn
+	return it
+}
+
+func (it *Interpreter) WithOnStep(fn StepFunc) *Interpreter {
+	it.onStep = fn
 	return it
 }
 
@@ -106,15 +125,37 @@ func (it *Interpreter) Execute(
 
 		// Execute the action if one is specified.
 		if state.Action != "" {
-			result, err := it.executeAction(ctx, state, mem, log)
+			result, traceArgs, err := it.executeAction(ctx, state, mem, log)
 			if err != nil {
+				it.emitStep(ctx, StepEvent{
+					RunID:    opts.RunID,
+					IntentID: intent.ID,
+					State:    currentState,
+					Action:   state.Action,
+					Args:     traceArgs,
+					Error:    err.Error(),
+				})
 				return errors.Wrapf(err, "state %q action %q failed", currentState, state.Action)
 			}
 			mem[currentState] = result
+			it.emitStep(ctx, StepEvent{
+				RunID:    opts.RunID,
+				IntentID: intent.ID,
+				State:    currentState,
+				Action:   state.Action,
+				Args:     traceArgs,
+				Result:   result,
+			})
+		} else {
+			it.emitStep(ctx, StepEvent{
+				RunID:    opts.RunID,
+				IntentID: intent.ID,
+				State:    currentState,
+			})
 		}
 
 		if it.onChange != nil && opts.RunID != "" {
-			it.onChange(ctx, opts.RunID, currentState, mem)
+			it.onChange(ctx, opts.RunID, intent.ID, currentState, mem)
 		}
 
 		// Terminal state: we're done.
@@ -140,23 +181,99 @@ func (it *Interpreter) executeAction(
 	state orchestrator.State,
 	mem map[string]any,
 	log zerolog.Logger,
-) (any, error) {
+) (any, any, error) {
 	tool, ok := it.reg.Get(state.Action)
 	if !ok {
-		return nil, errors.Newf("tool %q not found in registry", state.Action)
+		return nil, nil, errors.Newf("tool %q not found in registry", state.Action)
+	}
+
+	if state.ForEach != "" {
+		return it.executeForEach(ctx, state, mem, tool, log)
 	}
 
 	injectedArgs, err := injectTemplates(state.Args, mem)
 	if err != nil {
-		return nil, errors.Wrapf(err, "inject templates for action %q", state.Action)
+		return nil, nil, errors.Wrapf(err, "inject templates for action %q", state.Action)
 	}
 
 	log.Debug().Str("action", state.Action).Msg("calling tool")
 	result, err := tool(ctx, injectedArgs)
 	if err != nil {
-		return nil, errors.Wrapf(err, "call tool %q", state.Action)
+		return nil, injectedArgs, errors.Wrapf(err, "call tool %q", state.Action)
 	}
-	return result, nil
+	return result, injectedArgs, nil
+}
+
+func (it *Interpreter) executeForEach(
+	ctx context.Context,
+	state orchestrator.State,
+	mem map[string]any,
+	tool registry.Tool,
+	log zerolog.Logger,
+) (any, any, error) {
+	items, err := evalExpression(state.ForEach, mem)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "evaluate for_each for action %q", state.Action)
+	}
+
+	collection, err := toAnySlice(items)
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "for_each for action %q", state.Action)
+	}
+
+	itemName := state.Item
+	if itemName == "" {
+		itemName = "item"
+	}
+
+	results := make([]any, 0, len(collection))
+	traceCalls := make([]map[string]any, 0, len(collection))
+	for idx, item := range collection {
+		loopMem := cloneMem(mem)
+		loopMem[itemName] = item
+		loopMem[itemName+"_index"] = idx
+
+		injectedArgs, err := injectTemplates(state.Args, loopMem)
+		if err != nil {
+			return nil, traceCalls, errors.Wrapf(
+				err,
+				"inject foreach args for action %q at index %d",
+				state.Action,
+				idx,
+			)
+		}
+
+		log.Debug().
+			Str("action", state.Action).
+			Int("foreach_index", idx).
+			Msg("calling foreach action")
+		result, err := tool(ctx, injectedArgs)
+		if err != nil {
+			traceCalls = append(traceCalls, map[string]any{
+				"index": idx,
+				"item":  item,
+				"args":  injectedArgs,
+			})
+			return nil, traceCalls, errors.Wrapf(
+				err,
+				"call foreach action %q at index %d",
+				state.Action,
+				idx,
+			)
+		}
+		traceCalls = append(traceCalls, map[string]any{
+			"index":  idx,
+			"item":   item,
+			"args":   injectedArgs,
+			"result": result,
+		})
+		results = append(results, map[string]any{
+			"item":   item,
+			"result": result,
+			"index":  idx,
+		})
+	}
+	return results, map[string]any{"for_each": state.ForEach, "calls": traceCalls}, nil
 }
 
 // resolveNext determines the next state using transition conditions and the
@@ -223,7 +340,7 @@ func (it *Interpreter) resolveNext(
 // evalCondition evaluates an expr-lang condition string against the mem map.
 // Returns (false, nil) if the condition evaluates to a non-bool.
 func evalCondition(condition string, mem map[string]any) (bool, error) {
-	out, err := expr.Eval(condition, mem)
+	out, err := evalExpression(condition, mem)
 	if err != nil {
 		return false, errors.Wrapf(err, "eval condition %q", condition)
 	}
@@ -232,6 +349,14 @@ func evalCondition(condition string, mem map[string]any) (bool, error) {
 		return false, errors.Newf("condition %q did not return bool (got %T)", condition, out)
 	}
 	return result, nil
+}
+
+func evalExpression(expression string, mem map[string]any) (any, error) {
+	out, err := expr.Eval(expression, mem)
+	if err != nil {
+		return nil, errors.Wrapf(err, "eval expression %q", expression)
+	}
+	return out, nil
 }
 
 // injectTemplates resolves {{handlebars}}-style template expressions in the
@@ -256,6 +381,9 @@ func injectValue(v any, mem map[string]any) (any, error) {
 	case string:
 		return renderTemplate(val, mem)
 	case map[string]any:
+		if exprValue, ok, err := exprArgValue(val, mem); ok || err != nil {
+			return exprValue, err
+		}
 		return injectTemplates(val, mem)
 	case []any:
 		result := make([]any, len(val))
@@ -270,6 +398,25 @@ func injectValue(v any, mem map[string]any) (any, error) {
 	default:
 		return v, nil
 	}
+}
+
+func exprArgValue(val map[string]any, mem map[string]any) (any, bool, error) {
+	if len(val) != 1 {
+		return nil, false, nil
+	}
+	expression, ok := val["$expr"]
+	if !ok {
+		return nil, false, nil
+	}
+	exprString, ok := expression.(string)
+	if !ok || exprString == "" {
+		return nil, true, errors.New("$expr must be a non-empty string")
+	}
+	result, err := evalExpression(exprString, mem)
+	if err != nil {
+		return nil, true, err
+	}
+	return result, true, nil
 }
 
 // templateCache caches compiled Go templates to avoid recompilation.
@@ -338,4 +485,39 @@ func flattenForTemplate(mem map[string]any) map[string]any {
 		out[k] = decoded
 	}
 	return out
+}
+
+func cloneMem(mem map[string]any) map[string]any {
+	out := make(map[string]any, len(mem))
+	for k, v := range mem {
+		out[k] = v
+	}
+	return out
+}
+
+func toAnySlice(value any) ([]any, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if items, ok := value.([]any); ok {
+		return items, nil
+	}
+
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return nil, errors.Newf("expected slice or array, got %T", value)
+	}
+
+	items := make([]any, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		items[i] = rv.Index(i).Interface()
+	}
+	return items, nil
+}
+
+func (it *Interpreter) emitStep(ctx context.Context, event StepEvent) {
+	if it.onStep == nil || event.RunID == "" {
+		return
+	}
+	it.onStep(ctx, event)
 }

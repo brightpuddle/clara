@@ -19,7 +19,13 @@ func newTestSupervisor(t *testing.T, tasksDir string) (*supervisor.Supervisor, *
 	t.Helper()
 	reg := registry.New(zerolog.Nop())
 	it := interpreter.New(reg, zerolog.Nop())
-	sup := supervisor.New(tasksDir, reg, it, zerolog.Nop())
+	sup := supervisor.New(tasksDir, reg, func(
+		ctx context.Context,
+		intent *orchestrator.Intent,
+		runID string,
+	) error {
+		return it.Execute(ctx, intent, intent.InitialState, interpreter.RunOptions{RunID: runID})
+	}, zerolog.Nop())
 	return sup, reg
 }
 
@@ -37,6 +43,16 @@ func validIntentJSON(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func validIntentYAML() []byte {
+	return []byte(`
+id: test-intent
+initial_state: START
+states:
+  START:
+    terminal: true
+`)
 }
 
 func TestSupervisor_ValidateIntent_Valid(t *testing.T) {
@@ -92,7 +108,7 @@ func TestSupervisor_LoadsExistingFiles(t *testing.T) {
 
 	// Write a valid Intent JSON file (no LLM needed).
 	data := validIntentJSON(t)
-	if err := os.WriteFile(filepath.Join(dir, "test.md"), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "test.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -126,8 +142,7 @@ func TestSupervisor_WatchesForNewFiles(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Write a new task file.
-	data := validIntentJSON(t)
-	if err := os.WriteFile(filepath.Join(dir, "new.md"), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "new.yml"), validIntentYAML(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,5 +181,23 @@ func TestSupervisor_LLMFallback_WhenNotJSON(t *testing.T) {
 	intents := sup.ActiveIntents()
 	if len(intents) == 0 {
 		t.Error("expected intent from LLM conversion to be loaded")
+	}
+}
+
+func TestSupervisor_LoadsExistingYAMLFiles(t *testing.T) {
+	dir := t.TempDir()
+	sup, _ := newTestSupervisor(t, dir)
+
+	if err := os.WriteFile(filepath.Join(dir, "test.yaml"), validIntentYAML(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	sup.Start(ctx) //nolint:errcheck
+
+	if len(sup.ActiveIntents()) == 0 {
+		t.Fatal("expected yaml intent to be loaded from existing files")
 	}
 }

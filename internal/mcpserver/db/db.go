@@ -3,10 +3,13 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -32,6 +35,8 @@ func init() {
 type Service struct {
 	db *sql.DB
 }
+
+var sqliteIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func Open(path string, _ zerolog.Logger) (*Service, error) {
 	resolvedPath := path
@@ -103,6 +108,23 @@ func (s *Service) NewServer() *server.MCPServer {
 			mcp.Description("Optional maximum distance threshold for returned matches."),
 		),
 	), s.handleVecSearch)
+
+	mcpServer.AddTool(mcp.NewTool(
+		"stage_rows",
+		mcp.WithDescription(
+			"Stage structured rows into a SQLite table with a single json column for later SQL processing.",
+		),
+		mcp.WithString("table", mcp.Required(), mcp.Description("Destination table name.")),
+		mcp.WithArray(
+			"rows",
+			mcp.Required(),
+			mcp.Description("Array of JSON-serializable rows to store in the json column."),
+		),
+		mcp.WithBoolean(
+			"replace",
+			mcp.Description("When true, clear the table before inserting rows. Defaults to true."),
+		),
+	), s.handleStageRows)
 
 	return mcpServer
 }
@@ -196,6 +218,80 @@ func (s *Service) handleVecSearch(
 	return mcp.NewToolResultStructuredOnly(results), nil
 }
 
+func (s *Service) handleStageRows(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	table, err := stringArg(req, "table")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !sqliteIdentifierPattern.MatchString(table) {
+		return mcp.NewToolResultError("table must be a valid SQLite identifier"), nil
+	}
+
+	rowsArg, hasRows := req.GetArguments()["rows"]
+	if !hasRows {
+		return mcp.NewToolResultError("rows argument is required"), nil
+	}
+	rawRows, err := toAnyItems(rowsArg)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("db.stage_rows: %v", err)), nil
+	}
+
+	replace := true
+	if raw, ok := req.GetArguments()["replace"].(bool); ok {
+		replace = raw
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("db.stage_rows: %v", err)), nil
+	}
+	defer tx.Rollback()
+
+	createSQL := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (json TEXT NOT NULL)`, table)
+	if _, err := tx.ExecContext(ctx, createSQL); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("db.stage_rows: %v", err)), nil
+	}
+	if replace {
+		deleteSQL := fmt.Sprintf(`DELETE FROM %s`, table)
+		if _, err := tx.ExecContext(ctx, deleteSQL); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("db.stage_rows: %v", err)), nil
+		}
+	}
+
+	insertSQL := fmt.Sprintf(`INSERT INTO %s (json) VALUES (?)`, table)
+	stmt, err := tx.PrepareContext(ctx, insertSQL)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("db.stage_rows: %v", err)), nil
+	}
+	defer stmt.Close()
+
+	for i, row := range rawRows {
+		payload, err := json.Marshal(row)
+		if err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("db.stage_rows: marshal row %d: %v", i, err),
+			), nil
+		}
+		if _, err := stmt.ExecContext(ctx, string(payload)); err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("db.stage_rows: insert row %d: %v", i, err),
+			), nil
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("db.stage_rows: %v", err)), nil
+	}
+
+	return mcp.NewToolResultStructuredOnly(map[string]any{
+		"table":         table,
+		"rows_inserted": len(rawRows),
+		"replaced":      replace,
+	}), nil
+}
+
 func stringArg(req mcp.CallToolRequest, name string) (string, error) {
 	value, ok := req.GetArguments()[name].(string)
 	if !ok || value == "" {
@@ -210,7 +306,7 @@ func scanRows(rows *sql.Rows) ([]map[string]any, error) {
 		return nil, errors.Wrap(err, "get columns")
 	}
 
-	var results []map[string]any
+	results := make([]map[string]any, 0)
 	for rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
@@ -273,4 +369,24 @@ func encodeVector(v any) ([]byte, error) {
 	default:
 		return nil, errors.Newf("unsupported vector type %T", v)
 	}
+}
+
+func toAnyItems(v any) ([]any, error) {
+	if v == nil {
+		return []any{}, nil
+	}
+	if items, ok := v.([]any); ok {
+		return items, nil
+	}
+
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return nil, errors.Newf("expected rows to be a slice or array, got %T", v)
+	}
+
+	items := make([]any, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		items[i] = rv.Index(i).Interface()
+	}
+	return items, nil
 }

@@ -94,8 +94,12 @@ func TestRegistryRegisterConnectedClientLifecycle(t *testing.T) {
 		t.Fatalf("tool description = %q", info.Description)
 	}
 
-	if _, err := reg.Call(context.Background(), "tui.notify", nil); err != nil {
+	result, err := reg.Call(context.Background(), "tui.notify", nil)
+	if err != nil {
 		t.Fatalf("dynamic tool call failed: %v", err)
+	}
+	if text, ok := result.(string); !ok || text != "ok" {
+		t.Fatalf("dynamic tool result = %#v, want %q", result, "ok")
 	}
 
 	if err := reg.UnregisterDynamicServer("tui"); err != nil {
@@ -109,6 +113,49 @@ func TestRegistryRegisterConnectedClientLifecycle(t *testing.T) {
 	}
 	if _, ok := reg.Tool("tui.notify"); ok {
 		t.Fatal("expected dynamic tool to be removed")
+	}
+}
+
+func TestRegistryRegisterConnectedClientReturnsStructuredContent(t *testing.T) {
+	reg := New(zerolog.Nop())
+	srv := server.NewMCPServer("peer", "1.0.0")
+	srv.AddTool(mcp.NewTool("list"), func(
+		ctx context.Context,
+		request mcp.CallToolRequest,
+	) (*mcp.CallToolResult, error) {
+		return mcp.NewToolResultStructuredOnly([]map[string]any{
+			{"task_uuid": "t-1"},
+		}), nil
+	})
+
+	cli, err := client.NewInProcessClient(srv)
+	if err != nil {
+		t.Fatalf("NewInProcessClient failed: %v", err)
+	}
+	if err := cli.Start(context.Background()); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	caps, err := initializeConnectedClient(context.Background(), "db", cli)
+	if err != nil {
+		t.Fatalf("initializeConnectedClient failed: %v", err)
+	}
+
+	if err := reg.RegisterConnectedClient("db", cli, caps, cli.Close); err != nil {
+		t.Fatalf("RegisterConnectedClient failed: %v", err)
+	}
+
+	result, err := reg.Call(context.Background(), "db.list", nil)
+	if err != nil {
+		t.Fatalf("dynamic structured tool call failed: %v", err)
+	}
+	rows, ok := result.([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("dynamic structured tool result = %#v", result)
+	}
+	row, ok := rows[0].(map[string]any)
+	if !ok || row["task_uuid"] != "t-1" {
+		t.Fatalf("dynamic structured tool result = %#v", result)
 	}
 }
 

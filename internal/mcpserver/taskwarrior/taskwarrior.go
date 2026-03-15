@@ -195,24 +195,25 @@ func (s *Service) handleTaskUpdate(
 		return toolErrorResult("task_update", err), nil
 	}
 
-	if status, ok := stringArg(req.GetArguments(), "status"); ok && status == "completed" {
+	modifyArgs := []string{uuid, "modify"}
+	modifyArgs = append(modifyArgs, writeFieldArgs(req.GetArguments(), current)...)
+
+	status, hasStatus := stringArg(req.GetArguments(), "status")
+	if len(modifyArgs) > 2 {
+		if _, err := s.runTask(ctx, modifyArgs...); err != nil {
+			return toolErrorResult("task_update", err), nil
+		}
+	}
+
+	if hasStatus && status == "completed" && stringValue(current["status"]) != "completed" {
 		if _, err := s.runTask(ctx, uuid, "done"); err != nil {
 			return toolErrorResult("task_update", err), nil
 		}
-		updated, err := s.getTask(ctx, uuid)
-		if err != nil {
-			return toolErrorResult("task_update", err), nil
-		}
-		return structuredResult(updated)
 	}
 
-	modifyArgs := []string{uuid, "modify"}
-	modifyArgs = append(modifyArgs, writeFieldArgs(req.GetArguments(), current)...)
-	if len(modifyArgs) == 2 {
+	if len(modifyArgs) == 2 &&
+		!(hasStatus && status == "completed" && stringValue(current["status"]) != "completed") {
 		return mcp.NewToolResultError("task_update requires at least one field to change"), nil
-	}
-	if _, err := s.runTask(ctx, modifyArgs...); err != nil {
-		return toolErrorResult("task_update", err), nil
 	}
 	updated, err := s.getTask(ctx, uuid)
 	if err != nil {
@@ -325,13 +326,31 @@ func (s *Service) exportTasks(ctx context.Context, filters []string) ([]taskReco
 	if len(strings.TrimSpace(string(output))) == 0 {
 		return nil, nil
 	}
-	if err := json.Unmarshal(output, &tasks); err != nil {
-		return nil, errors.Wrap(err, "parse task export json")
+	payload := extractJSONArrayOutput(output)
+	if err := json.Unmarshal(payload, &tasks); err != nil {
+		return nil, errors.Wrapf(
+			err,
+			"parse task export json from payload %q",
+			string(output),
+		)
+	}
+	for i := range tasks {
+		normalizeTaskRecord(tasks[i])
 	}
 	sort.Slice(tasks, func(i, j int) bool {
 		return entryTime(tasks[i]).After(entryTime(tasks[j]))
 	})
 	return tasks, nil
+}
+
+func extractJSONArrayOutput(output []byte) []byte {
+	text := string(output)
+	start := strings.IndexByte(text, '[')
+	end := strings.LastIndexByte(text, ']')
+	if start >= 0 && end >= start {
+		return []byte(text[start : end+1])
+	}
+	return output
 }
 
 func (s *Service) runTask(ctx context.Context, args ...string) ([]byte, error) {
@@ -460,6 +479,25 @@ func entryTime(task taskRecord) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+func normalizeTaskRecord(task taskRecord) {
+	for _, key := range []string{"entry", "modified", "due", "wait", "end"} {
+		raw, ok := task[key].(string)
+		if !ok || raw == "" {
+			continue
+		}
+		parsed, err := parseTaskTime(raw)
+		if err != nil {
+			continue
+		}
+		task[key] = parsed.UTC().Format(time.RFC3339)
+	}
+}
+
+func stringValue(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 func structuredResult(value any) (*mcp.CallToolResult, error) {

@@ -44,7 +44,6 @@ func init() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(intentCmd)
-	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(toolCmd)
 	rootCmd.AddCommand(mcpCmd)
 }

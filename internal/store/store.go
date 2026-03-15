@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
@@ -40,6 +41,45 @@ func init() {
 type Store struct {
 	db  *sql.DB
 	log zerolog.Logger
+}
+
+type RunState struct {
+	RunID        string
+	IntentID     string
+	State        string
+	Status       string
+	Error        string
+	WorkflowType string
+	ScriptSource string
+	WaitName     string
+	WaitArgs     any
+	StartedAt    int64
+	UpdatedAt    int64
+	FinishedAt   sql.NullInt64
+}
+
+type RunEvent struct {
+	ID        int64
+	RunID     string
+	IntentID  string
+	State     string
+	Action    string
+	Args      any
+	Result    any
+	Error     string
+	CreatedAt int64
+}
+
+type ReplayHistoryEntry struct {
+	Sequence  int
+	RunID     string
+	IntentID  string
+	Kind      string
+	Name      string
+	Args      any
+	Result    any
+	Error     string
+	CreatedAt int64
 }
 
 // Open opens or creates the SQLite database at dbPath.
@@ -83,16 +123,61 @@ func (s *Store) migrate() error {
 			intent_id  TEXT    NOT NULL,
 			state      TEXT    NOT NULL,
 			mem_json   TEXT    NOT NULL DEFAULT '{}',
+			status     TEXT    NOT NULL DEFAULT 'running',
+			error      TEXT    NOT NULL DEFAULT '',
+			workflow_type TEXT NOT NULL DEFAULT 'state_machine',
+			script_source TEXT NOT NULL DEFAULT '',
+			wait_name TEXT NOT NULL DEFAULT '',
+			wait_args_json TEXT NOT NULL DEFAULT 'null',
 			started_at INTEGER NOT NULL DEFAULT (unixepoch()),
 			updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			finished_at INTEGER,
 			PRIMARY KEY (id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_intent_runs_intent_id
 			ON intent_runs(intent_id);
+
+		CREATE TABLE IF NOT EXISTS intent_events (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id     TEXT    NOT NULL,
+			intent_id  TEXT    NOT NULL,
+			state      TEXT    NOT NULL,
+			action     TEXT    NOT NULL DEFAULT '',
+			args_json  TEXT    NOT NULL DEFAULT 'null',
+			result_json TEXT   NOT NULL DEFAULT 'null',
+			error      TEXT    NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch())
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_intent_events_intent_id
+			ON intent_events(intent_id);
+
+		CREATE INDEX IF NOT EXISTS idx_intent_events_run_id
+			ON intent_events(run_id);
+
+		CREATE TABLE IF NOT EXISTS intent_replay_history (
+			run_id      TEXT    NOT NULL,
+			sequence    INTEGER NOT NULL,
+			intent_id   TEXT    NOT NULL,
+			kind        TEXT    NOT NULL,
+			name        TEXT    NOT NULL,
+			args_json   TEXT    NOT NULL DEFAULT 'null',
+			result_json TEXT    NOT NULL DEFAULT 'null',
+			error       TEXT    NOT NULL DEFAULT '',
+			created_at  INTEGER NOT NULL DEFAULT (unixepoch()),
+			PRIMARY KEY (run_id, sequence)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_intent_replay_history_run_id
+			ON intent_replay_history(run_id);
 	`)
 	if err != nil {
 		return errors.Wrap(err, "create schema")
+	}
+
+	if err := s.ensureIntentRunsColumns(); err != nil {
+		return err
 	}
 
 	// Migrate data from the legacy blueprint_runs table if it exists.
@@ -103,6 +188,27 @@ func (s *Store) migrate() error {
 	_, _ = s.db.Exec(`DROP TABLE IF EXISTS blueprint_runs`)
 
 	return nil
+}
+
+func (s *Store) ensureIntentRunsColumns() error {
+	for _, stmt := range []string{
+		`ALTER TABLE intent_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running'`,
+		`ALTER TABLE intent_runs ADD COLUMN error TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE intent_runs ADD COLUMN workflow_type TEXT NOT NULL DEFAULT 'state_machine'`,
+		`ALTER TABLE intent_runs ADD COLUMN script_source TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE intent_runs ADD COLUMN wait_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE intent_runs ADD COLUMN wait_args_json TEXT NOT NULL DEFAULT 'null'`,
+		`ALTER TABLE intent_runs ADD COLUMN finished_at INTEGER`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil && !isDuplicateColumnError(err) {
+			return errors.Wrap(err, "ensure intent_runs columns")
+		}
+	}
+	return nil
+}
+
+func isDuplicateColumnError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column name")
 }
 
 // QueryTool returns a registry Tool that executes a read SQL query.
@@ -223,14 +329,128 @@ func (s *Store) SaveRunState(
 		return errors.Wrap(err, "marshal mem")
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO intent_runs (id, intent_id, state, mem_json, updated_at)
-		VALUES (?, ?, ?, ?, unixepoch())
+		INSERT INTO intent_runs (
+			id, intent_id, state, mem_json, status, error, workflow_type, script_source,
+			wait_name, wait_args_json, updated_at, finished_at
+		)
+		VALUES (?, ?, ?, ?, 'running', '', 'state_machine', '', '', 'null', unixepoch(), NULL)
 		ON CONFLICT(id) DO UPDATE SET
 			state      = excluded.state,
 			mem_json   = excluded.mem_json,
+			intent_id  = excluded.intent_id,
+			status     = 'running',
+			error      = '',
+			wait_name  = '',
+			wait_args_json = 'null',
+			finished_at = NULL,
 			updated_at = unixepoch()
 	`, runID, intentID, state, string(memJSON))
 	return errors.Wrap(err, "save run state")
+}
+
+func (s *Store) InitRun(
+	ctx context.Context,
+	runID, intentID, state, workflowType, scriptSource string,
+	mem map[string]any,
+) error {
+	memJSON, err := json.Marshal(memOrEmpty(mem))
+	if err != nil {
+		return errors.Wrap(err, "marshal run mem")
+	}
+	if workflowType == "" {
+		workflowType = "state_machine"
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO intent_runs (
+			id, intent_id, state, mem_json, status, error, workflow_type, script_source,
+			wait_name, wait_args_json, updated_at, finished_at
+		)
+		VALUES (?, ?, ?, ?, 'running', '', ?, ?, '', 'null', unixepoch(), NULL)
+		ON CONFLICT(id) DO UPDATE SET
+			intent_id = excluded.intent_id,
+			state = excluded.state,
+			mem_json = excluded.mem_json,
+			status = 'running',
+			error = '',
+			workflow_type = excluded.workflow_type,
+			script_source = excluded.script_source,
+			wait_name = '',
+			wait_args_json = 'null',
+			finished_at = NULL,
+			updated_at = unixepoch()
+	`, runID, intentID, state, string(memJSON), workflowType, scriptSource)
+	return errors.Wrap(err, "init run")
+}
+
+func (s *Store) AppendRunEvent(ctx context.Context, event RunEvent) error {
+	argsJSON, err := jsonValue(event.Args)
+	if err != nil {
+		return errors.Wrap(err, "marshal event args")
+	}
+	resultJSON, err := jsonValue(event.Result)
+	if err != nil {
+		return errors.Wrap(err, "marshal event result")
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO intent_events (run_id, intent_id, state, action, args_json, result_json, error, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())
+	`, event.RunID, event.IntentID, event.State, event.Action, argsJSON, resultJSON, event.Error)
+	return errors.Wrap(err, "append run event")
+}
+
+func (s *Store) FinishRun(ctx context.Context, runID, status, errorText string) error {
+	if status == "" {
+		status = "completed"
+	}
+
+	var (
+		intentID string
+		state    string
+	)
+	if err := s.db.QueryRowContext(
+		ctx,
+		`SELECT intent_id, state FROM intent_runs WHERE id = ?`,
+		runID,
+	).Scan(&intentID, &state); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return errors.Wrap(err, "load run before finish")
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE intent_runs
+		SET status = ?, error = ?, wait_name = '', wait_args_json = 'null',
+		    finished_at = unixepoch(), updated_at = unixepoch()
+		WHERE id = ?
+	`, status, errorText, runID)
+	if err != nil {
+		return errors.Wrap(err, "finish run")
+	}
+
+	resultJSON, err := jsonValue(map[string]any{"status": status})
+	if err != nil {
+		return errors.Wrap(err, "marshal finish status")
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO intent_events (run_id, intent_id, state, action, args_json, result_json, error, created_at)
+		VALUES (?, ?, ?, '', 'null', ?, ?, unixepoch())
+	`, runID, intentID, state, resultJSON, errorText)
+	return errors.Wrap(err, "append finish event")
+}
+
+func (s *Store) MarkRunWaiting(ctx context.Context, runID, waitName string, waitArgs any) error {
+	waitArgsJSON, err := jsonValue(waitArgs)
+	if err != nil {
+		return errors.Wrap(err, "marshal wait args")
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE intent_runs
+		SET status = 'waiting', wait_name = ?, wait_args_json = ?, updated_at = unixepoch()
+		WHERE id = ?
+	`, waitName, waitArgsJSON, runID)
+	return errors.Wrap(err, "mark run waiting")
 }
 
 // LoadRunState loads a previously-saved run state for resumption after restart.
@@ -253,6 +473,256 @@ func (s *Store) LoadRunState(
 		return "", nil, errors.Wrap(err, "unmarshal mem json")
 	}
 	return state, mem, nil
+}
+
+func (s *Store) ActiveRunStates(ctx context.Context, intentID string) ([]RunState, error) {
+	query := `
+		SELECT id, intent_id, state, status, error, started_at, updated_at, finished_at
+		     , workflow_type, script_source, wait_name, wait_args_json
+		FROM intent_runs
+		WHERE status IN ('running', 'waiting')
+	`
+	args := []any{}
+	if intentID != "" {
+		query += ` AND intent_id = ?`
+		args = append(args, intentID)
+	}
+	query += ` ORDER BY intent_id, started_at`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "query active run states")
+	}
+	defer rows.Close()
+
+	var states []RunState
+	for rows.Next() {
+		var (
+			state        RunState
+			waitArgsJSON string
+		)
+		if err := rows.Scan(
+			&state.RunID,
+			&state.IntentID,
+			&state.State,
+			&state.Status,
+			&state.Error,
+			&state.StartedAt,
+			&state.UpdatedAt,
+			&state.FinishedAt,
+			&state.WorkflowType,
+			&state.ScriptSource,
+			&state.WaitName,
+			&waitArgsJSON,
+		); err != nil {
+			return nil, errors.Wrap(err, "scan active run state")
+		}
+		if err := json.Unmarshal([]byte(waitArgsJSON), &state.WaitArgs); err != nil {
+			return nil, errors.Wrap(err, "decode active wait args")
+		}
+		states = append(states, state)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "active run states rows error")
+	}
+	return states, nil
+}
+
+func (s *Store) LoadRun(ctx context.Context, runID string) (RunState, map[string]any, error) {
+	var (
+		state        RunState
+		waitArgsJSON string
+		memJSON      string
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, intent_id, state, status, error, workflow_type, script_source, wait_name,
+		       wait_args_json, mem_json, started_at, updated_at, finished_at
+		FROM intent_runs
+		WHERE id = ?
+	`, runID).Scan(
+		&state.RunID,
+		&state.IntentID,
+		&state.State,
+		&state.Status,
+		&state.Error,
+		&state.WorkflowType,
+		&state.ScriptSource,
+		&state.WaitName,
+		&waitArgsJSON,
+		&memJSON,
+		&state.StartedAt,
+		&state.UpdatedAt,
+		&state.FinishedAt,
+	)
+	if err != nil {
+		return RunState{}, nil, errors.Wrap(err, "load run")
+	}
+	mem := map[string]any{}
+	if err := json.Unmarshal([]byte(memJSON), &mem); err != nil {
+		return RunState{}, nil, errors.Wrap(err, "decode run mem")
+	}
+	if err := json.Unmarshal([]byte(waitArgsJSON), &state.WaitArgs); err != nil {
+		return RunState{}, nil, errors.Wrap(err, "decode wait args")
+	}
+	return state, mem, nil
+}
+
+func (s *Store) LoadLatestWaitingRun(ctx context.Context, intentID string) (RunState, map[string]any, error) {
+	var runID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id
+		FROM intent_runs
+		WHERE intent_id = ? AND status = 'waiting'
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, intentID).Scan(&runID)
+	if err != nil {
+		return RunState{}, nil, errors.Wrap(err, "load latest waiting run id")
+	}
+	return s.LoadRun(ctx, runID)
+}
+
+func (s *Store) AppendReplayHistory(ctx context.Context, entry ReplayHistoryEntry) error {
+	argsJSON, err := jsonValue(entry.Args)
+	if err != nil {
+		return errors.Wrap(err, "marshal history args")
+	}
+	resultJSON, err := jsonValue(entry.Result)
+	if err != nil {
+		return errors.Wrap(err, "marshal history result")
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO intent_replay_history (
+			run_id, sequence, intent_id, kind, name, args_json, result_json, error, created_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+	`, entry.RunID, entry.Sequence, entry.IntentID, entry.Kind, entry.Name, argsJSON, resultJSON, entry.Error)
+	return errors.Wrap(err, "append replay history")
+}
+
+func (s *Store) LoadReplayHistory(ctx context.Context, runID string) ([]ReplayHistoryEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sequence, run_id, intent_id, kind, name, args_json, result_json, error, created_at
+		FROM intent_replay_history
+		WHERE run_id = ?
+		ORDER BY sequence
+	`, runID)
+	if err != nil {
+		return nil, errors.Wrap(err, "query replay history")
+	}
+	defer rows.Close()
+
+	history := make([]ReplayHistoryEntry, 0)
+	for rows.Next() {
+		var (
+			entry      ReplayHistoryEntry
+			argsJSON   string
+			resultJSON string
+		)
+		if err := rows.Scan(
+			&entry.Sequence,
+			&entry.RunID,
+			&entry.IntentID,
+			&entry.Kind,
+			&entry.Name,
+			&argsJSON,
+			&resultJSON,
+			&entry.Error,
+			&entry.CreatedAt,
+		); err != nil {
+			return nil, errors.Wrap(err, "scan replay history")
+		}
+		if err := json.Unmarshal([]byte(argsJSON), &entry.Args); err != nil {
+			return nil, errors.Wrap(err, "decode replay args")
+		}
+		if err := json.Unmarshal([]byte(resultJSON), &entry.Result); err != nil {
+			return nil, errors.Wrap(err, "decode replay result")
+		}
+		history = append(history, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "replay history rows error")
+	}
+	return history, nil
+}
+
+func (s *Store) RunEventsSince(ctx context.Context, sinceID int64, intentID string) ([]RunEvent, error) {
+	return s.runEventsSince(ctx, sinceID, intentID, "")
+}
+
+func (s *Store) RunEventsForRunSince(ctx context.Context, sinceID int64, runID string) ([]RunEvent, error) {
+	return s.runEventsSince(ctx, sinceID, "", runID)
+}
+
+func (s *Store) runEventsSince(ctx context.Context, sinceID int64, intentID, runID string) ([]RunEvent, error) {
+	query := `
+		SELECT id, run_id, intent_id, state, action, args_json, result_json, error, created_at
+		FROM intent_events
+		WHERE id > ?
+	`
+	args := []any{sinceID}
+	if intentID != "" {
+		query += ` AND intent_id = ?`
+		args = append(args, intentID)
+	}
+	if runID != "" {
+		query += ` AND run_id = ?`
+		args = append(args, runID)
+	}
+	query += ` ORDER BY id`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "query run events")
+	}
+	defer rows.Close()
+
+	var events []RunEvent
+	for rows.Next() {
+		var (
+			event      RunEvent
+			argsJSON   string
+			resultJSON string
+		)
+		if err := rows.Scan(
+			&event.ID,
+			&event.RunID,
+			&event.IntentID,
+			&event.State,
+			&event.Action,
+			&argsJSON,
+			&resultJSON,
+			&event.Error,
+			&event.CreatedAt,
+		); err != nil {
+			return nil, errors.Wrap(err, "scan run event")
+		}
+		if err := json.Unmarshal([]byte(argsJSON), &event.Args); err != nil {
+			return nil, errors.Wrap(err, "decode event args")
+		}
+		if err := json.Unmarshal([]byte(resultJSON), &event.Result); err != nil {
+			return nil, errors.Wrap(err, "decode event result")
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "run events rows error")
+	}
+	return events, nil
+}
+
+func (s *Store) LatestRunEventID(ctx context.Context, intentID string) (int64, error) {
+	query := `SELECT COALESCE(MAX(id), 0) FROM intent_events`
+	args := []any{}
+	if intentID != "" {
+		query += ` WHERE intent_id = ?`
+		args = append(args, intentID)
+	}
+	var id int64
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
+		return 0, errors.Wrap(err, "latest run event id")
+	}
+	return id, nil
 }
 
 // scanRows converts sql.Rows into a []map[string]any for easy JSON encoding.
@@ -293,6 +763,24 @@ func toSlice(v any) []any {
 		return s
 	}
 	return []any{v}
+}
+
+func jsonValue(v any) (string, error) {
+	if v == nil {
+		return "null", nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func memOrEmpty(mem map[string]any) map[string]any {
+	if mem == nil {
+		return map[string]any{}
+	}
+	return mem
 }
 
 // encodeVector converts a vector argument ([]float32 or []byte) to bytes

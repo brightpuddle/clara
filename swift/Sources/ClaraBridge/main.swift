@@ -263,6 +263,11 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 ]
             ),
             tool(
+                name: "reminders_default_list",
+                description: "Return the default Reminder list used for newly created reminders.",
+                properties: []
+            ),
+            tool(
                 name: "events_create",
                 description: "Create a calendar event with title, notes, date range, calendar, location, and alarms.",
                 properties: [
@@ -354,6 +359,8 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             return try toolResult(try await deleteReminder(arguments))
         case "reminders_list":
             return try toolResult(try await listReminders(arguments))
+        case "reminders_default_list":
+            return try toolResult(try await defaultReminderList())
         case "events_create":
             return try toolResult(serializeEvent(try await createEvent(arguments)))
         case "events_get":
@@ -590,6 +597,15 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 timeoutTask: timeoutTask
             )
         }
+    }
+
+    private func defaultReminderList() async throws -> [String: Any] {
+        try await ensureRemindersAccess()
+        let calendar = try reminderCalendar(named: nil)
+        return [
+            "identifier": calendar.calendarIdentifier,
+            "list_name": calendar.title,
+        ]
     }
 
 
@@ -846,6 +862,12 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         ]
         if let notes = reminder.notes {
             result["notes"] = notes
+        }
+        if let createdAt = reminder.creationDate {
+            result["created_at"] = ISO8601.dateString(from: createdAt)
+        }
+        if let updatedAt = reminder.lastModifiedDate {
+            result["updated_at"] = ISO8601.dateString(from: updatedAt)
         }
         if let dueDate = reminder.dueDateComponents?.date {
             result["due_date"] = ISO8601.dateString(from: dueDate)

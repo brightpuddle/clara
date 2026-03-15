@@ -23,7 +23,7 @@ func completeInput(client *IPCClient, input string, specs []CommandSpec) []Compl
 	switch {
 	case len(tokens) >= 2 && tokens[0] == "tool" && tokens[1] == "call":
 		return completeToolCallInput(client, tokens, current, trailingSpace)
-	case len(tokens) >= 2 && tokens[0] == "intent" && tokens[1] == "run":
+	case len(tokens) >= 2 && tokens[0] == "intent" && tokens[1] == "trigger":
 		return completeIntentRunInput(client, current)
 	default:
 		return commandWordSuggestions(specs, tokens, current)

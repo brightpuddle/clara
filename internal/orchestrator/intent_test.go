@@ -106,9 +106,11 @@ func TestParseIntent_RoundTrip(t *testing.T) {
 		InitialState: "A",
 		States: map[string]orchestrator.State{
 			"A": {
-				Action: "some.tool",
-				Args:   map[string]any{"key": "val"},
-				Next:   "B",
+				Action:  "some.tool",
+				Args:    map[string]any{"key": "val"},
+				ForEach: "LOAD",
+				Item:    "row",
+				Next:    "B",
 			},
 			"B": {Terminal: true},
 		},
@@ -127,11 +129,70 @@ func TestParseIntent_RoundTrip(t *testing.T) {
 	if got.InitialState != input.InitialState {
 		t.Errorf("InitialState mismatch: got %q want %q", got.InitialState, input.InitialState)
 	}
+	if got.States["A"].ForEach != "LOAD" {
+		t.Errorf("ForEach mismatch: got %q want %q", got.States["A"].ForEach, "LOAD")
+	}
+	if got.States["A"].Item != "row" {
+		t.Errorf("Item mismatch: got %q want %q", got.States["A"].Item, "row")
+	}
 }
 
 func TestParseIntent_InvalidJSON(t *testing.T) {
 	_, err := orchestrator.ParseIntent([]byte("not json"))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestIntentValidate_ValidStarlark(t *testing.T) {
+	intent := &orchestrator.Intent{
+		ID:           "starlark-intent",
+		WorkflowType: orchestrator.WorkflowTypeStarlark,
+		Script:       `result = tool("echo", value="ok")`,
+	}
+	if err := intent.Validate(); err != nil {
+		t.Fatalf("expected valid starlark intent, got %v", err)
+	}
+}
+
+func TestIntentValidate_StarlarkRejectsStates(t *testing.T) {
+	intent := &orchestrator.Intent{
+		ID:           "mixed-intent",
+		WorkflowType: orchestrator.WorkflowTypeStarlark,
+		Script:       `pass`,
+		InitialState: "START",
+		States: map[string]orchestrator.State{
+			"START": {Terminal: true},
+		},
+	}
+	if err := intent.Validate(); err == nil {
+		t.Fatal("expected mixed starlark/state intent to be rejected")
+	}
+}
+
+func TestParseIntent_YAML(t *testing.T) {
+	data := []byte(`
+id: yaml-intent
+description: yaml test
+initial_state: START
+states:
+  START:
+    action: some.tool
+    args:
+      key: value
+    next: END
+  END:
+    terminal: true
+`)
+
+	intent, err := orchestrator.ParseIntent(data)
+	if err != nil {
+		t.Fatalf("ParseIntent YAML failed: %v", err)
+	}
+	if intent.ID != "yaml-intent" {
+		t.Fatalf("unexpected intent ID: %q", intent.ID)
+	}
+	if intent.States["START"].Args["key"] != "value" {
+		t.Fatalf("unexpected args: %#v", intent.States["START"].Args)
 	}
 }

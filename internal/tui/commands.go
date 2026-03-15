@@ -33,15 +33,15 @@ func commandSpecs() []CommandSpec {
 		{Path: "/quit", Summary: "Quit the TUI", Usage: "/quit"},
 		{Path: "/exit", Summary: "Quit the TUI", Usage: "/exit"},
 		{
-			Path:    "/run",
+			Path:    "/intent run",
 			Summary: "Run a one-off intent file (not available in TUI)",
-			Usage:   "/run <task-file>",
+			Usage:   "/intent run <intent-file>",
 		},
 		{Path: "/agent start", Summary: "Show how to start the Clara agent", Usage: "/agent start"},
 		{Path: "/agent status", Summary: "Show agent status", Usage: "/agent status"},
 		{Path: "/agent stop", Summary: "Stop the running agent", Usage: "/agent stop"},
 		{Path: "/intent list", Summary: "List active intents", Usage: "/intent list"},
-		{Path: "/intent run", Summary: "Trigger an intent by id", Usage: "/intent run <id>"},
+		{Path: "/intent trigger", Summary: "Trigger an installed intent by id", Usage: "/intent trigger <id>"},
 		{
 			Path:    "/mcp fs",
 			Summary: "Start the filesystem MCP server (not available in TUI)",
@@ -103,9 +103,9 @@ func runSlashCommand(
 		return slashCommandResult{output: renderHelp(theme, specs)}, nil
 	case tokens[0] == "/quit" || tokens[0] == "/exit":
 		return slashCommandResult{quit: true}, nil
-	case tokens[0] == "/run":
+	case len(tokens) >= 2 && tokens[0] == "/intent" && tokens[1] == "run":
 		return slashCommandResult{
-			output: "The interactive TUI does not support /run yet. Use `clara run <task-file>` from the shell.",
+			output: "The interactive TUI does not support /intent run yet. Use `clara intent run <intent-file>` from the shell.",
 		}, nil
 	case len(tokens) >= 2 && tokens[0] == "/agent" && tokens[1] == "start":
 		if client.IsRunning() {
@@ -137,7 +137,7 @@ func runSlashCommand(
 			return slashCommandResult{}, err
 		}
 		return slashCommandResult{output: formatIntentList(intents)}, nil
-	case len(tokens) >= 3 && tokens[0] == "/intent" && tokens[1] == "run":
+	case len(tokens) >= 3 && tokens[0] == "/intent" && tokens[1] == "trigger":
 		resp, err := client.Request(ipc.MethodRun, map[string]any{"id": tokens[2]})
 		if err != nil {
 			return slashCommandResult{}, err

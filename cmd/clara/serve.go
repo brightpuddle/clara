@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/ipc"
@@ -73,17 +75,35 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		}
 	}
 
-	it := interpreter.New(reg, logger).
-		WithOnChange(func(ctx context.Context, runID, state string, mem map[string]any) {
-			if err := db.SaveRunState(ctx, runID, "", state, mem); err != nil {
-				logger.Warn().Err(err).Str("run_id", runID).Msg("failed to persist run state")
+	sup := supervisor.New(cfg.TasksDir(), reg, func(
+		runCtx context.Context,
+		intent *orchestrator.Intent,
+		runID string,
+	) error {
+		if err := db.InitRun(
+			context.WithoutCancel(runCtx),
+			runID,
+			intent.ID,
+			initialRunState(intent),
+			intent.WorkflowKind(),
+			intent.Script,
+			nil,
+		); err != nil {
+			return errors.Wrap(err, "initialize intent run")
+		}
+		return executeIntentRun(runCtx, intent, runID, reg, db, logger)
+	}, logger).
+		WithOnRunFinished(func(ctx context.Context, runID, intentID, status, errorText string) {
+			if status == "waiting" {
+				return
+			}
+			if err := db.FinishRun(ctx, runID, status, errorText); err != nil {
+				logger.Warn().Err(err).Str("run_id", runID).Msg("failed to persist run completion")
 			}
 		})
-
-	sup := supervisor.New(cfg.TasksDir(), reg, it, logger)
 	attachServer := registry.NewDynamicAttachServer(cfg.DynamicMCPSocketPath(), reg, logger)
 
-	handler := buildHandler(reg, sup, attachServer, logger)
+	handler := buildHandler(reg, sup, attachServer, db, logger)
 	controlServer := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 
 	wg := conc.NewWaitGroup()
@@ -120,6 +140,7 @@ func buildHandler(
 	reg *registry.Registry,
 	sup *supervisor.Supervisor,
 	attach *registry.DynamicAttachServer,
+	db *store.Store,
 	log zerolog.Logger,
 ) ipc.HandlerFunc {
 	return func(ctx context.Context, req *ipc.Request) *ipc.Response {
@@ -158,7 +179,7 @@ func buildHandler(
 			}
 			for _, intent := range sup.ActiveIntents() {
 				if intent.ID == id {
-					go runIntentInBackground(ctx, intent, reg, log)
+					go runIntentInBackground(ctx, intent, reg, db, log)
 					return &ipc.Response{Message: "intent " + id + " triggered"}
 				}
 			}
@@ -257,15 +278,45 @@ func runIntentInBackground(
 	ctx context.Context,
 	intent *orchestrator.Intent,
 	reg *registry.Registry,
+	db *store.Store,
 	log zerolog.Logger,
 ) {
-	it := interpreter.New(reg, log)
-	err := it.Execute(ctx, intent, intent.InitialState, interpreter.RunOptions{
-		RunID: intent.ID + "-manual",
-	})
-	if err != nil {
-		log.Error().Err(err).Str("intent_id", intent.ID).Msg("manual intent run error")
+	runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
+	if err := db.InitRun(
+		context.WithoutCancel(ctx),
+		runID,
+		intent.ID,
+		initialRunState(intent),
+		intent.WorkflowKind(),
+		intent.Script,
+		nil,
+	); err != nil {
+		log.Warn().Err(err).Str("run_id", runID).Msg("failed to initialize manual run")
+		return
 	}
+	err := executeIntentRun(ctx, intent, runID, reg, db, log)
+	if err != nil {
+		var pauseErr *interpreter.PauseError
+		if errors.As(err, &pauseErr) {
+			log.Info().Str("intent_id", intent.ID).Str("run_id", runID).Msg("manual intent paused")
+			return
+		}
+		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "failed", err.Error()); finishErr != nil {
+			log.Warn().Err(finishErr).Str("run_id", runID).Msg("failed to persist manual run failure")
+		}
+		log.Error().Err(err).Str("intent_id", intent.ID).Msg("manual intent run error")
+		return
+	}
+	if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "completed", ""); finishErr != nil {
+		log.Warn().Err(finishErr).Str("run_id", runID).Msg("failed to persist manual run completion")
+	}
+}
+
+func initialRunState(intent *orchestrator.Intent) string {
+	if intent.WorkflowKind() == orchestrator.WorkflowTypeStarlark {
+		return "SCRIPT"
+	}
+	return intent.InitialState
 }
 
 func buildLogger() zerolog.Logger {
