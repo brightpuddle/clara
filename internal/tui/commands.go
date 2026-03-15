@@ -163,6 +163,13 @@ func runSlashCommand(
 		}
 		return slashCommandResult{output: toolcatalog.FormatToolDetails(tool, true)}, nil
 	case len(tokens) >= 3 && tokens[0] == "/tool" && tokens[1] == "call":
+		if len(tokens) == 3 && !strings.Contains(tokens[2], ".") {
+			tools, err := client.ListTools(tokens[2])
+			if err != nil {
+				return slashCommandResult{}, err
+			}
+			return slashCommandResult{output: toolcatalog.FormatToolList(tools, true)}, nil
+		}
 		args, err := parseKeyValueArgs(tokens[3:])
 		if err != nil {
 			return slashCommandResult{}, err

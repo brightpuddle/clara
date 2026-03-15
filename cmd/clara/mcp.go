@@ -11,6 +11,7 @@ import (
 	"github.com/brightpuddle/clara/internal/config"
 	dbmcp "github.com/brightpuddle/clara/internal/mcpserver/db"
 	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
+	ollamamcp "github.com/brightpuddle/clara/internal/mcpserver/ollamaembeddings"
 	taskwmcp "github.com/brightpuddle/clara/internal/mcpserver/taskwarrior"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
@@ -39,6 +40,7 @@ external MCP servers in config.yaml. For example:
 Available servers:
   fs    filesystem operations (read, write, list, search, move, delete)
   db    SQLite query, exec, and vector-search tools
+  ollama-embeddings    local Ollama-powered embedding generation
   taskwarrior    Taskwarrior CRUD, filtering, and due-task helpers`,
 }
 
@@ -79,8 +81,38 @@ var mcpTaskwarriorCmd = &cobra.Command{
 	PersistentPreRunE: skipConfigLoad,
 }
 
+var (
+	mcpOllamaModel string
+	mcpOllamaURL   string
+)
+
+var mcpOllamaEmbeddingsCmd = &cobra.Command{
+	Use:   "ollama-embeddings",
+	Short: "Start the built-in Ollama embeddings MCP server",
+	Long: fmt.Sprintf(
+		"Start the Clara built-in Ollama embeddings MCP server on stdio.\n\n%s",
+		ollamamcp.Description,
+	),
+	RunE:              runMCPOllamaEmbeddings,
+	SilenceUsage:      true,
+	PersistentPreRunE: skipConfigLoad,
+}
+
 func init() {
-	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpTaskwarriorCmd)
+	mcpOllamaEmbeddingsCmd.Flags().StringVar(
+		&mcpOllamaModel,
+		"model",
+		ollamamcp.DefaultModel,
+		"Ollama embedding model to use",
+	)
+	mcpOllamaEmbeddingsCmd.Flags().StringVar(
+		&mcpOllamaURL,
+		"url",
+		ollamamcp.DefaultURL,
+		"Base URL for the Ollama API",
+	)
+
+	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaEmbeddingsCmd, mcpTaskwarriorCmd)
 }
 
 func runMCPFs(cmd *cobra.Command, args []string) error {
@@ -112,6 +144,13 @@ func runMCPTaskwarrior(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	return serveMCP(ctx, taskwmcp.New(zerolog.Nop()).NewServer())
+}
+
+func runMCPOllamaEmbeddings(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	return serveMCP(ctx, ollamamcp.New(mcpOllamaURL, mcpOllamaModel).NewServer())
 }
 
 func serveMCP(ctx context.Context, srv *server.MCPServer) error {

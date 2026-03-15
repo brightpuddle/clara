@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
@@ -25,6 +24,7 @@ var (
 	intentWatchVerbose bool
 	intentRunVerbose   bool
 	intentResumeInput  string
+	intentTriggerInput string
 )
 
 var intentCmd = &cobra.Command{
@@ -49,9 +49,25 @@ var intentRunCmd = &cobra.Command{
 
 var intentTriggerCmd = &cobra.Command{
 	Use:          "trigger <id>",
-	Short:        "Manually trigger an installed intent by ID",
+	Short:        "Run an intent or deliver input to its latest waiting run",
 	Args:         cobra.ExactArgs(1),
 	RunE:         runIntentTrigger,
+	SilenceUsage: true,
+}
+
+var intentStartCmd = &cobra.Command{
+	Use:          "start <id>",
+	Short:        "Start a managed schedule, worker, or event intent",
+	Args:         cobra.ExactArgs(1),
+	RunE:         runIntentStart,
+	SilenceUsage: true,
+}
+
+var intentStopCmd = &cobra.Command{
+	Use:          "stop <id>",
+	Short:        "Stop a managed schedule, worker, or event intent",
+	Args:         cobra.ExactArgs(1),
+	RunE:         runIntentStop,
 	SilenceUsage: true,
 }
 
@@ -76,9 +92,19 @@ func init() {
 		BoolVarP(&intentWatchVerbose, "verbose", "v", false, "show full tool args/results")
 	intentRunCmd.Flags().
 		BoolVarP(&intentRunVerbose, "verbose", "v", false, "show full tool args/results")
+	intentTriggerCmd.Flags().
+		StringVar(&intentTriggerInput, "input", "", "JSON value to deliver to the latest waiting run")
 	intentResumeCmd.Flags().
 		StringVar(&intentResumeInput, "input", "", "JSON value to satisfy the pending wait")
-	intentCmd.AddCommand(intentListCmd, intentRunCmd, intentResumeCmd, intentTriggerCmd, intentWatchCmd)
+	intentCmd.AddCommand(
+		intentListCmd,
+		intentRunCmd,
+		intentResumeCmd,
+		intentTriggerCmd,
+		intentStartCmd,
+		intentStopCmd,
+		intentWatchCmd,
+	)
 }
 
 func runIntentList(cmd *cobra.Command, args []string) error {
@@ -95,12 +121,44 @@ func runIntentRun(cmd *cobra.Command, args []string) error {
 }
 
 func runIntentTrigger(cmd *cobra.Command, args []string) error {
+	params := map[string]any{"id": args[0]}
+	if strings.TrimSpace(intentTriggerInput) != "" {
+		var input any
+		if err := json.Unmarshal([]byte(intentTriggerInput), &input); err != nil {
+			return errors.Wrap(err, "parse --input JSON")
+		}
+		params["input"] = input
+	}
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodRun,
-		Params: map[string]any{"id": args[0]},
+		Params: params,
 	})
 	if err != nil {
 		return fmt.Errorf("run request failed: %w", err)
+	}
+	fmt.Println(resp.Message)
+	return nil
+}
+
+func runIntentStart(cmd *cobra.Command, args []string) error {
+	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+		Method: ipc.MethodStart,
+		Params: map[string]any{"id": args[0]},
+	})
+	if err != nil {
+		return fmt.Errorf("start request failed: %w", err)
+	}
+	fmt.Println(resp.Message)
+	return nil
+}
+
+func runIntentStop(cmd *cobra.Command, args []string) error {
+	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+		Method: ipc.MethodStop,
+		Params: map[string]any{"id": args[0]},
+	})
+	if err != nil {
+		return fmt.Errorf("stop request failed: %w", err)
 	}
 	fmt.Println(resp.Message)
 	return nil
@@ -130,30 +188,9 @@ func runIntentResume(cmd *cobra.Command, args []string) error {
 		if err := json.Unmarshal([]byte(intentResumeInput), &input); err != nil {
 			return errors.Wrap(err, "parse --input JSON")
 		}
-		history, err := db.LoadReplayHistory(cmd.Context(), runState.RunID)
-		if err != nil {
-			return errors.Wrap(err, "load replay history")
+		if err := appendWaitInput(cmd.Context(), db, runState, input); err != nil {
+			return err
 		}
-		if err := db.AppendReplayHistory(cmd.Context(), store.ReplayHistoryEntry{
-			RunID:    runState.RunID,
-			IntentID: runState.IntentID,
-			Sequence: len(history),
-			Kind:     "wait",
-			Name:     runState.WaitName,
-			Args:     runState.WaitArgs,
-			Result:   input,
-		}); err != nil {
-			return errors.Wrap(err, "append wait result")
-		}
-	}
-
-	intent := &orchestrator.Intent{
-		ID:           runState.IntentID,
-		WorkflowType: orchestrator.WorkflowTypeStarlark,
-		Script:       runState.ScriptSource,
-	}
-	if err := intent.Validate(); err != nil {
-		return errors.Wrap(err, "validate stored starlark intent")
 	}
 
 	reg := registry.New(logger)
@@ -175,18 +212,6 @@ func runIntentResume(cmd *cobra.Command, args []string) error {
 	}
 	defer reg.StopServers()
 
-	if err := db.InitRun(
-		context.WithoutCancel(ctx),
-		runState.RunID,
-		runState.IntentID,
-		"SCRIPT",
-		orchestrator.WorkflowTypeStarlark,
-		runState.ScriptSource,
-		nil,
-	); err != nil {
-		return errors.Wrap(err, "reinitialize run")
-	}
-
 	printer := newIntentWatchPrinter(tui.DetectTheme(), true, false)
 	lastEventID, err := db.LatestRunEventID(ctx, "")
 	if err != nil {
@@ -195,7 +220,7 @@ func runIntentResume(cmd *cobra.Command, args []string) error {
 
 	runErrCh := make(chan error, 1)
 	go func() {
-		runErrCh <- executeIntentRun(ctx, intent, runState.RunID, reg, db, logger)
+		runErrCh <- resumeStoredStarlarkRun(ctx, runState, reg, db, logger)
 	}()
 
 	ticker := time.NewTicker(200 * time.Millisecond)
@@ -206,18 +231,8 @@ func runIntentResume(cmd *cobra.Command, args []string) error {
 			if flushErr := flushRunEvents(ctx, db, printer, &lastEventID, runState.RunID); flushErr != nil {
 				return flushErr
 			}
-			var pauseErr *interpreter.PauseError
-			if errors.As(err, &pauseErr) {
-				return nil
-			}
 			if err != nil {
-				if finishErr := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "failed", err.Error()); finishErr != nil {
-					logger.Warn().Err(finishErr).Str("run_id", runState.RunID).Msg("failed to persist resumed run failure")
-				}
-				return errors.Wrap(err, "resume workflow")
-			}
-			if finishErr := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "completed", ""); finishErr != nil {
-				logger.Warn().Err(finishErr).Str("run_id", runState.RunID).Msg("failed to persist resumed run completion")
+				return err
 			}
 			return nil
 		case <-ticker.C:

@@ -34,9 +34,6 @@ type Config struct {
 
 	// MCPServers lists the MCP servers the daemon manages.
 	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
-
-	// LLM configures the language model used for Markdown→Intent conversion.
-	LLM LLMConfig `yaml:"llm"`
 }
 
 // MCPServerConfig describes a single stdio-based MCP server subprocess.
@@ -52,14 +49,6 @@ type MCPServerConfig struct {
 	Env map[string]string `yaml:"env"`
 	// Description is a human-readable summary of what this server provides.
 	Description string `yaml:"description"`
-}
-
-// LLMConfig configures the language model used for Markdown→Intent conversion.
-type LLMConfig struct {
-	// Provider is the MCP server name that exposes the LLM tool.
-	Provider string `yaml:"provider"`
-	// Model is the model identifier passed to the provider.
-	Model string `yaml:"model"`
 }
 
 // Load reads and parses a config file at the given path.
@@ -146,7 +135,7 @@ func (c *Config) DynamicMCPSocketPath() string {
 	return filepath.Join(c.DataDir, "clara-mcp.sock")
 }
 
-// TasksDir returns the directory where Markdown intent files are watched.
+// TasksDir returns the directory where .star intent files are watched.
 func (c *Config) TasksDir() string {
 	return filepath.Join(c.DataDir, "tasks")
 }

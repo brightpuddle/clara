@@ -10,7 +10,14 @@ type CompletionItem struct {
 	Insert  string
 }
 
-func completeInput(client *IPCClient, input string, specs []CommandSpec) []CompletionItem {
+type autocompleteClient interface {
+	ListIntents() ([]IntentSummary, error)
+	ListProviders() ([]ProviderSummary, error)
+	ListTools(filter string) ([]ToolInfo, error)
+	ShowTool(name string) (ToolInfo, error)
+}
+
+func completeInput(client autocompleteClient, input string, specs []CommandSpec) []CompletionItem {
 	if !strings.HasPrefix(input, "/") {
 		return nil
 	}
@@ -90,7 +97,7 @@ func commandWordSuggestions(
 	return items
 }
 
-func completeIntentRunInput(client *IPCClient, current string) []CompletionItem {
+func completeIntentRunInput(client autocompleteClient, current string) []CompletionItem {
 	intents, err := client.ListIntents()
 	if err != nil {
 		return nil
@@ -110,38 +117,85 @@ func completeIntentRunInput(client *IPCClient, current string) []CompletionItem 
 }
 
 func completeToolCallInput(
-	client *IPCClient,
+	client autocompleteClient,
 	tokens []string,
 	current string,
 	trailingSpace bool,
 ) []CompletionItem {
 	if len(tokens) == 2 && trailingSpace {
-		return toolNameSuggestions(client, "")
+		return providerSuggestions(client, "")
 	}
 	if len(tokens) == 2 {
-		return toolNameSuggestions(client, current)
+		if strings.Contains(current, ".") {
+			return providerToolSuggestions(client, current)
+		}
+		return providerSuggestions(client, current)
 	}
 
 	toolName := tokens[2]
+	if !strings.Contains(toolName, ".") {
+		if trailingSpace {
+			return nil
+		}
+		return providerSuggestions(client, toolName)
+	}
+
 	specified := []string{}
 	if len(tokens) > 3 {
 		specified = append(specified, tokens[3:]...)
 	}
+	if !trailingSpace && current != "" && current != toolName {
+		toolName = current
+	}
+	if !strings.Contains(toolName, ".") {
+		return providerSuggestions(client, toolName)
+	}
+	if len(tokens) == 3 && (!trailingSpace || strings.HasSuffix(toolName, ".")) {
+		return providerToolSuggestions(client, toolName)
+	}
 	return toolParamSuggestions(client, toolName, specified, current, trailingSpace)
 }
 
-func toolNameSuggestions(client *IPCClient, prefix string) []CompletionItem {
-	tools, err := client.ListTools(prefix)
+func providerSuggestions(client autocompleteClient, prefix string) []CompletionItem {
+	providers, err := client.ListProviders()
 	if err != nil {
 		return nil
 	}
-	items := make([]CompletionItem, 0, len(tools))
-	for _, tool := range tools {
-		if !strings.HasPrefix(tool.Name, prefix) {
+	items := make([]CompletionItem, 0, len(providers))
+	for _, provider := range providers {
+		if !strings.HasPrefix(provider.Name, prefix) {
 			continue
 		}
 		items = append(items, CompletionItem{
-			Display: tool.Name,
+			Display: provider.Name,
+			Insert:  "/tool call " + provider.Name,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].Display < items[j].Display })
+	return items
+}
+
+func providerToolSuggestions(client autocompleteClient, qualifiedPrefix string) []CompletionItem {
+	provider, toolPrefix, ok := strings.Cut(qualifiedPrefix, ".")
+	if !ok {
+		return nil
+	}
+	tools, err := client.ListTools(provider)
+	if err != nil {
+		return nil
+	}
+
+	items := make([]CompletionItem, 0, len(tools))
+	for _, tool := range tools {
+		if !strings.HasPrefix(tool.Name, provider+".") {
+			continue
+		}
+		suffix := strings.TrimPrefix(tool.Name, provider+".")
+		if !strings.HasPrefix(suffix, toolPrefix) {
+			continue
+		}
+		items = append(items, CompletionItem{
+			Display: suffix,
 			Insert:  "/tool call " + tool.Name + " ",
 		})
 	}
@@ -150,7 +204,7 @@ func toolNameSuggestions(client *IPCClient, prefix string) []CompletionItem {
 }
 
 func toolParamSuggestions(
-	client *IPCClient,
+	client autocompleteClient,
 	toolName string,
 	specified []string,
 	current string,

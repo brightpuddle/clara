@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type Model struct {
 	statusHint string
 	startLines []string
 	commands   []CommandSpec
+	history    *commandHistory
 	matches    []CompletionItem
 	selected   int
 	offset     int
@@ -66,6 +68,14 @@ func NewModel(
 		startLines: append([]string(nil), startLines...),
 		commands:   commandSpecs(),
 		startBlank: true,
+	}
+	historyPath := filepath.Join(cfg.DataDir, "tui-history.json")
+	history, err := loadCommandHistory(historyPath, maxCommandHistory)
+	if err == nil {
+		m.history = history
+	} else {
+		m.history = &commandHistory{path: historyPath, limit: maxCommandHistory}
+		m.history.resetNavigation()
 	}
 	m.refreshMatches()
 	return m
@@ -124,6 +134,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Println(msg.err.Error())
 		}
 		m.input.SetValue(msg.text)
+		m.history.resetNavigation()
 		m.refreshMatches()
 		return m, nil
 	case statusMsg:
@@ -165,19 +176,20 @@ func (m *Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "up":
-		if strings.HasPrefix(m.input.Value(), "/") {
-			m.moveSelection(-1)
-			return m, nil
-		}
+		m.input.SetValue(m.history.Previous(m.input.Value()))
+		m.input.SetCursor(len(m.input.Value()))
+		m.refreshMatches()
+		return m, nil
 	case "down":
-		if strings.HasPrefix(m.input.Value(), "/") {
-			m.moveSelection(1)
-			return m, nil
-		}
+		m.input.SetValue(m.history.Next())
+		m.input.SetCursor(len(m.input.Value()))
+		m.refreshMatches()
+		return m, nil
 	}
 
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
+	m.history.resetNavigation()
 	m.refreshMatches()
 	return m, cmd
 }
@@ -237,6 +249,7 @@ func (m *Model) submitInput() (tea.Model, tea.Cmd) {
 	echo := fmt.Sprintf("%s %s", m.theme.Magenta("❯"), value)
 	m.input.SetValue("")
 	m.input.SetCursor(0)
+	_ = m.history.Add(value)
 	m.refreshMatches()
 
 	if strings.HasPrefix(value, "/") {

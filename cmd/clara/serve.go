@@ -28,9 +28,9 @@ var serveCmd = &cobra.Command{
 	Short: "Start the Clara agent in the foreground",
 	Long: `Start the Clara background agent in the foreground.
 
-The agent watches the tasks directory for Markdown intent files, converts them
-via an LLM, and executes the resulting state machines. Use a process manager
-(launchd, systemd, etc.) to run this as a persistent daemon.`,
+The agent watches the tasks directory for .star intent files and executes the
+resulting workflows. Use a process manager (launchd, systemd, etc.) to run
+this as a persistent daemon.`,
 	RunE:         runServe,
 	SilenceUsage: true,
 }
@@ -149,25 +149,36 @@ func buildHandler(
 			return &ipc.Response{Message: "shutdown initiated"}
 
 		case ipc.MethodStatus:
-			intents := sup.ActiveIntents()
+			intents := sup.IntentInfos()
+			active := 0
+			for _, intent := range intents {
+				if intent.Active {
+					active++
+				}
+			}
 			return &ipc.Response{
 				Message: "running",
 				Data: map[string]any{
 					"servers":        reg.ActiveServerCount(),
 					"intents":        len(intents),
-					"active_intents": len(intents),
+					"active_intents": active,
 					"tools":          len(reg.Names()),
 					"dynamic_mcp":    len(reg.DynamicServerNames()),
 				},
 			}
 
 		case ipc.MethodList:
-			intents := sup.ActiveIntents()
+			intents := sup.IntentInfos()
 			list := make([]map[string]any, len(intents))
 			for i, intent := range intents {
 				list[i] = map[string]any{
 					"id":          intent.ID,
 					"description": intent.Description,
+					"mode":        intent.Mode,
+					"schedule":    intent.Schedule,
+					"interval":    intent.Interval,
+					"trigger":     intent.Trigger,
+					"active":      intent.Active,
 				}
 			}
 			return &ipc.Response{Data: list}
@@ -177,13 +188,41 @@ func buildHandler(
 			if id == "" {
 				return &ipc.Response{Error: "missing intent id"}
 			}
-			for _, intent := range sup.ActiveIntents() {
-				if intent.ID == id {
-					go runIntentInBackground(ctx, intent, reg, db, log)
-					return &ipc.Response{Message: "intent " + id + " triggered"}
-				}
+			intent, ok := sup.Intent(id)
+			if !ok {
+				return &ipc.Response{Error: "intent " + id + " not found"}
 			}
-			return &ipc.Response{Error: "intent " + id + " not found"}
+			if input, ok := req.Params["input"]; ok {
+				runState, _, err := db.LoadLatestWaitingRun(ctx, id)
+				if err != nil || runState.RunID == "" {
+					return &ipc.Response{Error: "intent " + id + " has no waiting run to receive input"}
+				}
+				go resumeIntentByIDInBackground(ctx, intent, input, reg, db, log)
+				return &ipc.Response{Message: "delivered input to waiting intent " + id}
+			}
+			go runIntentInBackground(ctx, intent, reg, db, log)
+			return &ipc.Response{Message: "intent " + id + " triggered"}
+
+		case ipc.MethodStart:
+			id, _ := req.Params["id"].(string)
+			if id == "" {
+				return &ipc.Response{Error: "missing intent id"}
+			}
+			if err := sup.StartIntent(id); err != nil {
+				return &ipc.Response{Error: err.Error()}
+			}
+			return &ipc.Response{Message: "intent " + id + " started"}
+
+		case ipc.MethodStop:
+			id, _ := req.Params["id"].(string)
+			if id == "" {
+				return &ipc.Response{Error: "missing intent id"}
+			}
+			if err := sup.StopIntent(id); err != nil {
+				return &ipc.Response{Error: err.Error()}
+			}
+			cancelLatestWaitingRun(ctx, id, db, log)
+			return &ipc.Response{Message: "intent " + id + " stopped"}
 
 		case ipc.MethodToolList:
 			filter, _ := req.Params["filter"].(string)

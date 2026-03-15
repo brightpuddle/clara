@@ -18,9 +18,6 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-filesystem"]
     env:
       ROOT: /tmp
-llm:
-  provider: openai
-  model: gpt-4o
 `
 	f := writeTempFile(t, yaml)
 	cfg, err := config.Load(f)
@@ -42,9 +39,6 @@ llm:
 	}
 	if len(srv.Args) != 2 {
 		t.Errorf("args len: got %d want 2", len(srv.Args))
-	}
-	if cfg.LLM.Model != "gpt-4o" {
-		t.Errorf("LLM model: got %q want %q", cfg.LLM.Model, "gpt-4o")
 	}
 }
 

@@ -29,10 +29,21 @@ mcp_servers:
       - ${HOME}/.local/share/clara/data.db
     description: "Built-in SQLite tool server for user-facing query/exec/vector tools"
 
+  - name: ollama
+    command: clara
+    args:
+      - mcp
+      - ollama-embeddings
+      - --model
+      - nomic-embed-text
+      - --url
+      - http://localhost:11434
+    description: "Built-in Ollama embeddings server"
+
   - name: bridge
     command: /usr/local/bin/ClaraBridge
     args: []
-    description: "Native macOS MCP server (EventKit, notifications, and other local capabilities); the wrapper should exec the app-bundled bridge binary"
+    description: "Native macOS MCP server (EventKit, notifications, reminder/event wait tools, and other local capabilities); the wrapper should exec the app-bundled bridge binary"
 
   - name: filesystem
     command: npx
@@ -56,9 +67,3 @@ mcp_servers:
     env:
       NOMIC_API_KEY: ${NOMIC_API_KEY}
     description: "Nomic text embedding server"
-
-# LLM used to convert Markdown intent files → Intent JSON.
-# Provider must match one of the configured MCP service names above.
-llm:
-  provider: openai-embedder
-  model: gpt-4o

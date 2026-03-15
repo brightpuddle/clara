@@ -10,9 +10,9 @@ import (
 
 func TestRemindersTaskwarriorSyncIntentParses(t *testing.T) {
 	path, data := mustReadPoCIntentFile(t, filepath.Join("..", "..", "tmp"))
-	intent, err := orchestrator.ParseIntent(data)
+	intent, err := orchestrator.LoadIntentFile(path, data)
 	if err != nil {
-		t.Fatalf("ParseIntent(%q): %v", path, err)
+		t.Fatalf("LoadIntentFile(%q): %v", path, err)
 	}
 	if intent.ID != "reminders-taskwarrior-sync" {
 		t.Fatalf("unexpected intent ID %q", intent.ID)
@@ -23,9 +23,8 @@ func mustReadPoCIntentFile(t *testing.T, baseDir string) (string, []byte) {
 	t.Helper()
 
 	for _, name := range []string{
-		"reminders-taskwarrior-sync.yaml",
-		"reminders-taskwarrior-sync.yml",
-		"reminders-taskwarrior-sync.json",
+		"reminders_taskwarrior_sync.star",
+		"reminders-taskwarrior-sync.star",
 	} {
 		path := filepath.Join(baseDir, name)
 		data, err := os.ReadFile(path)
@@ -37,6 +36,6 @@ func mustReadPoCIntentFile(t *testing.T, baseDir string) (string, []byte) {
 		}
 	}
 
-	t.Fatalf("no reminders-taskwarrior-sync intent fixture found in %q", baseDir)
+	t.Fatalf("no reminders-taskwarrior-sync .star intent fixture found in %q", baseDir)
 	return "", nil
 }

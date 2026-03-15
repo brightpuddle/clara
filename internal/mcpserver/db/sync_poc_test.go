@@ -99,7 +99,7 @@ func TestRemindersTaskwarriorSyncPoCIntent(t *testing.T) {
 	}
 
 	reg := registry.New(zerolog.Nop())
-	it := interpreter.New(reg, zerolog.Nop())
+	it := interpreter.NewStarlark(reg, zerolog.Nop())
 
 	registerDBTool := func(name string, fn func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) {
 		reg.Register(name, func(ctx context.Context, args map[string]any) (any, error) {
@@ -208,7 +208,7 @@ func TestRemindersTaskwarriorSyncPoCIntent(t *testing.T) {
 		},
 	)
 
-	if err := it.Execute(context.Background(), intent, intent.InitialState, interpreter.RunOptions{RunID: "poc-test"}); err != nil {
+	if err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{RunID: "poc-test"}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -267,9 +267,9 @@ func loadPoCIntent(t *testing.T) *orchestrator.Intent {
 	t.Helper()
 
 	path, data := mustReadPoCIntentFixture(t)
-	intent, err := orchestrator.ParseIntent(data)
+	intent, err := orchestrator.LoadIntentFile(path, data)
 	if err != nil {
-		t.Fatalf("ParseIntent(%q): %v", path, err)
+		t.Fatalf("LoadIntentFile(%q): %v", path, err)
 	}
 	return intent
 }
@@ -279,9 +279,8 @@ func mustReadPoCIntentFixture(t *testing.T) (string, []byte) {
 
 	baseDir := filepath.Join("..", "..", "..", "tmp")
 	for _, name := range []string{
-		"reminders-taskwarrior-sync.yaml",
-		"reminders-taskwarrior-sync.yml",
-		"reminders-taskwarrior-sync.json",
+		"reminders_taskwarrior_sync.star",
+		"reminders-taskwarrior-sync.star",
 	} {
 		path := filepath.Join(baseDir, name)
 		data, err := os.ReadFile(path)
@@ -293,7 +292,7 @@ func mustReadPoCIntentFixture(t *testing.T) (string, []byte) {
 		}
 	}
 
-	t.Fatalf("no reminders-taskwarrior-sync intent fixture found in %q", baseDir)
+	t.Fatalf("no reminders-taskwarrior-sync .star intent fixture found in %q", baseDir)
 	return "", nil
 }
 

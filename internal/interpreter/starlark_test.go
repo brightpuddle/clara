@@ -40,7 +40,12 @@ func TestStarlarkInterpreter_ReplaysToolCalls(t *testing.T) {
 	intent := &orchestrator.Intent{
 		ID:           "script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
-		Script:       `result = tool("echo", value="hello")`,
+		Script: `
+init(id = "script", description = "test")
+
+def main():
+    return tool("echo", value = "hello")
+`,
 	}
 
 	if err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{RunID: "run-1"}); err != nil {
@@ -68,7 +73,12 @@ func TestStarlarkInterpreter_WaitReturnsPauseError(t *testing.T) {
 	intent := &orchestrator.Intent{
 		ID:           "pause-script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
-		Script:       `wait("approval", prompt="Continue?")`,
+		Script: `
+init(id = "pause-script")
+
+def main():
+    return wait("approval", prompt = "Continue?")
+`,
 	}
 
 	err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{RunID: "run-2"})
@@ -104,7 +114,12 @@ func TestStarlarkInterpreter_ReplaysWaitResults(t *testing.T) {
 	intent := &orchestrator.Intent{
 		ID:           "wait-script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
-		Script:       `response = wait("approval", prompt="Ship it?")`,
+		Script: `
+init(id = "wait-script")
+
+def main():
+    return wait("approval", prompt = "Ship it?")
+`,
 	}
 
 	if err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{RunID: "run-3"}); err != nil {

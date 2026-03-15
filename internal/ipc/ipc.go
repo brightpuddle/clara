@@ -8,6 +8,8 @@ const (
 	MethodStatus        = "status"
 	MethodList          = "list"
 	MethodRun           = "run"
+	MethodStart         = "start"
+	MethodStop          = "stop"
 	MethodToolList      = "tool_list"
 	MethodToolShow      = "tool_show"
 	MethodToolCall      = "tool_call"

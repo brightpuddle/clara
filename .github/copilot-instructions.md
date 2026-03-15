@@ -5,7 +5,7 @@
 **Clara** (`github.com/brightpuddle/clara`) is a local-first agentic orchestrator for macOS. It is a background daemon written in Go that:
 
 1. Proxies and aggregates MCP (Model Context Protocol) servers into a unified tool registry.
-2. Executes declarative **Intents** — JSON state machines authored by an LLM from natural-language Markdown intent files — using a safe, inspectable interpreter.
+2. Executes **Intents** authored as `.star` Starlark workflows and compiled into a safe, inspectable runtime representation.
 3. Persists its own operational state (runs, checkpoints, metadata) in an internal SQLite store that is **not** exposed directly to intents.
 4. Treats every intent-visible capability as an MCP service, including built-in Clara services such as filesystem access, SQLite tooling, and the native macOS bridge.
 5. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, and launching built-in MCP servers.
@@ -44,10 +44,11 @@ github.com/brightpuddle/clara/
 │   ├── orchestrator/    # Intent, State, Transition structs (core domain types)
 │   ├── registry/        # MCP client management + unified tool registry
 │   ├── interpreter/     # State machine Execute loop (expr-lang/expr conditions)
-│   ├── supervisor/      # File watcher + LLM→Intent conversion + lifecycle management
+│   ├── supervisor/      # .star file watcher + runtime mode/lifecycle management
 │   ├── mcpserver/       # Built-in MCP servers
 │   │   ├── fs/          # Filesystem MCP server (clara mcp fs)
-│   │   └── db/          # SQLite MCP server (clara mcp db)
+│   │   ├── db/          # SQLite MCP server (clara mcp db)
+│   │   └── ollamaembeddings/ # Ollama embeddings MCP server (clara mcp ollama-embeddings)
 │   └── store/           # Internal daemon persistence only (intent_runs, metadata)
 ├── swift/               # Standalone Swift MCP server for native macOS capabilities
 │   ├── Package.swift
@@ -69,6 +70,7 @@ Note: during migrations, legacy bridge/proto artifacts may still exist in the re
 | SQLite (CGO-free) | `github.com/ncruces/go-sqlite3` |
 | Vector search extension | `github.com/asg017/sqlite-vec-go-bindings/ncruces` |
 | State machine logic evaluation | `github.com/expr-lang/expr` |
+| Starlark intent authoring/runtime | `go.starlark.net` |
 | CLI | `github.com/spf13/cobra` |
 | MCP client/server | `github.com/mark3labs/mcp-go` |
 | Structured concurrency | `github.com/sourcegraph/conc` |
@@ -79,10 +81,12 @@ Note: during migrations, legacy bridge/proto artifacts may still exist in the re
 ## Architectural Principles
 
 - **Intent-visible services must be MCP services.** Do not add new direct daemon-only tools for use in intents.
+- **Authored intents are `.star` files.** Do not introduce new authored JSON/YAML/Markdown intent formats unless the architecture explicitly changes.
 - **The internal store is private.** Clara's internal SQLite database exists for orchestration/runtime persistence only.
 - **Built-in services are still services.** Even when shipped inside the Clara repo/binary (for example `clara mcp fs` or `clara mcp db`), they should behave like standalone MCP servers and be usable independently of the daemon.
 - **Prefer service composition over special cases.** If a new capability can be expressed as an MCP server, do that instead of wiring custom transport paths into the daemon.
 - **Keep the daemon simple.** Its responsibilities are config loading, subprocess orchestration, intent execution, state persistence, and policy enforcement across MCP services.
+- **Keep the docs in sync.** Feature changes and architectural changes must update both `README.md` and `.github/copilot-instructions.md`.
 
 ---
 
@@ -146,6 +150,10 @@ mcp_servers:
     command: clara
     args: [mcp, db, ${HOME}/.local/share/clara/data.db]
 
+  - name: ollama
+    command: clara
+    args: [mcp, ollama-embeddings, --model, nomic-embed-text, --url, http://localhost:11434]
+
   - name: bridge
     command: /usr/local/bin/ClaraBridge
     args: []
@@ -185,38 +193,30 @@ mcp_servers:
 
 ---
 
-## The Intent Schema
+## Authored Intent Structure (`.star`)
 
-An **Intent** is a JSON document representing a state machine. The Go daemon is the interpreter; the LLM is only ever the author.
+Clara's authored intent format is `.star`.
 
-```json
-{
-  "id": "string",
-  "description": "string",
-  "schedule": "cron expression (optional)",
-  "trigger": "event expression (optional)",
-  "initial_state": "STATE_NAME",
-  "context": {
-    "alias": "mcp://server/resource"
-  },
-  "states": {
-    "STATE_NAME": {
-      "action": "tool.method",
-      "args": { "key": "{{mem.PREV_STATE.field}}" },
-      "transitions": [
-        { "condition": "expr string", "next": "OTHER_STATE" }
-      ],
-      "next": "DEFAULT_NEXT_STATE",
-      "terminal": false
-    }
-  }
-}
-```
+Every intent file must:
 
-- `action` maps to a registered MCP-derived tool in the Registry.
-- `args` values support `{{handlebars}}`-style template injection from `mem`.
-- `transitions` are evaluated in order using `expr-lang/expr` against the current `mem` map.
-- The special `PROMPT_USER` pattern uses a "Wait" mechanism that suspends the goroutine until external input arrives via a channel.
+- call `init(...)` exactly once at top level
+- define a callable `main()`
+
+Current supported `init(...)` fields:
+
+- `id` (required)
+- `description` (optional)
+- `mode` (`on_demand`, `schedule`, `worker`, `event`)
+- `interval` (required for `worker`)
+- `schedule` (required for `schedule`)
+- `trigger` (optional metadata for `event`)
+
+Runtime builtins available to Starlark:
+
+- `tool(name, **kwargs)` to call a registered tool
+- `wait(name, **kwargs)` to persist a wait request and resume later
+
+The daemon compiles `.star` files into the internal `orchestrator.Intent` runtime representation, but `.star` is the authored source of truth.
 
 ---
 
@@ -229,16 +229,29 @@ An **Intent** is a JSON document representing a state machine. The Go daemon is 
 | `clara agent start` | Check/report agent status; print instructions to start |
 | `clara agent stop` | Stop the running agent |
 | `clara agent status` | Show agent status and active intents |
-| `clara intent list` | List all active intents |
-| `clara intent run <id>` | Manually trigger an intent by ID |
-| `clara run <task-file>` | One-off execution of a JSON intent file |
+| `clara intent list` | List installed intents |
+| `clara intent trigger <id>` | Run an installed intent once |
+| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run for an intent |
+| `clara intent start <id>` | Start a managed `schedule`, `worker`, or `event` intent |
+| `clara intent stop <id>` | Stop a managed `schedule`, `worker`, or `event` intent |
+| `clara intent watch [id]` | Watch intent execution |
+| `clara intent resume <run-id>` | Resume a paused Starlark run directly |
+| `clara run <task-file>` | One-off execution of a `.star` intent file |
 | `clara tool list` | List all registered tools with signatures |
 | `clara tool show <tool>` | Show full MCP-style details for one tool |
 | `clara tool call <tool> ...` | Call a registered tool directly |
 | `clara mcp fs` | Start the built-in filesystem MCP server on stdio |
 | `clara mcp db [path]` | Start the built-in SQLite MCP server on stdio |
+| `clara mcp ollama-embeddings` | Start the built-in Ollama embeddings MCP server on stdio |
+| `clara mcp taskwarrior` | Start the built-in Taskwarrior MCP server on stdio |
 
 CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clara/` as a single unified binary — there is no separate `clarad` daemon binary.
+
+TUI notes:
+
+- Slash-command history is persisted under Clara's runtime data directory with bounded retention.
+- `/tool call` autocomplete completes provider IDs first and tool suffixes after `provider.`.
+- `/tool call <provider>` is a valid interactive shortcut that lists that provider's tools.
 
 ---
 
@@ -247,6 +260,16 @@ CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clar
 - `ClaraBridge` is a **standalone Swift MCP server**.
 - It communicates over **stdio**, not gRPC.
 - Configure it under `mcp_servers` like any other service.
-- Initial capability: `fetch_reminders` via EventKit.
+- It exposes reminder and calendar CRUD tools, notification tools, and blocking wait tools for reminder/event create-update-delete changes.
+- `reminders_list` supports an `updated_after` ISO-8601 filter keyed to the serialized `updated_at` field.
+- Those wait tools are backed by native EventKit change notifications and are intended for linear, event-driven `.star` scripts.
 - Future native capabilities (Notifications, Spotlight, filesystem events, etc.) should also be exposed as MCP tools/resources/prompts rather than custom daemon transports.
 - Swift 6.0 strict concurrency model must be followed (no `@unchecked Sendable` shortcuts).
+
+## Built-in wait-capable tools
+
+- `fs.wait_for_change` waits for filesystem create/change/delete events under a directory.
+- `bridge.reminders_wait_change` waits for Reminders create/update/delete changes.
+- `bridge.events_wait_change` waits for Calendar create/update/delete changes.
+- `taskwarrior.list_tasks` supports an `updated_after` ISO-8601 filter keyed to Taskwarrior's `modified` field.
+- Prefer exposing new event sources through comparable blocking MCP tools before inventing daemon-specific callback paths.

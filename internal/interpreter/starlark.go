@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"time"
 
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
@@ -120,6 +121,7 @@ func (it *StarlarkInterpreter) Execute(
 	}
 
 	predeclared := starlark.StringDict{
+		"init": starlark.NewBuiltin("init", runtime.initBuiltin),
 		"tool": starlark.NewBuiltin("tool", runtime.toolBuiltin),
 		"wait": starlark.NewBuiltin("wait", runtime.waitBuiltin),
 	}
@@ -141,6 +143,31 @@ func (it *StarlarkInterpreter) Execute(
 		return errors.Wrap(err, "execute starlark workflow")
 	}
 
+	mainValue, ok := globals["main"]
+	if !ok {
+		return errors.New("starlark workflow must define main()")
+	}
+	mainFn, ok := mainValue.(starlark.Callable)
+	if !ok {
+		return errors.New("starlark workflow main must be callable")
+	}
+	mainResult, err := starlark.Call(thread, mainFn, nil, nil)
+	if err != nil {
+		var pauseErr *PauseError
+		if errors.As(err, &pauseErr) {
+			if it.onChange != nil && opts.RunID != "" {
+				it.onChange(ctx, opts.RunID, intent.ID, starlarkScriptState, map[string]any{
+					"wait": map[string]any{
+						"name": pauseErr.Request.Name,
+						"args": pauseErr.Request.Args,
+					},
+				})
+			}
+			return pauseErr
+		}
+		return errors.Wrap(err, "execute starlark main")
+	}
+
 	if runtime.cursor != len(runtime.history) {
 		return errors.Newf(
 			"starlark replay history has %d unused entrie(s)",
@@ -149,7 +176,11 @@ func (it *StarlarkInterpreter) Execute(
 	}
 
 	if it.onChange != nil && opts.RunID != "" {
-		it.onChange(ctx, opts.RunID, intent.ID, starlarkScriptState, globalsToGo(globals))
+		mem := globalsToGo(globals)
+		if result, err := starlarkValueToGo(mainResult); err == nil {
+			mem["main_result"] = result
+		}
+		it.onChange(ctx, opts.RunID, intent.ID, starlarkScriptState, mem)
 	}
 	return nil
 }
@@ -165,6 +196,42 @@ type starlarkRuntime struct {
 	history       []ReplayEntry
 	cursor        int
 	log           zerolog.Logger
+}
+
+func (rt *starlarkRuntime) initBuiltin(
+	_ *starlark.Thread,
+	_ *starlark.Builtin,
+	args starlark.Tuple,
+	kwargs []starlark.Tuple,
+) (starlark.Value, error) {
+	var (
+		id          string
+		description string
+		mode        string
+		interval    string
+		schedule    string
+		trigger     string
+	)
+	if err := starlark.UnpackArgs(
+		"init",
+		args,
+		kwargs,
+		"id",
+		&id,
+		"description?",
+		&description,
+		"mode?",
+		&mode,
+		"interval?",
+		&interval,
+		"schedule?",
+		&schedule,
+		"trigger?",
+		&trigger,
+	); err != nil {
+		return nil, errors.Wrap(err, "parse init arguments")
+	}
+	return starlark.None, nil
 }
 
 func (rt *starlarkRuntime) toolBuiltin(
@@ -426,6 +493,8 @@ func goToStarlark(value any) (starlark.Value, error) {
 		return starlark.Bool(v), nil
 	case string:
 		return starlark.String(v), nil
+	case time.Time:
+		return starlark.String(v.UTC().Format(time.RFC3339Nano)), nil
 	case int:
 		return starlark.MakeInt(v), nil
 	case int64:

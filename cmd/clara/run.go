@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,14 +24,11 @@ func runOneOff(parent context.Context, taskFile string, verbose bool) error {
 		return errors.Wrapf(err, "read task file %q", taskFile)
 	}
 
-	ext := filepath.Ext(taskFile)
-	if ext == ".md" || ext == ".markdown" {
-		return fmt.Errorf(
-			"markdown task files require the background agent; use 'clara serve' or author the intent as JSON or YAML",
-		)
+	if !strings.EqualFold(filepath.Ext(taskFile), ".star") {
+		return fmt.Errorf("unsupported intent file %q: only .star files are supported", taskFile)
 	}
 
-	intent, err := orchestrator.ParseIntent(data)
+	intent, err := orchestrator.LoadIntentFile(taskFile, data)
 	if err != nil {
 		return errors.Wrapf(err, "parse intent from %q", taskFile)
 	}

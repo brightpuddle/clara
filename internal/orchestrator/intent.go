@@ -4,6 +4,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,12 +13,14 @@ import (
 // Implementations wrap MCP tool calls, the Swift bridge, or local SQLite queries.
 type Tool func(ctx any, args map[string]any) (any, error)
 
-// Intent is a declarative state machine that the interpreter executes.
-// It is the unit of work in Clara — authored by an LLM from a Markdown intent
-// file and validated by the Go daemon before deployment.
+// Intent is the compiled workflow representation that Clara executes.
+// It is the validated runtime form produced from authored intent sources such
+// as `.star` files.
 type Intent struct {
 	ID           string            `json:"id"                       yaml:"id"`
 	Description  string            `json:"description,omitempty"    yaml:"description,omitempty"`
+	Mode         string            `json:"mode,omitempty"           yaml:"mode,omitempty"`
+	Interval     string            `json:"interval,omitempty"       yaml:"interval,omitempty"`
 	Schedule     string            `json:"schedule,omitempty"       yaml:"schedule,omitempty"` // cron expression
 	Trigger      string            `json:"trigger,omitempty"        yaml:"trigger,omitempty"`  // event expression
 	WorkflowType string            `json:"workflow_type,omitempty"  yaml:"workflow_type,omitempty"`
@@ -31,6 +34,12 @@ type Intent struct {
 func (b *Intent) Validate() error {
 	if b.ID == "" {
 		return &ValidationError{Field: "id", Message: "must not be empty"}
+	}
+	if err := validateIntentMode(b.Mode); err != nil {
+		return err
+	}
+	if err := validateRuntimeFields(b); err != nil {
+		return err
 	}
 	switch b.WorkflowKind() {
 	case WorkflowTypeStateMachine:
@@ -79,6 +88,11 @@ func (b *Intent) Validate() error {
 const (
 	WorkflowTypeStateMachine = "state_machine"
 	WorkflowTypeStarlark     = "starlark"
+
+	IntentModeOnDemand = "on_demand"
+	IntentModeSchedule = "schedule"
+	IntentModeWorker   = "worker"
+	IntentModeEvent    = "event"
 )
 
 func (b *Intent) WorkflowKind() string {
@@ -92,6 +106,49 @@ func (b *Intent) WorkflowKind() string {
 		return WorkflowTypeStarlark
 	default:
 		return b.WorkflowType
+	}
+}
+
+func (b *Intent) RuntimeMode() string {
+	if b.Mode == "" {
+		return IntentModeOnDemand
+	}
+	return b.Mode
+}
+
+func validateIntentMode(mode string) error {
+	switch mode {
+	case "", IntentModeOnDemand, IntentModeSchedule, IntentModeWorker, IntentModeEvent:
+		return nil
+	default:
+		return &ValidationError{
+			Field:   "mode",
+			Message: "must be one of on_demand, schedule, worker, or event",
+		}
+	}
+}
+
+func validateRuntimeFields(intent *Intent) error {
+	switch intent.RuntimeMode() {
+	case IntentModeOnDemand:
+		return nil
+	case IntentModeSchedule:
+		if intent.Schedule == "" {
+			return &ValidationError{Field: "schedule", Message: "must not be empty for schedule mode"}
+		}
+		return nil
+	case IntentModeWorker:
+		if intent.Interval == "" {
+			return &ValidationError{Field: "interval", Message: "must not be empty for worker mode"}
+		}
+		if _, err := time.ParseDuration(intent.Interval); err != nil {
+			return &ValidationError{Field: "interval", Message: "must be a valid duration for worker mode"}
+		}
+		return nil
+	case IntentModeEvent:
+		return nil
+	default:
+		return nil
 	}
 }
 
@@ -156,6 +213,8 @@ func (e *ValidationError) Error() string {
 }
 
 // ParseIntent deserializes a JSON or YAML document into an Intent and validates it.
+// It remains useful for tests and internal compiled forms even though authored
+// intent files are now expected to be `.star`.
 func ParseIntent(data []byte) (*Intent, error) {
 	var b Intent
 	if err := json.Unmarshal(data, &b); err != nil {

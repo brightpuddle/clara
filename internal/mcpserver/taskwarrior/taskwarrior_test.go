@@ -196,3 +196,47 @@ esac
 		t.Fatalf("expected raw payload in error, got %q", errText)
 	}
 }
+
+func TestListTasksFiltersByUpdatedAfter(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "task")
+	if err := os.WriteFile(script, []byte(`#!/bin/sh
+case "$*" in
+  *"export")
+    /bin/cat <<'JSON'
+[
+  {"uuid":"older","description":"older task","status":"pending","entry":"2026-03-12T00:00:00Z","modified":"2026-03-13T00:00:00Z"},
+  {"uuid":"newer","description":"newer task","status":"pending","entry":"2026-03-12T00:00:00Z","modified":"2026-03-15T00:00:00Z"}
+]
+JSON
+    ;;
+  *)
+    /bin/echo '{}'
+    ;;
+esac
+`), 0o755); err != nil {
+		t.Fatalf("write fake task binary: %v", err)
+	}
+	t.Setenv("PATH", dir)
+
+	svc := New(zerolog.Nop())
+	result, err := svc.handleListTasks(
+		context.Background(),
+		mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]any{
+			"updated_after": "2026-03-14T00:00:00Z",
+		}}},
+	)
+	if err != nil {
+		t.Fatalf("handleListTasks returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success result, got %#v", result.Content)
+	}
+	encoded, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured result: %v", err)
+	}
+	if !strings.Contains(string(encoded), "newer") || strings.Contains(string(encoded), "older") {
+		t.Fatalf("unexpected updated_after result: %s", encoded)
+	}
+}

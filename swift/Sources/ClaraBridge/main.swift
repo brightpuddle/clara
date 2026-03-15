@@ -191,6 +191,8 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     private var notificationsAuthorized = false
     private var eventStoreObserver: NSObjectProtocol?
     private var pendingInteractiveNotifications: [String: PendingInteractiveNotification] = [:]
+    private var pendingReminderWaits: [String: PendingStoreWait] = [:]
+    private var pendingEventWaits: [String: PendingStoreWait] = [:]
     private var notificationCategories: [String: UNNotificationCategory] = [:]
 
     override init() {
@@ -201,7 +203,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.handleEventStoreChanged()
+                await self?.handleEventStoreChanged()
             }
         }
     }
@@ -260,12 +262,22 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                     boolProperty("completed", "Optional completion-status filter."),
                     stringProperty("start_date", "Optional inclusive due-date lower bound in ISO-8601 format."),
                     stringProperty("end_date", "Optional inclusive due-date upper bound in ISO-8601 format."),
+                    stringProperty("updated_after", "Optional lower-bound updated_at timestamp in ISO-8601 format."),
                 ]
             ),
             tool(
                 name: "reminders_default_list",
                 description: "Return the default Reminder list used for newly created reminders.",
                 properties: []
+            ),
+            tool(
+                name: "reminders_wait_change",
+                description: "Block until a reminder create, update, or delete matches the requested filters.",
+                properties: [
+                    stringProperty("list_name", "Optional reminder list name filter."),
+                    stringArrayProperty("change_types", "Optional array containing create, update, and/or delete."),
+                    numberProperty("timeout_seconds", "Optional timeout in seconds. Returns timed_out when reached."),
+                ]
             ),
             tool(
                 name: "events_create",
@@ -320,6 +332,17 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 ]
             ),
             tool(
+                name: "events_wait_change",
+                description: "Block until a calendar event create, update, or delete matches the requested filters.",
+                properties: [
+                    stringProperty("calendar_name", "Optional calendar name filter."),
+                    stringProperty("start_date", "Optional start-date lower bound in ISO-8601 format."),
+                    stringProperty("end_date", "Optional end-date upper bound in ISO-8601 format."),
+                    stringArrayProperty("change_types", "Optional array containing create, update, and/or delete."),
+                    numberProperty("timeout_seconds", "Optional timeout in seconds. Returns timed_out when reached."),
+                ]
+            ),
+            tool(
                 name: "notify_send",
                 description: "Send a standard macOS user notification banner.",
                 properties: [
@@ -361,6 +384,8 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             return try toolResult(try await listReminders(arguments))
         case "reminders_default_list":
             return try toolResult(try await defaultReminderList())
+        case "reminders_wait_change":
+            return try toolResult(try await waitForReminderChange(arguments))
         case "events_create":
             return try toolResult(serializeEvent(try await createEvent(arguments)))
         case "events_get":
@@ -371,6 +396,8 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             return try toolResult(try await deleteEvent(arguments))
         case "events_list":
             return try toolResult(try await listEvents(arguments).map(serializeEvent))
+        case "events_wait_change":
+            return try toolResult(try await waitForEventChange(arguments))
         case "notify_send":
             return try toolResult(try await sendNotification(arguments))
         case "notify_send_interactive":
@@ -400,10 +427,12 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
 
 
     @MainActor
-    private func handleEventStoreChanged() {
+    private func handleEventStoreChanged() async {
         server?.sendNotification(method: "clara/eventkit_changed", params: [
             "changed_at": ISO8601.dateString(from: Date()),
         ])
+        await processPendingReminderWaits()
+        await processPendingEventWaits()
     }
 
     @MainActor
@@ -454,6 +483,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         let completedFilter = optionalBool(args, "completed")
         let startDate = try optionalDate(args, "start_date")
         let endDate = try optionalDate(args, "end_date")
+        let updatedAfter = try optionalDate(args, "updated_after")
 
         let encoded = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             eventStore.fetchReminders(matching: predicate) { fetched in
@@ -473,6 +503,12 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                                 return false
                             }
                             if endDate != nil && reminder.dueDateComponents?.date == nil {
+                                return false
+                            }
+                            if let updatedAfter, let updatedAt = reminder.lastModifiedDate, updatedAt < updatedAfter {
+                                return false
+                            }
+                            if updatedAfter != nil && reminder.lastModifiedDate == nil {
                                 return false
                             }
                             return true
@@ -608,6 +644,272 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         ]
     }
 
+    private func waitForReminderChange(_ args: [String: Any]) async throws -> [String: Any] {
+        try await ensureRemindersAccess()
+        let listName = optionalString(args, "list_name")
+        let changeTypes = try parseChangeTypes(args)
+        let timeoutSeconds = optionalDouble(args, "timeout_seconds") ?? 0
+        let waitID = UUID().uuidString
+        let baseline = try await reminderSnapshot(listName: listName)
+
+        let data = await withCheckedContinuation { continuation in
+            let timeoutTask = makeStoreWaitTimeoutTask(
+                waitID: waitID,
+                timeoutSeconds: timeoutSeconds,
+                kind: "reminders"
+            )
+            pendingReminderWaits[waitID] = PendingStoreWait(
+                continuation: continuation,
+                timeoutTask: timeoutTask,
+                changeTypes: changeTypes,
+                filterName: listName,
+                startDate: nil,
+                endDate: nil,
+                baseline: baseline
+            )
+        }
+        return try decodeJSONObject(data)
+    }
+
+    private func waitForEventChange(_ args: [String: Any]) async throws -> [String: Any] {
+        try await ensureEventsAccess()
+        let calendarName = optionalString(args, "calendar_name")
+        let changeTypes = try parseChangeTypes(args)
+        let timeoutSeconds = optionalDouble(args, "timeout_seconds") ?? 0
+        let startDate = try optionalDate(args, "start_date")
+            ?? Calendar.current.date(byAdding: .year, value: -1, to: Date())!
+        let endDate = try optionalDate(args, "end_date")
+            ?? Calendar.current.date(byAdding: .year, value: 1, to: Date())!
+        let waitID = UUID().uuidString
+        let baseline = try await eventSnapshot(calendarName: calendarName, startDate: startDate, endDate: endDate)
+
+        let data = await withCheckedContinuation { continuation in
+            let timeoutTask = makeStoreWaitTimeoutTask(
+                waitID: waitID,
+                timeoutSeconds: timeoutSeconds,
+                kind: "events"
+            )
+            pendingEventWaits[waitID] = PendingStoreWait(
+                continuation: continuation,
+                timeoutTask: timeoutTask,
+                changeTypes: changeTypes,
+                filterName: calendarName,
+                startDate: startDate,
+                endDate: endDate,
+                baseline: baseline
+            )
+        }
+        return try decodeJSONObject(data)
+    }
+
+    private func processPendingReminderWaits() async {
+        guard !pendingReminderWaits.isEmpty else {
+            return
+        }
+        for waitID in Array(pendingReminderWaits.keys) {
+            guard var wait = pendingReminderWaits[waitID] else {
+                continue
+            }
+            do {
+                let current = try await reminderSnapshot(listName: wait.filterName)
+                let changes = diffSnapshots(old: wait.baseline, new: current)
+                if let matched = firstMatchingChange(changes: changes, allowedTypes: wait.changeTypes) {
+                    wait.timeoutTask?.cancel()
+                    pendingReminderWaits.removeValue(forKey: waitID)
+                    let payload = waitPayload(
+                        resource: "reminder",
+                        changeType: matched.type,
+                        filterKey: "list_name",
+                        filterValue: wait.filterName,
+                        item: matched.item
+                    )
+                    let payloadData = try encodeJSONObject(payload)
+                    server?.sendNotification(method: "clara/reminders_changed", params: payload)
+                    wait.continuation.resume(returning: payloadData)
+                    continue
+                }
+                wait.baseline = current
+                pendingReminderWaits[waitID] = wait
+            } catch {
+                server?.sendNotification(method: "clara/reminders_changed", params: [
+                    "status": "error",
+                    "message": error.localizedDescription,
+                    "changed_at": ISO8601.dateString(from: Date()),
+                ])
+            }
+        }
+    }
+
+    private func processPendingEventWaits() async {
+        guard !pendingEventWaits.isEmpty else {
+            return
+        }
+        for waitID in Array(pendingEventWaits.keys) {
+            guard var wait = pendingEventWaits[waitID],
+                  let startDate = wait.startDate,
+                  let endDate = wait.endDate else {
+                continue
+            }
+            do {
+                let current = try await eventSnapshot(
+                    calendarName: wait.filterName,
+                    startDate: startDate,
+                    endDate: endDate
+                )
+                let changes = diffSnapshots(old: wait.baseline, new: current)
+                if let matched = firstMatchingChange(changes: changes, allowedTypes: wait.changeTypes) {
+                    wait.timeoutTask?.cancel()
+                    pendingEventWaits.removeValue(forKey: waitID)
+                    let payload = waitPayload(
+                        resource: "event",
+                        changeType: matched.type,
+                        filterKey: "calendar_name",
+                        filterValue: wait.filterName,
+                        item: matched.item
+                    )
+                    let payloadData = try encodeJSONObject(payload)
+                    server?.sendNotification(method: "clara/events_changed", params: payload)
+                    wait.continuation.resume(returning: payloadData)
+                    continue
+                }
+                wait.baseline = current
+                pendingEventWaits[waitID] = wait
+            } catch {
+                server?.sendNotification(method: "clara/events_changed", params: [
+                    "status": "error",
+                    "message": error.localizedDescription,
+                    "changed_at": ISO8601.dateString(from: Date()),
+                ])
+            }
+        }
+    }
+
+    private func makeStoreWaitTimeoutTask(waitID: String, timeoutSeconds: Double, kind: String) -> Task<Void, Never>? {
+        guard timeoutSeconds > 0 else {
+            return nil
+        }
+        return Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(timeoutSeconds, 0.1) * 1_000_000_000))
+            await MainActor.run {
+                guard let self else { return }
+                switch kind {
+                case "reminders":
+                    guard let pending = self.pendingReminderWaits.removeValue(forKey: waitID) else { return }
+                    let payload = [
+                        "status": "timed_out",
+                        "resource": "reminder",
+                        "changed_at": ISO8601.dateString(from: Date()),
+                    ]
+                    guard let data = try? self.encodeJSONObject(payload) else { return }
+                    pending.continuation.resume(returning: data)
+                case "events":
+                    guard let pending = self.pendingEventWaits.removeValue(forKey: waitID) else { return }
+                    let payload = [
+                        "status": "timed_out",
+                        "resource": "event",
+                        "changed_at": ISO8601.dateString(from: Date()),
+                    ]
+                    guard let data = try? self.encodeJSONObject(payload) else { return }
+                    pending.continuation.resume(returning: data)
+                default:
+                    return
+                }
+            }
+        }
+    }
+
+    private func reminderSnapshot(listName: String?) async throws -> [String: StoreSnapshotItem] {
+        let reminders = try await listReminders(["list_name": listName as Any])
+        return try snapshotMap(items: reminders)
+    }
+
+    private func eventSnapshot(calendarName: String?, startDate: Date, endDate: Date) async throws -> [String: StoreSnapshotItem] {
+        let events = try await listEvents([
+            "calendar_name": calendarName as Any,
+            "start_date": ISO8601.dateString(from: startDate),
+            "end_date": ISO8601.dateString(from: endDate),
+        ]).map(serializeEvent)
+        return try snapshotMap(items: events)
+    }
+
+    private func snapshotMap(items: [[String: Any]]) throws -> [String: StoreSnapshotItem] {
+        var snapshot: [String: StoreSnapshotItem] = [:]
+        for item in items {
+            guard let identifier = item["identifier"] as? String, !identifier.isEmpty else {
+                continue
+            }
+            let fingerprintData = try JSONSerialization.data(withJSONObject: item, options: [.sortedKeys])
+            let fingerprint = String(data: fingerprintData, encoding: .utf8) ?? identifier
+            snapshot[identifier] = StoreSnapshotItem(item: item, fingerprint: fingerprint)
+        }
+        return snapshot
+    }
+
+    private func diffSnapshots(
+        old: [String: StoreSnapshotItem],
+        new: [String: StoreSnapshotItem]
+    ) -> [StoreChange] {
+        var changes: [StoreChange] = []
+
+        for (identifier, item) in new where old[identifier] == nil {
+            changes.append(StoreChange(type: "create", item: item.item))
+        }
+        for (identifier, oldItem) in old {
+            guard let newItem = new[identifier] else {
+                changes.append(StoreChange(type: "delete", item: oldItem.item))
+                continue
+            }
+            if oldItem.fingerprint != newItem.fingerprint {
+                changes.append(StoreChange(type: "update", item: newItem.item))
+            }
+        }
+
+        return changes
+    }
+
+    private func firstMatchingChange(changes: [StoreChange], allowedTypes: Set<String>) -> StoreChange? {
+        changes.first { allowedTypes.contains($0.type) }
+    }
+
+    private func waitPayload(
+        resource: String,
+        changeType: String,
+        filterKey: String,
+        filterValue: String?,
+        item: [String: Any]
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
+            "status": "matched",
+            "resource": resource,
+            "change_type": changeType,
+            "changed_at": ISO8601.dateString(from: Date()),
+            "item": item,
+        ]
+        if let filterValue, !filterValue.isEmpty {
+            payload[filterKey] = filterValue
+        }
+        return payload
+    }
+
+    private func parseChangeTypes(_ args: [String: Any]) throws -> Set<String> {
+        guard let values = optionalStringArray(args, "change_types") else {
+            return ["create", "update", "delete"]
+        }
+        if values.isEmpty {
+            throw MCPToolError("change_types must not be empty")
+        }
+        var result: Set<String> = []
+        for value in values {
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            switch normalized {
+            case "create", "update", "delete":
+                result.insert(normalized)
+            default:
+                throw MCPToolError("unsupported change_types entry: \(value)")
+            }
+        }
+        return result
+    }
 
     @MainActor
     private func notificationCenter() -> UNUserNotificationCenter {
@@ -973,6 +1275,16 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         [name: ["type": "number", "description": description]]
     }
 
+    private func stringArrayProperty(_ name: String, _ description: String) -> [String: [String: Any]] {
+        [
+            name: [
+                "type": "array",
+                "description": description,
+                "items": ["type": "string"],
+            ]
+        ]
+    }
+
     private func alarmsProperty() -> [String: [String: Any]] {
         [
             "alarms": [
@@ -1007,6 +1319,13 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             return nil
         }
         return args[key] as? String ?? ""
+    }
+
+    private func optionalStringArray(_ args: [String: Any], _ key: String) -> [String]? {
+        guard let raw = args[key] as? [Any] else {
+            return nil
+        }
+        return raw.compactMap { $0 as? String }
     }
 
     private func optionalBool(_ args: [String: Any], _ key: String) -> Bool? {
@@ -1079,11 +1398,42 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             "structuredContent": value,
         ]
     }
+
+    private func encodeJSONObject(_ value: Any) throws -> Data {
+        try JSONSerialization.data(withJSONObject: value)
+    }
+
+    private func decodeJSONObject(_ data: Data) throws -> [String: Any] {
+        guard let result = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MCPToolError("failed to decode wait result")
+        }
+        return result
+    }
 }
 
 private struct PendingInteractiveNotification {
     let continuation: CheckedContinuation<[String: Any], Never>?
     let timeoutTask: Task<Void, Never>?
+}
+
+private struct PendingStoreWait {
+    let continuation: CheckedContinuation<Data, Never>
+    let timeoutTask: Task<Void, Never>?
+    let changeTypes: Set<String>
+    let filterName: String?
+    let startDate: Date?
+    let endDate: Date?
+    var baseline: [String: StoreSnapshotItem]
+}
+
+private struct StoreSnapshotItem {
+    let item: [String: Any]
+    let fingerprint: String
+}
+
+private struct StoreChange {
+    let type: String
+    let item: [String: Any]
 }
 
 private struct MCPToolError: LocalizedError {

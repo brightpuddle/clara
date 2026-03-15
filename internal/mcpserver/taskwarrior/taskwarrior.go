@@ -106,6 +106,10 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithString("project", mcp.Description("Optional project name filter.")),
 		mcp.WithArray("tags", mcp.Description("Optional list of required tags.")),
 		mcp.WithString("status", mcp.Description("Optional Taskwarrior status filter.")),
+		mcp.WithString(
+			"updated_after",
+			mcp.Description("Optional lower-bound modified timestamp. Only tasks updated on or after this time are returned."),
+		),
 	), s.handleListTasks)
 
 	mcpServer.AddTool(mcp.NewTool("list_pending",
@@ -294,6 +298,15 @@ func (s *Service) handleTaskList(
 		}
 		tasks = filterDueTasks(tasks, before)
 	}
+	if rawUpdatedAfter, ok := stringArg(args, "updated_after"); ok && strings.TrimSpace(rawUpdatedAfter) != "" {
+		updatedAfter, err := parseTaskTime(rawUpdatedAfter)
+		if err != nil {
+			return mcp.NewToolResultError(
+				fmt.Sprintf("invalid updated_after timestamp: %v", err),
+			), nil
+		}
+		tasks = filterUpdatedTasks(tasks, updatedAfter)
+	}
 	return structuredResult(tasks)
 }
 
@@ -435,6 +448,24 @@ func filterDueTasks(tasks []taskRecord, before time.Time) []taskRecord {
 			continue
 		}
 		if !dueTime.After(before) {
+			filtered = append(filtered, task)
+		}
+	}
+	return filtered
+}
+
+func filterUpdatedTasks(tasks []taskRecord, updatedAfter time.Time) []taskRecord {
+	filtered := make([]taskRecord, 0, len(tasks))
+	for _, task := range tasks {
+		modifiedRaw, ok := task["modified"].(string)
+		if !ok || strings.TrimSpace(modifiedRaw) == "" {
+			continue
+		}
+		modifiedAt, err := parseTaskTime(modifiedRaw)
+		if err != nil {
+			continue
+		}
+		if !modifiedAt.Before(updatedAfter) {
 			filtered = append(filtered, task)
 		}
 	}

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -96,5 +97,97 @@ func TestNotificationResponseSelection(t *testing.T) {
 	resp := <-respCh
 	if resp.ActionID != "ack" || resp.Status != "responded" {
 		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+type stubAutocompleteClient struct {
+	providers []ProviderSummary
+	tools     []ToolInfo
+}
+
+func (s stubAutocompleteClient) ListIntents() ([]IntentSummary, error) { return nil, nil }
+func (s stubAutocompleteClient) ListProviders() ([]ProviderSummary, error) {
+	return s.providers, nil
+}
+func (s stubAutocompleteClient) ListTools(filter string) ([]ToolInfo, error) {
+	var tools []ToolInfo
+	for _, tool := range s.tools {
+		if filter == "" || strings.HasPrefix(tool.Name, filter) {
+			tools = append(tools, tool)
+		}
+	}
+	return tools, nil
+}
+func (s stubAutocompleteClient) ShowTool(name string) (ToolInfo, error) {
+	for _, tool := range s.tools {
+		if tool.Name == name {
+			return tool, nil
+		}
+	}
+	return ToolInfo{}, nil
+}
+
+func TestCompleteToolCallSuggestsProvidersFirst(t *testing.T) {
+	client := stubAutocompleteClient{
+		providers: []ProviderSummary{{Name: "fs"}, {Name: "db"}},
+		tools: []ToolInfo{
+			{Name: "fs.list_directory"},
+			{Name: "fs.write_file"},
+			{Name: "db.query"},
+		},
+	}
+
+	items := completeInput(client, "/tool call f", commandSpecs())
+	if len(items) != 1 || items[0].Display != "fs" || items[0].Insert != "/tool call fs" {
+		t.Fatalf("unexpected provider suggestions: %#v", items)
+	}
+
+	items = completeInput(client, "/tool call fs.", commandSpecs())
+	if len(items) != 2 {
+		t.Fatalf("unexpected tool suffix suggestions: %#v", items)
+	}
+	if items[0].Display != "list_directory" || items[1].Display != "write_file" {
+		t.Fatalf("unexpected tool suffix display: %#v", items)
+	}
+}
+
+func TestCommandHistoryPersistsAndNavigates(t *testing.T) {
+	history, err := loadCommandHistory(filepath.Join(t.TempDir(), "history.json"), 2)
+	if err != nil {
+		t.Fatalf("loadCommandHistory: %v", err)
+	}
+
+	if err := history.Add("/tool list"); err != nil {
+		t.Fatalf("history add 1: %v", err)
+	}
+	if err := history.Add("/tool list"); err != nil {
+		t.Fatalf("history add duplicate: %v", err)
+	}
+	if err := history.Add("/agent status"); err != nil {
+		t.Fatalf("history add 2: %v", err)
+	}
+	if err := history.Add("/intent list"); err != nil {
+		t.Fatalf("history add 3: %v", err)
+	}
+
+	reloaded, err := loadCommandHistory(history.path, 2)
+	if err != nil {
+		t.Fatalf("reload history: %v", err)
+	}
+	if len(reloaded.items) != 2 || reloaded.items[0] != "/agent status" || reloaded.items[1] != "/intent list" {
+		t.Fatalf("unexpected persisted history: %#v", reloaded.items)
+	}
+
+	if got := reloaded.Previous(""); got != "/intent list" {
+		t.Fatalf("Previous latest = %q", got)
+	}
+	if got := reloaded.Previous(""); got != "/agent status" {
+		t.Fatalf("Previous older = %q", got)
+	}
+	if got := reloaded.Next(); got != "/intent list" {
+		t.Fatalf("Next newer = %q", got)
+	}
+	if got := reloaded.Next(); got != "" {
+		t.Fatalf("Next draft = %q", got)
 	}
 }

@@ -2,6 +2,7 @@ package orchestrator_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"github.com/brightpuddle/clara/internal/orchestrator"
@@ -148,7 +149,12 @@ func TestIntentValidate_ValidStarlark(t *testing.T) {
 	intent := &orchestrator.Intent{
 		ID:           "starlark-intent",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
-		Script:       `result = tool("echo", value="ok")`,
+		Script: `
+init(id = "starlark-intent")
+
+def main():
+    return "ok"
+`,
 	}
 	if err := intent.Validate(); err != nil {
 		t.Fatalf("expected valid starlark intent, got %v", err)
@@ -194,5 +200,119 @@ states:
 	}
 	if intent.States["START"].Args["key"] != "value" {
 		t.Fatalf("unexpected args: %#v", intent.States["START"].Args)
+	}
+}
+
+func TestIntentValidate_InvalidMode(t *testing.T) {
+	intent := &orchestrator.Intent{
+		ID:           "bad-mode",
+		Mode:         "forever",
+		InitialState: "START",
+		States: map[string]orchestrator.State{
+			"START": {Terminal: true},
+		},
+	}
+	if err := intent.Validate(); err == nil {
+		t.Fatal("expected invalid mode to be rejected")
+	}
+}
+
+func TestIntentValidate_WorkerRequiresValidInterval(t *testing.T) {
+	cases := []orchestrator.Intent{
+		{
+			ID:           "worker-missing-interval",
+			Mode:         orchestrator.IntentModeWorker,
+			WorkflowType: orchestrator.WorkflowTypeStarlark,
+			Script:       `def main(): return None`,
+		},
+		{
+			ID:           "worker-bad-interval",
+			Mode:         orchestrator.IntentModeWorker,
+			Interval:     "tomorrow",
+			WorkflowType: orchestrator.WorkflowTypeStarlark,
+			Script:       `def main(): return None`,
+		},
+	}
+	for _, intent := range cases {
+		if err := intent.Validate(); err == nil {
+			t.Fatalf("expected worker validation failure for %#v", intent)
+		}
+	}
+}
+
+func TestCompileStarlarkIntent(t *testing.T) {
+	intent, err := orchestrator.CompileStarlarkIntent("/tmp/weather.star", `
+init(
+    id = "daily-weather",
+    description = "Notify when rain is forecast",
+    mode = "schedule",
+    schedule = "0 7 * * *",
+)
+
+def main():
+    return None
+`)
+	if err != nil {
+		t.Fatalf("CompileStarlarkIntent failed: %v", err)
+	}
+	if intent.ID != "daily-weather" {
+		t.Fatalf("unexpected id: %q", intent.ID)
+	}
+	if intent.Description != "Notify when rain is forecast" {
+		t.Fatalf("unexpected description: %q", intent.Description)
+	}
+	if intent.Mode != orchestrator.IntentModeSchedule {
+		t.Fatalf("unexpected mode: %q", intent.Mode)
+	}
+	if intent.Schedule != "0 7 * * *" {
+		t.Fatalf("unexpected schedule: %q", intent.Schedule)
+	}
+	if intent.WorkflowKind() != orchestrator.WorkflowTypeStarlark {
+		t.Fatalf("unexpected workflow kind: %q", intent.WorkflowKind())
+	}
+}
+
+func TestCompileStarlarkIntent_WorkerInterval(t *testing.T) {
+	intent, err := orchestrator.CompileStarlarkIntent("/tmp/indexer.star", `
+init(
+    id = "note-indexer",
+    mode = "worker",
+    interval = "15m",
+)
+
+def main():
+    return None
+`)
+	if err != nil {
+		t.Fatalf("CompileStarlarkIntent failed: %v", err)
+	}
+	if intent.Mode != orchestrator.IntentModeWorker {
+		t.Fatalf("unexpected mode: %q", intent.Mode)
+	}
+	if intent.Interval != "15m" {
+		t.Fatalf("unexpected interval: %q", intent.Interval)
+	}
+}
+
+func TestCompileStarlarkIntent_RequiresInitAndMain(t *testing.T) {
+	for name, script := range map[string]string{
+		"missing init": "def main():\n    return None\n",
+		"missing main": "init(id = \"missing-main\")\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := orchestrator.CompileStarlarkIntent("/tmp/test.star", script); err == nil {
+				t.Fatal("expected compile error")
+			}
+		})
+	}
+}
+
+func TestLoadIntentFile_OnlySupportsStar(t *testing.T) {
+	_, err := orchestrator.LoadIntentFile(
+		filepath.Join("/tmp", "intent.yaml"),
+		[]byte("id: unsupported"),
+	)
+	if err == nil {
+		t.Fatal("expected non-.star file to be rejected")
 	}
 }
