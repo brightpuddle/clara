@@ -116,28 +116,53 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	handler := buildHandler(reg, sup, attachServer, db, logger, shutdown)
 	controlServer := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 
+	return runDaemonServices(daemonCtx, daemonServiceHooks{
+		startServers: reg.StartServers,
+		stopServers:  reg.StopServers,
+		startControl: controlServer.ListenAndServe,
+		startAttach:  attachServer.ListenAndServe,
+		startSupervisor: func(ctx context.Context) error {
+			return sup.Start(ctx)
+		},
+	}, logger)
+}
+
+type daemonServiceHooks struct {
+	startServers    func(context.Context) error
+	stopServers     func()
+	startControl    func(context.Context) error
+	startAttach     func(context.Context) error
+	startSupervisor func(context.Context) error
+}
+
+func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
+	if err := hooks.startServers(ctx); err != nil {
+		return errors.Wrap(err, "start MCP servers")
+	}
+
 	wg := conc.NewWaitGroup()
 
 	wg.Go(func() {
-		if err := reg.Start(daemonCtx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.Error().Err(err).Msg("registry error")
+		<-ctx.Done()
+		if hooks.stopServers != nil {
+			hooks.stopServers()
 		}
 	})
 
 	wg.Go(func() {
-		if err := controlServer.ListenAndServe(daemonCtx); err != nil {
+		if err := hooks.startControl(ctx); err != nil {
 			logger.Error().Err(err).Msg("control server error")
 		}
 	})
 
 	wg.Go(func() {
-		if err := attachServer.ListenAndServe(daemonCtx); err != nil {
+		if err := hooks.startAttach(ctx); err != nil {
 			logger.Error().Err(err).Msg("dynamic MCP attach server error")
 		}
 	})
 
 	wg.Go(func() {
-		if err := sup.Start(daemonCtx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := hooks.startSupervisor(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("supervisor error")
 		}
 	})

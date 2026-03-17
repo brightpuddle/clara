@@ -124,7 +124,8 @@ final class MCPStdioServer {
             } catch let protocolError as MCPProtocolError {
                 try writeError(id: requestID, error: protocolError)
             } catch {
-                try writeResult(id: requestID, result: MCPToolError(error.localizedDescription).resultPayload)
+                let bridgeError = MCPToolError.wrapping(error, context: "tools/call")
+                try writeResult(id: requestID, result: bridgeError.resultPayload)
             }
         default:
             if requestID != nil {
@@ -659,7 +660,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 kind: "reminders"
             )
             pendingReminderWaits[waitID] = PendingStoreWait(
-                continuation: continuation,
+                continuation: OneShotContinuation(continuation: continuation),
                 timeoutTask: timeoutTask,
                 changeTypes: changeTypes,
                 filterName: listName,
@@ -690,7 +691,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 kind: "events"
             )
             pendingEventWaits[waitID] = PendingStoreWait(
-                continuation: continuation,
+                continuation: OneShotContinuation(continuation: continuation),
                 timeoutTask: timeoutTask,
                 changeTypes: changeTypes,
                 filterName: calendarName,
@@ -712,10 +713,12 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             }
             do {
                 let current = try await reminderSnapshot(listName: wait.filterName)
+                guard let refreshedWait = pendingReminderWaits[waitID] else {
+                    continue
+                }
+                wait = refreshedWait
                 let changes = diffSnapshots(old: wait.baseline, new: current)
                 if let matched = firstMatchingChange(changes: changes, allowedTypes: wait.changeTypes) {
-                    wait.timeoutTask?.cancel()
-                    pendingReminderWaits.removeValue(forKey: waitID)
                     let payload = waitPayload(
                         resource: "reminder",
                         changeType: matched.type,
@@ -723,19 +726,16 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                         filterValue: wait.filterName,
                         item: matched.item
                     )
-                    let payloadData = try encodeJSONObject(payload)
                     server?.sendNotification(method: "clara/reminders_changed", params: payload)
-                    wait.continuation.resume(returning: payloadData)
+                    completePendingReminderWait(waitID: waitID, payload: payload)
                     continue
                 }
                 wait.baseline = current
                 pendingReminderWaits[waitID] = wait
             } catch {
-                server?.sendNotification(method: "clara/reminders_changed", params: [
-                    "status": "error",
-                    "message": error.localizedDescription,
-                    "changed_at": ISO8601.dateString(from: Date()),
-                ])
+                let payload = errorWaitPayload(resource: "reminder", error: error, context: "reminders_wait_change")
+                server?.sendNotification(method: "clara/reminders_changed", params: payload)
+                completePendingReminderWait(waitID: waitID, payload: payload)
             }
         }
     }
@@ -756,10 +756,12 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                     startDate: startDate,
                     endDate: endDate
                 )
+                guard let refreshedWait = pendingEventWaits[waitID] else {
+                    continue
+                }
+                wait = refreshedWait
                 let changes = diffSnapshots(old: wait.baseline, new: current)
                 if let matched = firstMatchingChange(changes: changes, allowedTypes: wait.changeTypes) {
-                    wait.timeoutTask?.cancel()
-                    pendingEventWaits.removeValue(forKey: waitID)
                     let payload = waitPayload(
                         resource: "event",
                         changeType: matched.type,
@@ -767,19 +769,16 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                         filterValue: wait.filterName,
                         item: matched.item
                     )
-                    let payloadData = try encodeJSONObject(payload)
                     server?.sendNotification(method: "clara/events_changed", params: payload)
-                    wait.continuation.resume(returning: payloadData)
+                    completePendingEventWait(waitID: waitID, payload: payload)
                     continue
                 }
                 wait.baseline = current
                 pendingEventWaits[waitID] = wait
             } catch {
-                server?.sendNotification(method: "clara/events_changed", params: [
-                    "status": "error",
-                    "message": error.localizedDescription,
-                    "changed_at": ISO8601.dateString(from: Date()),
-                ])
+                let payload = errorWaitPayload(resource: "event", error: error, context: "events_wait_change")
+                server?.sendNotification(method: "clara/events_changed", params: payload)
+                completePendingEventWait(waitID: waitID, payload: payload)
             }
         }
     }
@@ -800,8 +799,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                         "resource": "reminder",
                         "changed_at": ISO8601.dateString(from: Date()),
                     ]
-                    guard let data = try? self.encodeJSONObject(payload) else { return }
-                    pending.continuation.resume(returning: data)
+                    _ = self.resumePendingStoreWait(pending, payload: payload)
                 case "events":
                     guard let pending = self.pendingEventWaits.removeValue(forKey: waitID) else { return }
                     let payload = [
@@ -809,8 +807,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                         "resource": "event",
                         "changed_at": ISO8601.dateString(from: Date()),
                     ]
-                    guard let data = try? self.encodeJSONObject(payload) else { return }
-                    pending.continuation.resume(returning: data)
+                    _ = self.resumePendingStoreWait(pending, payload: payload)
                 default:
                     return
                 }
@@ -1409,6 +1406,51 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         }
         return result
     }
+
+    private func completePendingReminderWait(waitID: String, payload: [String: Any]) {
+        guard let pending = pendingReminderWaits.removeValue(forKey: waitID) else {
+            return
+        }
+        pending.timeoutTask?.cancel()
+        _ = resumePendingStoreWait(pending, payload: payload)
+    }
+
+    private func completePendingEventWait(waitID: String, payload: [String: Any]) {
+        guard let pending = pendingEventWaits.removeValue(forKey: waitID) else {
+            return
+        }
+        pending.timeoutTask?.cancel()
+        _ = resumePendingStoreWait(pending, payload: payload)
+    }
+
+    @discardableResult
+    private func resumePendingStoreWait(_ pending: PendingStoreWait, payload: [String: Any]) -> Bool {
+        guard let payloadData = try? encodeJSONObject(payload) else {
+            return pending.continuation.resume(returning: .fallbackWaitEncodingError())
+        }
+        return pending.continuation.resume(returning: payloadData)
+    }
+
+    private func errorWaitPayload(resource: String, error: Error, context: String) -> [String: Any] {
+        let bridgeError = MCPToolError.wrapping(error, context: context)
+        var debug: [String: Any] = [:]
+        if let errorType = bridgeError.errorType {
+            debug["error_type"] = errorType
+        }
+        if let context = bridgeError.context {
+            debug["context"] = context
+        }
+        if !bridgeError.callStack.isEmpty {
+            debug["call_stack"] = bridgeError.callStack
+        }
+        return [
+            "status": "error",
+            "resource": resource,
+            "message": bridgeError.message,
+            "changed_at": ISO8601.dateString(from: Date()),
+            "debug": debug,
+        ]
+    }
 }
 
 private struct PendingInteractiveNotification {
@@ -1417,7 +1459,7 @@ private struct PendingInteractiveNotification {
 }
 
 private struct PendingStoreWait {
-    let continuation: CheckedContinuation<Data, Never>
+    let continuation: OneShotContinuation<Data>
     let timeoutTask: Task<Void, Never>?
     let changeTypes: Set<String>
     let filterName: String?
@@ -1438,18 +1480,93 @@ private struct StoreChange {
 
 private struct MCPToolError: LocalizedError {
     let message: String
+    let errorType: String?
+    let context: String?
+    let callStack: [String]
 
     init(_ message: String) {
         self.message = message
+        self.errorType = nil
+        self.context = nil
+        self.callStack = []
+    }
+
+    init(_ message: String, errorType: String?, context: String?, callStack: [String]) {
+        self.message = message
+        self.errorType = errorType
+        self.context = context
+        self.callStack = callStack
+    }
+
+    static func wrapping(_ error: Error, context: String? = nil) -> MCPToolError {
+        if let bridgeError = error as? MCPToolError {
+            return bridgeError
+        }
+        return MCPToolError(
+            error.localizedDescription,
+            errorType: String(describing: type(of: error)),
+            context: context,
+            callStack: Thread.callStackSymbols
+        )
     }
 
     var errorDescription: String? { message }
 
     var resultPayload: [String: Any] {
-        [
+        var payload: [String: Any] = [
             "content": [["type": "text", "text": message]],
             "isError": true,
         ]
+        if errorType != nil || context != nil || !callStack.isEmpty {
+            var debug: [String: Any] = [:]
+            if let errorType {
+                debug["error_type"] = errorType
+            }
+            if let context {
+                debug["context"] = context
+            }
+            if !callStack.isEmpty {
+                debug["call_stack"] = callStack
+            }
+            payload["structuredContent"] = [
+                "error": [
+                    "message": message,
+                    "debug": debug,
+                ]
+            ]
+        }
+        return payload
+    }
+}
+
+@MainActor
+final class OneShotContinuation<Output: Sendable> {
+    private var resumeHandler: (@MainActor (Output) -> Void)?
+
+    init(continuation: CheckedContinuation<Output, Never>) {
+        self.resumeHandler = { value in
+            continuation.resume(returning: value)
+        }
+    }
+
+    init(resumeHandler: @escaping @MainActor (Output) -> Void) {
+        self.resumeHandler = resumeHandler
+    }
+
+    @discardableResult
+    func resume(returning value: Output) -> Bool {
+        guard let resumeHandler else {
+            return false
+        }
+        self.resumeHandler = nil
+        resumeHandler(value)
+        return true
+    }
+}
+
+private extension Data {
+    static func fallbackWaitEncodingError() -> Data {
+        Data("{\"status\":\"error\",\"message\":\"failed to encode wait payload\"}".utf8)
     }
 }
 

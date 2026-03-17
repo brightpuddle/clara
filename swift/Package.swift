@@ -21,5 +21,10 @@ let package = Package(
                 ])
             ]
         ),
+        .testTarget(
+            name: "ClaraBridgeTests",
+            dependencies: ["ClaraBridge"],
+            path: "Tests/ClaraBridgeTests"
+        ),
     ]
 )
