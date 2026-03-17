@@ -293,6 +293,7 @@ func (rt *starlarkRuntime) invoke(kind, name string, args map[string]any) (any, 
 			return nil, err
 		}
 		result, err := tool(rt.ctx, args)
+		result = registry.NormalizeToolResult(result)
 		if appendErr := rt.recordFresh(kind, name, args, result, err); appendErr != nil {
 			return nil, appendErr
 		}

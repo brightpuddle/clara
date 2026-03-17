@@ -57,6 +57,66 @@ func TestRegistry_Call(t *testing.T) {
 	}
 }
 
+func TestRegistry_CallNormalizesJSONObjectString(t *testing.T) {
+	reg := registry.New(zerolog.Nop())
+	reg.Register("echo", func(context.Context, map[string]any) (any, error) {
+		return "{\"key\":\"value\"}", nil
+	})
+
+	result, err := reg.Call(context.Background(), "echo", nil)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+
+	obj, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T (%#v)", result, result)
+	}
+	if obj["key"] != "value" {
+		t.Fatalf("unexpected normalized object: %#v", obj)
+	}
+}
+
+func TestRegistry_CallNormalizesJSONArrayString(t *testing.T) {
+	reg := registry.New(zerolog.Nop())
+	reg.Register("echo", func(context.Context, map[string]any) (any, error) {
+		return "[\"one\",\"two\"]", nil
+	})
+
+	result, err := reg.Call(context.Background(), "echo", nil)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+
+	arr, ok := result.([]any)
+	if !ok {
+		t.Fatalf("expected slice result, got %T (%#v)", result, result)
+	}
+	if len(arr) != 2 || arr[0] != "one" || arr[1] != "two" {
+		t.Fatalf("unexpected normalized array: %#v", arr)
+	}
+}
+
+func TestRegistry_CallLeavesInvalidJSONStringUnchanged(t *testing.T) {
+	reg := registry.New(zerolog.Nop())
+	reg.Register("echo", func(context.Context, map[string]any) (any, error) {
+		return "{\"key\":", nil
+	})
+
+	result, err := reg.Call(context.Background(), "echo", nil)
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+
+	text, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T (%#v)", result, result)
+	}
+	if text != "{\"key\":" {
+		t.Fatalf("unexpected string result: %q", text)
+	}
+}
+
 func TestRegistry_CallMissing(t *testing.T) {
 	reg := registry.New(zerolog.Nop())
 	_, err := reg.Call(context.Background(), "missing.tool", nil)

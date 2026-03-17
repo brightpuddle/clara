@@ -135,7 +135,11 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 	if !ok {
 		return nil, errors.Newf("tool %q not found in registry", name)
 	}
-	return tool(ctx, args)
+	result, err := tool(ctx, args)
+	if err != nil {
+		return nil, err
+	}
+	return NormalizeToolResult(result), nil
 }
 
 // Names returns a sorted list of all registered tool names.
@@ -276,6 +280,31 @@ func (r *Registry) StartServers(ctx context.Context) error {
 // StopServers terminates all configured MCP servers managed by the registry.
 func (r *Registry) StopServers() {
 	r.stopServers(r.serversSnapshot())
+}
+
+// NormalizeToolResult converts JSON object/array strings returned by tools into
+// structured Go values so callers receive consistent data shapes.
+func NormalizeToolResult(result any) any {
+	text, ok := result.(string)
+	if !ok {
+		return result
+	}
+
+	trimmed := strings.TrimSpace(text)
+	switch {
+	case strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}"):
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &obj); err == nil {
+			return obj
+		}
+	case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]"):
+		var arr []any
+		if err := json.Unmarshal([]byte(trimmed), &arr); err == nil {
+			return arr
+		}
+	}
+
+	return result
 }
 
 func (r *Registry) serversSnapshot() []*MCPServer {
