@@ -8,7 +8,7 @@
 2. Executes **Intents** authored as `.star` Starlark workflows and compiled into a safe, inspectable runtime representation.
 3. Persists its own operational state (runs, checkpoints, metadata) in an internal SQLite store that is **not** exposed directly to intents.
 4. Treats every intent-visible capability as an MCP service, including built-in Clara services such as filesystem access, SQLite tooling, and the native macOS bridge.
-5. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, and launching built-in MCP servers.
+5. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, launching built-in MCP servers, and serving the aggregated registry as an MCP gateway.
 
 The architectural rule is:
 
@@ -38,7 +38,8 @@ github.com/brightpuddle/clara/
 │       ├── intent.go    # clara intent {list,run}
 │       ├── run.go       # clara run <task-file>
 │       ├── tool.go      # clara tool {list,show,call}
-│       └── mcp.go       # clara mcp {fs,db,...}
+│       ├── mcp.go       # clara mcp {fs,db,...}
+│       └── gateway.go   # clara gateway (aggregated MCP server)
 ├── internal/
 │   ├── config/          # Config loader (config.yaml + os.ExpandEnv)
 │   ├── orchestrator/    # Intent, State, Transition structs (core domain types)
@@ -84,6 +85,7 @@ Note: during migrations, legacy bridge/proto artifacts may still exist in the re
 - **Authored intents are `.star` files.** Do not introduce new authored JSON/YAML/Markdown intent formats unless the architecture explicitly changes.
 - **The internal store is private.** Clara's internal SQLite database exists for orchestration/runtime persistence only.
 - **Built-in services are still services.** Even when shipped inside the Clara repo/binary (for example `clara mcp fs` or `clara mcp db`), they should behave like standalone MCP servers and be usable independently of the daemon.
+- **Gateway mode must preserve protocol isolation.** Commands that speak MCP over stdio, including `clara gateway`, must never write logs or human-readable output to stdout.
 - **Prefer service composition over special cases.** If a new capability can be expressed as an MCP server, do that instead of wiring custom transport paths into the daemon.
 - **Keep the daemon simple.** Its responsibilities are config loading, subprocess orchestration, intent execution, state persistence, and policy enforcement across MCP services.
 - **Keep the docs in sync.** Feature changes and architectural changes must update both `README.md` and `.github/copilot-instructions.md`.
@@ -240,6 +242,7 @@ The daemon compiles `.star` files into the internal `orchestrator.Intent` runtim
 | `clara tool list` | List all registered tools with signatures |
 | `clara tool show <tool>` | Show full MCP-style details for one tool |
 | `clara tool call <tool> ...` | Call a registered tool directly |
+| `clara gateway` | Start an MCP server that exposes the aggregated Clara tool registry on stdio |
 | `clara mcp fs` | Start the built-in filesystem MCP server on stdio |
 | `clara mcp db [path]` | Start the built-in SQLite MCP server on stdio |
 | `clara mcp ollama-embeddings` | Start the built-in Ollama embeddings MCP server on stdio |

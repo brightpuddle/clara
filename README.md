@@ -16,6 +16,11 @@ Clara is intentionally MCP-first:
 
 That keeps the daemon focused on orchestration, policy, lifecycle, and persistence instead of accumulating bespoke direct integrations.
 
+Clara can also act as an MCP gateway:
+
+- as an MCP client, it starts and aggregates configured MCP server subprocesses for local intent execution
+- as an MCP server, `clara gateway` re-exposes that unified tool registry over stdio for external agents
+
 ## Table of contents
 
 - [Getting started](#getting-started)
@@ -135,6 +140,8 @@ That means intents always talk to tools through MCP-facing names such as:
 - `db.query`
 - `taskwarrior.task_add`
 
+That same registry can also be surfaced externally through `clara gateway`, which publishes the aggregated toolset as one MCP server on stdio.
+
 ### 3. Starlark intent compiler
 
 Clara compiles `.star` files into validated runtime intents.
@@ -177,6 +184,7 @@ This database is for Clara's own orchestration state. It is not the same thing a
 | `clara agent status` | Show daemon status |
 | `clara intent ...` | Manage installed intents and one-off intent runs |
 | `clara tool ...` | Inspect or call registered tools |
+| `clara gateway` | Start an aggregated MCP gateway on stdio |
 | `clara mcp ...` | Start built-in MCP servers on stdio |
 
 ### Intent commands
@@ -221,6 +229,23 @@ clara intent list
 clara intent trigger hello-world
 clara intent watch hello-world
 ```
+
+### Using Clara as an MCP gateway
+
+Run:
+
+```bash
+clara gateway
+```
+
+This starts a stdio MCP server that:
+
+- loads your normal Clara config
+- starts each configured MCP server
+- aggregates all discovered tools into one MCP surface
+- serves that combined toolset to external MCP clients
+
+This is useful when you want tools like Claude Code or Aider to talk to Clara through a single connection instead of managing each local MCP server separately.
 
 ### TUI notes
 
