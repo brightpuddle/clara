@@ -54,6 +54,7 @@ github.com/brightpuddle/clara/
 ├── swift/               # Standalone Swift MCP server for native macOS capabilities
 │   ├── Package.swift
 │   └── Sources/ClaraBridge/
+├── com.brightpuddle.clara.agent.plist # LaunchAgent plist for local macOS installation
 ├── config.yaml.example
 └── go.mod
 ```
@@ -228,9 +229,10 @@ The daemon compiles `.star` files into the internal `orchestrator.Intent` runtim
 |---|---|
 | `clara` | Interactive TUI HUD (placeholder: shows agent status) |
 | `clara serve` | Start the background agent in the foreground |
-| `clara agent start` | Check/report agent status; print instructions to start |
-| `clara agent stop` | Stop the running agent |
+| `clara agent start` | Start the LaunchAgent-managed daemon in the background |
+| `clara agent stop` | Gracefully stop the daemon and unload its LaunchAgent |
 | `clara agent status` | Show agent status and active intents |
+| `clara agent logs [-w]` | Show recent daemon logs or follow them live |
 | `clara intent list` | List installed intents |
 | `clara intent trigger <id>` | Run an installed intent once |
 | `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run for an intent |
@@ -249,6 +251,14 @@ The daemon compiles `.star` files into the internal `orchestrator.Intent` runtim
 | `clara mcp taskwarrior` | Start the built-in Taskwarrior MCP server on stdio |
 
 CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clara/` as a single unified binary — there is no separate `clarad` daemon binary.
+
+Local installation notes:
+
+- `make install` builds `clara`, installs it to `/usr/local/bin/clara`, installs `com.brightpuddle.clara.agent.plist` into `~/Library/LaunchAgents`, and restarts or starts the LaunchAgent-managed daemon.
+- `make uninstall` stops Clara, removes the installed LaunchAgent plist, and removes `/usr/local/bin/clara`.
+- `clara agent start` expects the LaunchAgent plist to be installed and should be the normal way to start the background service outside of development.
+- `clara agent stop` sends the daemon a graceful shutdown request and then unloads the LaunchAgent so `KeepAlive` does not immediately restart it.
+- Background daemon logs live at `~/.local/share/clara/clara.log`, rotate automatically, and can be viewed with `clara agent logs` or `clara agent logs --watch`.
 
 TUI notes:
 

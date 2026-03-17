@@ -99,6 +99,32 @@ func TestSupervisor_LoadsExistingFiles(t *testing.T) {
 	}
 }
 
+func TestSupervisor_LoadsExistingFilesInSubdirectories(t *testing.T) {
+	dir := t.TempDir()
+	sup, _ := newTestSupervisor(t, dir)
+
+	nestedDir := filepath.Join(dir, "nested", "folder")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(nestedDir, "nested.star"),
+		validIntentStar("nested-intent"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	sup.Start(ctx) //nolint:errcheck
+
+	if _, ok := sup.Intent("nested-intent"); !ok {
+		t.Fatal("expected nested .star intent to be loaded from subdirectories")
+	}
+}
+
 func TestSupervisor_WatchesForNewFiles(t *testing.T) {
 	dir := t.TempDir()
 	sup, _ := newTestSupervisor(t, dir)
@@ -129,6 +155,44 @@ func TestSupervisor_WatchesForNewFiles(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Error("expected intent to be loaded after file was written")
+}
+
+func TestSupervisor_WatchesForNewFilesInNewSubdirectories(t *testing.T) {
+	dir := t.TempDir()
+	sup, _ := newTestSupervisor(t, dir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		sup.Start(ctx) //nolint:errcheck
+	}()
+	<-started
+
+	time.Sleep(100 * time.Millisecond)
+
+	nestedDir := filepath.Join(dir, "nested", "folder")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(nestedDir, "new.star"),
+		validIntentStar("new-nested-intent"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if _, ok := sup.Intent("new-nested-intent"); ok {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("expected nested intent to be loaded after file was written")
 }
 
 func TestSupervisor_IgnoresNonStarFiles(t *testing.T) {
@@ -192,7 +256,9 @@ func TestSupervisor_WorkerIntentsAutoStart(t *testing.T) {
 	dir := t.TempDir()
 	sup, _ := newTestSupervisor(t, dir)
 
-	worker := []byte("init(id = \"worker\", mode = \"worker\", interval = \"1h\")\n\ndef main():\n    return None\n")
+	worker := []byte(
+		"init(id = \"worker\", mode = \"worker\", interval = \"1h\")\n\ndef main():\n    return None\n",
+	)
 	if err := os.WriteFile(filepath.Join(dir, "worker.star"), worker, 0o600); err != nil {
 		t.Fatal(err)
 	}

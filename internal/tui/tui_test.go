@@ -4,6 +4,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestSplitCommandLine(t *testing.T) {
@@ -151,6 +154,79 @@ func TestCompleteToolCallSuggestsProvidersFirst(t *testing.T) {
 	}
 }
 
+func TestCompleteToolListSuggestsProviders(t *testing.T) {
+	client := stubAutocompleteClient{
+		providers: []ProviderSummary{{Name: "fs"}, {Name: "db"}},
+	}
+
+	items := completeInput(client, "/tool list d", commandSpecs())
+	if len(items) != 1 || items[0].Display != "db" || items[0].Insert != "/tool list db" {
+		t.Fatalf("unexpected /tool list suggestions: %#v", items)
+	}
+}
+
+func TestCompleteToolShowSuggestsProviderThenTool(t *testing.T) {
+	client := stubAutocompleteClient{
+		providers: []ProviderSummary{{Name: "fs"}, {Name: "db"}},
+		tools: []ToolInfo{
+			{Name: "fs.list_directory"},
+			{Name: "fs.write_file"},
+			{Name: "db.query"},
+		},
+	}
+
+	items := completeInput(client, "/tool show f", commandSpecs())
+	if len(items) != 1 || items[0].Display != "fs" || items[0].Insert != "/tool show fs." {
+		t.Fatalf("unexpected /tool show provider suggestions: %#v", items)
+	}
+
+	items = completeInput(client, "/tool show fs.", commandSpecs())
+	if len(items) != 2 {
+		t.Fatalf("unexpected /tool show tool suggestions: %#v", items)
+	}
+	if items[0].Display != "list_directory" || items[0].Insert != "/tool show fs.list_directory" {
+		t.Fatalf("unexpected first /tool show tool suggestion: %#v", items[0])
+	}
+	if items[1].Display != "write_file" || items[1].Insert != "/tool show fs.write_file" {
+		t.Fatalf("unexpected second /tool show tool suggestion: %#v", items[1])
+	}
+}
+
+func TestArrowKeysNavigateAutocompleteBeforeHistory(t *testing.T) {
+	input := textinput.New()
+	input.SetValue("/tool")
+	model := &Model{
+		input: input,
+		history: &commandHistory{
+			items: []string{"/agent status", "/intent list"},
+		},
+		matches: []CompletionItem{
+			{Display: "call", Insert: "/tool call "},
+			{Display: "list", Insert: "/tool list "},
+			{Display: "show", Insert: "/tool show "},
+		},
+		selected: 1,
+	}
+
+	gotModel, _ := model.updateKey(tea.KeyMsg{Type: tea.KeyUp})
+	updated := gotModel.(*Model)
+	if updated.selected != 0 {
+		t.Fatalf("selected after up = %d, want %d", updated.selected, 0)
+	}
+	if updated.input.Value() != "/tool" {
+		t.Fatalf("input changed unexpectedly after up: %q", updated.input.Value())
+	}
+
+	gotModel, _ = updated.updateKey(tea.KeyMsg{Type: tea.KeyDown})
+	updated = gotModel.(*Model)
+	if updated.selected != 1 {
+		t.Fatalf("selected after down = %d, want %d", updated.selected, 1)
+	}
+	if updated.input.Value() != "/tool" {
+		t.Fatalf("input changed unexpectedly after down: %q", updated.input.Value())
+	}
+}
+
 func TestCommandHistoryPersistsAndNavigates(t *testing.T) {
 	history, err := loadCommandHistory(filepath.Join(t.TempDir(), "history.json"), 2)
 	if err != nil {
@@ -174,7 +250,8 @@ func TestCommandHistoryPersistsAndNavigates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload history: %v", err)
 	}
-	if len(reloaded.items) != 2 || reloaded.items[0] != "/agent status" || reloaded.items[1] != "/intent list" {
+	if len(reloaded.items) != 2 || reloaded.items[0] != "/agent status" ||
+		reloaded.items[1] != "/intent list" {
 		t.Fatalf("unexpected persisted history: %#v", reloaded.items)
 	}
 

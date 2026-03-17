@@ -14,12 +14,15 @@ Clara is intentionally MCP-first:
 
 > If a capability is available to intents, it should be delivered through MCP.
 
-That keeps the daemon focused on orchestration, policy, lifecycle, and persistence instead of accumulating bespoke direct integrations.
+That keeps the daemon focused on orchestration, policy, lifecycle, and
+persistence instead of accumulating bespoke direct integrations.
 
 Clara can also act as an MCP gateway:
 
-- as an MCP client, it starts and aggregates configured MCP server subprocesses for local intent execution
-- as an MCP server, `clara gateway` re-exposes that unified tool registry over stdio for external agents
+- as an MCP client, it starts and aggregates configured MCP server subprocesses
+  for local intent execution
+- as an MCP server, `clara gateway` re-exposes that unified tool registry over
+  stdio for external agents
 
 ## Table of contents
 
@@ -59,9 +62,46 @@ mkdir -p ~/.config/clara
 cp config.yaml.example ~/.config/clara/config.yaml
 ```
 
-Edit `~/.config/clara/config.yaml` so `mcp_servers` contains the MCP services you want Clara to manage.
+Edit `~/.config/clara/config.yaml` so `mcp_servers` contains the MCP services
+you want Clara to manage.
 
-### Start the daemon
+### Install Clara as a LaunchAgent
+
+For local development on macOS, the easiest way to install or update Clara is:
+
+```bash
+make install
+```
+
+This will:
+
+- build `clara`
+- copy the binary to `/usr/local/bin/clara`
+- install `com.brightpuddle.clara.agent.plist` to `~/Library/LaunchAgents`
+- restart the agent if it is already running, or start it if it is not
+
+After that, you can manage the daemon with:
+
+```bash
+clara agent start
+clara agent stop
+clara agent status
+clara agent logs
+clara agent logs --watch
+```
+
+The launchd-managed daemon writes to `~/.local/share/clara/clara.log`. That log
+is application-managed and rotates automatically, so you can safely `tail -f`
+it during development without it growing forever. By default Clara keeps the
+active log plus a small set of rotated backups.
+
+To remove the local install again:
+
+```bash
+make uninstall
+```
+
+### Start the daemon manually
 
 ```bash
 clara serve
@@ -110,7 +150,8 @@ clara intent trigger hello-world
 clara intent watch hello-world
 ```
 
-You can also run a one-off `.star` file directly without installing it into the tasks directory:
+You can also run a one-off `.star` file directly without installing it into the
+tasks directory:
 
 ```bash
 clara run ./path/to/hello.star
@@ -132,7 +173,8 @@ The daemon is responsible for:
 
 ### 2. MCP registry
 
-Configured MCP servers are connected and their tools are exposed through a single registry.
+Configured MCP servers are connected and their tools are exposed through a
+single registry.
 
 That means intents always talk to tools through MCP-facing names such as:
 
@@ -140,7 +182,8 @@ That means intents always talk to tools through MCP-facing names such as:
 - `db.query`
 - `taskwarrior.task_add`
 
-That same registry can also be surfaced externally through `clara gateway`, which publishes the aggregated toolset as one MCP server on stdio.
+That same registry can also be surfaced externally through `clara gateway`,
+which publishes the aggregated toolset as one MCP server on stdio.
 
 ### 3. Starlark intent compiler
 
@@ -169,61 +212,65 @@ Clara keeps a private SQLite database for:
 - wait metadata
 - deterministic replay history for Starlark workflows
 
-This database is for Clara's own orchestration state. It is not the same thing as the user-facing SQLite MCP server.
+This database is for Clara's own orchestration state. It is not the same thing
+as the user-facing SQLite MCP server.
 
 ## CLI usage
 
 ### Top-level commands
 
-| Command | Description |
-| --- | --- |
-| `clara` | Launch the interactive TUI/HUD |
-| `clara serve` | Start the Clara agent in the foreground |
-| `clara agent start` | Show how to start the daemon |
-| `clara agent stop` | Stop the running daemon |
-| `clara agent status` | Show daemon status |
-| `clara intent ...` | Manage installed intents and one-off intent runs |
-| `clara tool ...` | Inspect or call registered tools |
-| `clara gateway` | Start an aggregated MCP gateway on stdio |
-| `clara mcp ...` | Start built-in MCP servers on stdio |
+| Command              | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `clara`              | Launch the interactive TUI/HUD                   |
+| `clara serve`        | Start the Clara agent in the foreground          |
+| `clara agent start`  | Start the LaunchAgent-managed daemon in the background |
+| `clara agent stop`   | Gracefully stop the daemon and unload its LaunchAgent |
+| `clara agent status` | Show daemon status                               |
+| `clara agent logs`   | Show the recent daemon log output                |
+| `clara intent ...`   | Manage installed intents and one-off intent runs |
+| `clara tool ...`     | Inspect or call registered tools                 |
+| `clara gateway`      | Start an aggregated MCP gateway on stdio         |
+| `clara mcp ...`      | Start built-in MCP servers on stdio              |
 
 ### Intent commands
 
-| Command | Description |
-| --- | --- |
-| `clara intent list` | List installed intents with mode and lifecycle state |
-| `clara intent trigger <id>` | Run an installed intent once |
-| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run for that intent |
-| `clara intent start <id>` | Start a managed `schedule`, `worker`, or `event` intent |
-| `clara intent stop <id>` | Stop a managed `schedule`, `worker`, or `event` intent and cancel its latest waiting run |
-| `clara intent watch [id]` | Stream run activity |
-| `clara intent resume <run-id>` | Resume a paused Starlark run directly by run ID |
-| `clara run <file.star>` | Run a `.star` file once without installing it |
+| Command                                      | Description                                                                              |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `clara intent list`                          | List installed intents with mode and lifecycle state                                     |
+| `clara intent trigger <id>`                  | Run an installed intent once                                                             |
+| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run for that intent                             |
+| `clara intent start <id>`                    | Start a managed `schedule`, `worker`, or `event` intent                                  |
+| `clara intent stop <id>`                     | Stop a managed `schedule`, `worker`, or `event` intent and cancel its latest waiting run |
+| `clara intent watch [id]`                    | Stream run activity                                                                      |
+| `clara intent resume <run-id>`               | Resume a paused Starlark run directly by run ID                                          |
+| `clara intent run <file.star>`               | Run a `.star` file once without installing it                                            |
 
 ### Tool commands
 
-| Command | Description |
-| --- | --- |
-| `clara tool list` | List tool providers |
-| `clara tool list <server>` | List tools for one provider prefix |
-| `clara tool show <tool>` | Show a tool schema |
+| Command                                | Description                         |
+| -------------------------------------- | ----------------------------------- |
+| `clara tool list`                      | List tool providers                 |
+| `clara tool list <server>`             | List tools for one provider prefix  |
+| `clara tool show <tool>`               | Show a tool schema                  |
 | `clara tool call <tool> key=value ...` | Call a tool directly and print JSON |
 
 ### Built-in MCP servers
 
-| Command | Description |
-| --- | --- |
-| `clara mcp fs` | Filesystem MCP server, including `wait_for_change` |
-| `clara mcp db [path]` | SQLite MCP server |
-| `clara mcp ollama-embeddings` | Ollama embeddings MCP server |
-| `clara mcp taskwarrior` | Taskwarrior MCP server |
+| Command                 | Description                                        |
+| ----------------------- | -------------------------------------------------- |
+| `clara mcp fs`          | Filesystem MCP server, including `wait_for_change` |
+| `clara mcp db [path]`   | SQLite MCP server                                  |
+| `clara mcp ollama`      | Ollama MCP server                                  |
+| `clara mcp taskwarrior` | Taskwarrior MCP server                             |
 
-`clara mcp ollama-embeddings` accepts `--model` and `--url` flags and defaults to `nomic-embed-text` and `http://localhost:11434`.
+`clara mcp ollama-embeddings` accepts `--model` and `--url` flags and defaults
+to `nomic-embed-text` and `http://localhost:11434`.
 
 ### Typical workflow
 
 ```bash
-clara serve
+make install
+clara agent logs --watch
 clara tool list
 clara intent list
 clara intent trigger hello-world
@@ -245,13 +292,18 @@ This starts a stdio MCP server that:
 - aggregates all discovered tools into one MCP surface
 - serves that combined toolset to external MCP clients
 
-This is useful when you want tools like Claude Code or Aider to talk to Clara through a single connection instead of managing each local MCP server separately.
+This is useful when you want tools like Claude Code or Aider to talk to Clara
+through a single connection instead of managing each local MCP server
+separately.
 
 ### TUI notes
 
-- Slash-command history is persisted across sessions in Clara's data directory and can be navigated with the up/down arrows.
-- `/tool call` autocomplete completes provider IDs first, then tool suffixes after `provider.`.
-- Entering `/tool call <provider>` lists that provider's tools without requiring a full `provider.tool` name.
+- Slash-command history is persisted across sessions in Clara's data directory
+  and can be navigated with the up/down arrows.
+- `/tool call` autocomplete completes provider IDs first, then tool suffixes
+  after `provider.`.
+- Entering `/tool call <provider>` lists that provider's tools without requiring
+  a full `provider.tool` name.
 
 ## Configuration
 
@@ -370,14 +422,14 @@ def main():
 
 Supported keyword arguments:
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `id` | yes | Stable intent ID |
-| `description` | no | Human-readable description |
-| `mode` | no | `on_demand`, `schedule`, `worker`, or `event` |
-| `interval` | no | Go duration string for `worker` mode, such as `30s` or `15m` |
-| `schedule` | no | Cron-style expression for `schedule` mode |
-| `trigger` | no | Event name or routing label for `event` mode |
+| Field         | Required | Description                                                  |
+| ------------- | -------- | ------------------------------------------------------------ |
+| `id`          | yes      | Stable intent ID                                             |
+| `description` | no       | Human-readable description                                   |
+| `mode`        | no       | `on_demand`, `schedule`, `worker`, or `event`                |
+| `interval`    | no       | Go duration string for `worker` mode, such as `30s` or `15m` |
+| `schedule`    | no       | Cron-style expression for `schedule` mode                    |
+| `trigger`     | no       | Event name or routing label for `event` mode                 |
 
 Defaults:
 
@@ -393,7 +445,8 @@ Validation rules:
 
 `main()` is the runtime entrypoint.
 
-Clara executes the script, resolves metadata, then calls `main()` when the intent runs.
+Clara executes the script, resolves metadata, then calls `main()` when the
+intent runs.
 
 ### Builtins available at runtime
 
@@ -433,13 +486,16 @@ def main():
     return {"status": "rejected"}
 ```
 
-For push-style integrations, Clara also supports blocking MCP tools that wait until an external event arrives and then return structured data. Current built-in examples are:
+For push-style integrations, Clara also supports blocking MCP tools that wait
+until an external event arrives and then return structured data. Current
+built-in examples are:
 
 - `fs.wait_for_change` for filesystem create/change/delete events
 - `bridge.reminders_wait_change` for Reminders create/update/delete events
 - `bridge.events_wait_change` for Calendar create/update/delete events
 
-Those tools are useful when you want a linear script to pause inside a tool call rather than use Clara's persisted `wait(...)` / `trigger --input` path.
+Those tools are useful when you want a linear script to pause inside a tool call
+rather than use Clara's persisted `wait(...)` / `trigger --input` path.
 
 ### Runtime modes
 
@@ -591,17 +647,21 @@ Clara currently supports:
 - event-style input delivery through `trigger --input`
 - run/event persistence in SQLite
 - tool discovery and direct tool calls from the CLI
-- built-in MCP servers for filesystem, SQLite, Ollama embeddings, and Taskwarrior
+- built-in MCP servers for filesystem, SQLite, Ollama embeddings, and
+  Taskwarrior
 - blocking MCP wait tools for filesystem, Reminders, and Calendar change events
-- persisted TUI slash-command history with provider-aware `/tool call` autocomplete
-- `updated_after` filtering on `bridge.reminders_list` and `taskwarrior.list_tasks`
+- persisted TUI slash-command history with provider-aware `/tool call`
+  autocomplete
+- `updated_after` filtering on `bridge.reminders_list` and
+  `taskwarrior.list_tasks`
 - external MCP server composition through config
 
 ## Operational model
 
 ### Installed intents
 
-An intent is "installed" when its `.star` file exists in the watched tasks directory.
+An intent is "installed" when its `.star` file exists in the watched tasks
+directory.
 
 `clara intent list` shows:
 
@@ -643,9 +703,11 @@ Today:
 
 - event intents can auto-start and pause on `wait(...)`
 - `trigger --input` can resume the latest waiting run
-- an event intent does not automatically re-arm itself after a resumed run finishes
+- an event intent does not automatically re-arm itself after a resumed run
+  finishes
 
-If you want a fresh waiting run after handling an event, start or trigger the intent again.
+If you want a fresh waiting run after handling an event, start or trigger the
+intent again.
 
 ## Project structure
 

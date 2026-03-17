@@ -11,7 +11,7 @@ import (
 	"github.com/brightpuddle/clara/internal/config"
 	dbmcp "github.com/brightpuddle/clara/internal/mcpserver/db"
 	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
-	ollamamcp "github.com/brightpuddle/clara/internal/mcpserver/ollamaembeddings"
+	ollamamcp "github.com/brightpuddle/clara/internal/mcpserver/ollama"
 	taskwmcp "github.com/brightpuddle/clara/internal/mcpserver/taskwarrior"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
@@ -40,7 +40,7 @@ external MCP servers in config.yaml. For example:
 Available servers:
   fs    filesystem operations (read, write, list, search, move, delete)
   db    SQLite query, exec, and vector-search tools
-  ollama-embeddings    local Ollama-powered embedding generation
+  ollama    local Ollama-powered generation and embeddings
   taskwarrior    Taskwarrior CRUD, filtering, and due-task helpers`,
 }
 
@@ -82,37 +82,44 @@ var mcpTaskwarriorCmd = &cobra.Command{
 }
 
 var (
-	mcpOllamaModel string
-	mcpOllamaURL   string
+	mcpOllamaEmbedModel    string
+	mcpOllamaGenerateModel string
+	mcpOllamaURL           string
 )
 
-var mcpOllamaEmbeddingsCmd = &cobra.Command{
-	Use:   "ollama-embeddings",
-	Short: "Start the built-in Ollama embeddings MCP server",
+var mcpOllamaCmd = &cobra.Command{
+	Use:   "ollama",
+	Short: "Start the built-in Ollama MCP server",
 	Long: fmt.Sprintf(
-		"Start the Clara built-in Ollama embeddings MCP server on stdio.\n\n%s",
+		"Start the Clara built-in Ollama MCP server on stdio.\n\n%s",
 		ollamamcp.Description,
 	),
-	RunE:              runMCPOllamaEmbeddings,
+	RunE:              runMCPOllama,
 	SilenceUsage:      true,
 	PersistentPreRunE: skipConfigLoad,
 }
 
 func init() {
-	mcpOllamaEmbeddingsCmd.Flags().StringVar(
-		&mcpOllamaModel,
-		"model",
-		ollamamcp.DefaultModel,
+	mcpOllamaCmd.Flags().StringVar(
+		&mcpOllamaEmbedModel,
+		"embed-model",
+		ollamamcp.DefaultEmbedModel,
 		"Ollama embedding model to use",
 	)
-	mcpOllamaEmbeddingsCmd.Flags().StringVar(
+	mcpOllamaCmd.Flags().StringVar(
+		&mcpOllamaGenerateModel,
+		"gen-model",
+		ollamamcp.DefaultGenerateModel,
+		"Ollama generation model to use",
+	)
+	mcpOllamaCmd.Flags().StringVar(
 		&mcpOllamaURL,
 		"url",
 		ollamamcp.DefaultURL,
 		"Base URL for the Ollama API",
 	)
 
-	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaEmbeddingsCmd, mcpTaskwarriorCmd)
+	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaCmd, mcpTaskwarriorCmd)
 }
 
 func runMCPFs(cmd *cobra.Command, args []string) error {
@@ -146,11 +153,11 @@ func runMCPTaskwarrior(cmd *cobra.Command, args []string) error {
 	return serveMCP(ctx, taskwmcp.New(zerolog.Nop()).NewServer())
 }
 
-func runMCPOllamaEmbeddings(cmd *cobra.Command, args []string) error {
+func runMCPOllama(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	return serveMCP(ctx, ollamamcp.New(mcpOllamaURL, mcpOllamaModel).NewServer())
+	return serveMCP(ctx, ollamamcp.New(mcpOllamaURL, mcpOllamaEmbedModel, mcpOllamaGenerateModel).NewServer())
 }
 
 func serveMCP(ctx context.Context, srv *server.MCPServer) error {

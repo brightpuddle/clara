@@ -1,4 +1,4 @@
-package ollamaembeddings
+package ollama
 
 import (
 	"bytes"
@@ -16,39 +16,46 @@ import (
 )
 
 const (
-	Description  = "Built-in Ollama embeddings MCP server for local text embeddings."
-	DefaultModel = "nomic-embed-text"
-	DefaultURL   = "http://localhost:11434"
+	Description           = "Built-in Ollama MCP server for local text generation and embeddings."
+	DefaultEmbedModel     = "nomic-embed-text"
+	DefaultGenerateModel  = "qwen2.5-coder:14b"
+	DefaultURL            = "http://localhost:11434"
 )
 
 type Service struct {
-	baseURL    string
-	model      string
-	httpClient *http.Client
+	baseURL       string
+	embedModel    string
+	generateModel string
+	httpClient    *http.Client
 }
 
-func New(baseURL, model string) *Service {
+func New(baseURL, embedModel, generateModel string) *Service {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		baseURL = DefaultURL
 	}
-	model = strings.TrimSpace(model)
-	if model == "" {
-		model = DefaultModel
+	embedModel = strings.TrimSpace(embedModel)
+	if embedModel == "" {
+		embedModel = DefaultEmbedModel
+	}
+	generateModel = strings.TrimSpace(generateModel)
+	if generateModel == "" {
+		generateModel = DefaultGenerateModel
 	}
 	return &Service{
-		baseURL: baseURL,
-		model:   model,
+		baseURL:       baseURL,
+		embedModel:    embedModel,
+		generateModel: generateModel,
 		httpClient: &http.Client{
-			Timeout: 2 * time.Minute,
+			Timeout: 5 * time.Minute,
 		},
 	}
 }
 
 func (s *Service) NewServer() *server.MCPServer {
 	mcpServer := server.NewMCPServer(
-		"clara-ollama-embeddings",
-		"0.1.0",
+		"clara-ollama",
+		"0.2.0",
 		server.WithToolCapabilities(true),
 	)
 
@@ -57,7 +64,18 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithDescription("Generate embeddings for one string or a batch of strings using Ollama."),
 		mcp.WithString("input", mcp.Description("Single input string to embed.")),
 		mcp.WithArray("inputs", mcp.Description("Array of strings to embed in one request when supported.")),
+		mcp.WithString("model", mcp.Description("Override the default embedding model.")),
 	), s.handleEmbed)
+
+	mcpServer.AddTool(mcp.NewTool(
+		"generate",
+		mcp.WithDescription("Generate a response from a prompt using Ollama."),
+		mcp.WithString("prompt", mcp.Description("The prompt to generate a response for.")),
+		mcp.WithString("model", mcp.Description("Override the default generation model.")),
+		mcp.WithString("system", mcp.Description("System prompt to use.")),
+		mcp.WithBoolean("stream", mcp.Description("Whether to stream the response (default false).")),
+		mcp.WithObject("options", mcp.Description("Additional model parameters (e.g. temperature).")),
+	), s.handleGenerate)
 
 	return mcpServer
 }
@@ -66,18 +84,24 @@ func (s *Service) handleEmbed(
 	ctx context.Context,
 	req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
-	inputs, err := embedInputs(req.GetArguments())
+	args := req.GetArguments()
+	inputs, err := embedInputs(args)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	embeddings, err := s.embed(ctx, inputs)
+	model := s.embedModel
+	if m, ok := args["model"].(string); ok && m != "" {
+		model = m
+	}
+
+	embeddings, err := s.embed(ctx, model, inputs)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	result := map[string]any{
-		"model":      s.model,
+		"model":      model,
 		"url":        s.baseURL,
 		"count":      len(embeddings),
 		"embeddings": embeddings,
@@ -86,6 +110,33 @@ func (s *Service) handleEmbed(
 		result["embedding"] = embeddings[0]
 	}
 	return mcp.NewToolResultStructuredOnly(result), nil
+}
+
+func (s *Service) handleGenerate(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	prompt, ok := args["prompt"].(string)
+	if !ok || prompt == "" {
+		return mcp.NewToolResultError("generate.prompt must be a non-empty string"), nil
+	}
+
+	model := s.generateModel
+	if m, ok := args["model"].(string); ok && m != "" {
+		model = m
+	}
+
+	system, _ := args["system"].(string)
+	stream, _ := args["stream"].(bool)
+	options, _ := args["options"].(map[string]any)
+
+	response, err := s.generate(ctx, model, prompt, system, stream, options)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(response), nil
 }
 
 func embedInputs(args map[string]any) ([]string, error) {
@@ -120,8 +171,8 @@ func embedInputs(args map[string]any) ([]string, error) {
 	return inputs, nil
 }
 
-func (s *Service) embed(ctx context.Context, inputs []string) ([][]float64, error) {
-	embeddings, err := s.embedViaAPIEmbed(ctx, inputs)
+func (s *Service) embed(ctx context.Context, model string, inputs []string) ([][]float64, error) {
+	embeddings, err := s.embedViaAPIEmbed(ctx, model, inputs)
 	if err == nil {
 		return embeddings, nil
 	}
@@ -131,12 +182,12 @@ func (s *Service) embed(ctx context.Context, inputs []string) ([][]float64, erro
 		return nil, err
 	}
 
-	return s.embedViaLegacyAPI(ctx, inputs)
+	return s.embedViaLegacyAPI(ctx, model, inputs)
 }
 
-func (s *Service) embedViaAPIEmbed(ctx context.Context, inputs []string) ([][]float64, error) {
+func (s *Service) embedViaAPIEmbed(ctx context.Context, model string, inputs []string) ([][]float64, error) {
 	body, err := json.Marshal(map[string]any{
-		"model": s.model,
+		"model": model,
 		"input": inputPayload(inputs),
 	})
 	if err != nil {
@@ -176,11 +227,11 @@ func (s *Service) embedViaAPIEmbed(ctx context.Context, inputs []string) ([][]fl
 	}
 }
 
-func (s *Service) embedViaLegacyAPI(ctx context.Context, inputs []string) ([][]float64, error) {
+func (s *Service) embedViaLegacyAPI(ctx context.Context, model string, inputs []string) ([][]float64, error) {
 	embeddings := make([][]float64, 0, len(inputs))
 	for _, input := range inputs {
 		body, err := json.Marshal(map[string]any{
-			"model":  s.model,
+			"model":  model,
 			"prompt": input,
 		})
 		if err != nil {
@@ -228,6 +279,61 @@ func (s *Service) embedViaLegacyAPI(ctx context.Context, inputs []string) ([][]f
 		}
 	}
 	return embeddings, nil
+}
+
+func (s *Service) generate(
+	ctx context.Context,
+	model, prompt, system string,
+	stream bool,
+	options map[string]any,
+) (string, error) {
+	payload := map[string]any{
+		"model":  model,
+		"prompt": prompt,
+		"stream": stream,
+	}
+	if system != "" {
+		payload["system"] = system
+	}
+	if len(options) > 0 {
+		payload["options"] = options
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", errors.Wrap(err, "marshal ollama generate request")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return "", errors.Wrap(err, "create ollama generate request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", errors.Wrap(err, "call ollama /api/generate")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", newHTTPStatusError(resp)
+	}
+
+	// For now we only support non-streaming JSON response for simplicity in tools.
+	// If stream=true, we'd need to handle NDJSON.
+	if stream {
+		return "", errors.New("streaming generate is not yet supported in this MCP server")
+	}
+
+	var result struct {
+		Response string `json:"response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", errors.Wrap(err, "decode ollama generate response")
+	}
+
+	return result.Response, nil
 }
 
 func inputPayload(inputs []string) any {

@@ -21,6 +21,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/sourcegraph/conc"
 	"github.com/spf13/cobra"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var serveCmd = &cobra.Command{
@@ -36,11 +37,11 @@ this as a persistent daemon.`,
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	logger := buildLogger()
-
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		return errors.Wrapf(err, "create data dir %q", cfg.DataDir)
 	}
+
+	logger := buildDaemonLogger()
 
 	logger.Info().
 		Str("data_dir", cfg.DataDir).
@@ -58,6 +59,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 }
 
 func runDaemon(ctx context.Context, logger zerolog.Logger) error {
+	daemonCtx, shutdown := context.WithCancel(ctx)
+	defer shutdown()
+
 	db, err := store.Open(cfg.DBPath(), logger)
 	if err != nil {
 		return errors.Wrap(err, "open database")
@@ -103,31 +107,31 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		})
 	attachServer := registry.NewDynamicAttachServer(cfg.DynamicMCPSocketPath(), reg, logger)
 
-	handler := buildHandler(reg, sup, attachServer, db, logger)
+	handler := buildHandler(reg, sup, attachServer, db, logger, shutdown)
 	controlServer := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 
 	wg := conc.NewWaitGroup()
 
 	wg.Go(func() {
-		if err := reg.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := reg.Start(daemonCtx); err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("registry error")
 		}
 	})
 
 	wg.Go(func() {
-		if err := controlServer.ListenAndServe(ctx); err != nil {
+		if err := controlServer.ListenAndServe(daemonCtx); err != nil {
 			logger.Error().Err(err).Msg("control server error")
 		}
 	})
 
 	wg.Go(func() {
-		if err := attachServer.ListenAndServe(ctx); err != nil {
+		if err := attachServer.ListenAndServe(daemonCtx); err != nil {
 			logger.Error().Err(err).Msg("dynamic MCP attach server error")
 		}
 	})
 
 	wg.Go(func() {
-		if err := sup.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := sup.Start(daemonCtx); err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("supervisor error")
 		}
 	})
@@ -142,10 +146,14 @@ func buildHandler(
 	attach *registry.DynamicAttachServer,
 	db *store.Store,
 	log zerolog.Logger,
+	shutdown func(),
 ) ipc.HandlerFunc {
 	return func(ctx context.Context, req *ipc.Request) *ipc.Response {
 		switch req.Method {
 		case ipc.MethodShutdown:
+			if shutdown != nil {
+				go shutdown()
+			}
 			return &ipc.Response{Message: "shutdown initiated"}
 
 		case ipc.MethodStatus:
@@ -195,7 +203,9 @@ func buildHandler(
 			if input, ok := req.Params["input"]; ok {
 				runState, _, err := db.LoadLatestWaitingRun(ctx, id)
 				if err != nil || runState.RunID == "" {
-					return &ipc.Response{Error: "intent " + id + " has no waiting run to receive input"}
+					return &ipc.Response{
+						Error: "intent " + id + " has no waiting run to receive input",
+					}
 				}
 				go resumeIntentByIDInBackground(ctx, intent, input, reg, db, log)
 				return &ipc.Response{Message: "delivered input to waiting intent " + id}
@@ -341,13 +351,19 @@ func runIntentInBackground(
 			return
 		}
 		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "failed", err.Error()); finishErr != nil {
-			log.Warn().Err(finishErr).Str("run_id", runID).Msg("failed to persist manual run failure")
+			log.Warn().
+				Err(finishErr).
+				Str("run_id", runID).
+				Msg("failed to persist manual run failure")
 		}
 		log.Error().Err(err).Str("intent_id", intent.ID).Msg("manual intent run error")
 		return
 	}
 	if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "completed", ""); finishErr != nil {
-		log.Warn().Err(finishErr).Str("run_id", runID).Msg("failed to persist manual run completion")
+		log.Warn().
+			Err(finishErr).
+			Str("run_id", runID).
+			Msg("failed to persist manual run completion")
 	}
 }
 
@@ -369,6 +385,32 @@ func buildLogger() zerolog.Logger {
 			With().Timestamp().Logger()
 	}
 	return zerolog.New(os.Stdout).Level(level).With().Timestamp().Logger()
+}
+
+func buildDaemonLogger() zerolog.Logger {
+	level, err := zerolog.ParseLevel(cfg.LogLevelNormalized())
+	if err != nil {
+		level = zerolog.InfoLevel
+	}
+	if fi, _ := os.Stderr.Stat(); fi != nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+		return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).
+			Level(level).
+			With().Timestamp().Logger()
+	}
+
+	writer := &lumberjack.Logger{
+		Filename:   cfg.LogPath(),
+		MaxSize:    10,
+		MaxBackups: 5,
+		MaxAge:     30,
+		Compress:   false,
+	}
+	console := zerolog.ConsoleWriter{
+		Out:        writer,
+		NoColor:    true,
+		TimeFormat: time.RFC3339,
+	}
+	return zerolog.New(console).Level(level).With().Timestamp().Logger()
 }
 
 func filterTools(tools []registry.ToolInfo, filter string) []registry.ToolInfo {

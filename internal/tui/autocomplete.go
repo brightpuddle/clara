@@ -30,6 +30,10 @@ func completeInput(client autocompleteClient, input string, specs []CommandSpec)
 	switch {
 	case len(tokens) >= 2 && tokens[0] == "tool" && tokens[1] == "call":
 		return completeToolCallInput(client, tokens, current, trailingSpace)
+	case len(tokens) >= 2 && tokens[0] == "tool" && tokens[1] == "list":
+		return completeToolListInput(client, tokens, current, trailingSpace)
+	case len(tokens) >= 2 && tokens[0] == "tool" && tokens[1] == "show":
+		return completeToolShowInput(client, tokens, current, trailingSpace)
 	case len(tokens) >= 2 && tokens[0] == "intent" && tokens[1] == "trigger":
 		return completeIntentRunInput(client, current)
 	default:
@@ -123,13 +127,13 @@ func completeToolCallInput(
 	trailingSpace bool,
 ) []CompletionItem {
 	if len(tokens) == 2 && trailingSpace {
-		return providerSuggestions(client, "")
+		return providerSuggestions(client, "/tool call ", "", false)
 	}
 	if len(tokens) == 2 {
 		if strings.Contains(current, ".") {
-			return providerToolSuggestions(client, current)
+			return providerToolSuggestions(client, "/tool call ", current, true)
 		}
-		return providerSuggestions(client, current)
+		return providerSuggestions(client, "/tool call ", current, false)
 	}
 
 	toolName := tokens[2]
@@ -137,7 +141,7 @@ func completeToolCallInput(
 		if trailingSpace {
 			return nil
 		}
-		return providerSuggestions(client, toolName)
+		return providerSuggestions(client, "/tool call ", toolName, false)
 	}
 
 	specified := []string{}
@@ -148,15 +152,59 @@ func completeToolCallInput(
 		toolName = current
 	}
 	if !strings.Contains(toolName, ".") {
-		return providerSuggestions(client, toolName)
+		return providerSuggestions(client, "/tool call ", toolName, false)
 	}
 	if len(tokens) == 3 && (!trailingSpace || strings.HasSuffix(toolName, ".")) {
-		return providerToolSuggestions(client, toolName)
+		return providerToolSuggestions(client, "/tool call ", toolName, true)
 	}
 	return toolParamSuggestions(client, toolName, specified, current, trailingSpace)
 }
 
-func providerSuggestions(client autocompleteClient, prefix string) []CompletionItem {
+func completeToolListInput(
+	client autocompleteClient,
+	tokens []string,
+	current string,
+	trailingSpace bool,
+) []CompletionItem {
+	if len(tokens) == 2 && trailingSpace {
+		return providerSuggestions(client, "/tool list ", "", false)
+	}
+	if len(tokens) == 2 {
+		return providerSuggestions(client, "/tool list ", current, false)
+	}
+	return nil
+}
+
+func completeToolShowInput(
+	client autocompleteClient,
+	tokens []string,
+	current string,
+	trailingSpace bool,
+) []CompletionItem {
+	if len(tokens) == 2 && trailingSpace {
+		return providerSuggestions(client, "/tool show ", "", true)
+	}
+	if len(tokens) == 2 {
+		if strings.Contains(current, ".") {
+			return providerToolSuggestions(client, "/tool show ", current, false)
+		}
+		return providerSuggestions(client, "/tool show ", current, true)
+	}
+	if len(tokens) == 3 && !trailingSpace {
+		if strings.Contains(tokens[2], ".") {
+			return providerToolSuggestions(client, "/tool show ", tokens[2], false)
+		}
+		return providerSuggestions(client, "/tool show ", tokens[2], true)
+	}
+	return nil
+}
+
+func providerSuggestions(
+	client autocompleteClient,
+	commandPrefix string,
+	prefix string,
+	appendDot bool,
+) []CompletionItem {
 	providers, err := client.ListProviders()
 	if err != nil {
 		return nil
@@ -166,16 +214,25 @@ func providerSuggestions(client autocompleteClient, prefix string) []CompletionI
 		if !strings.HasPrefix(provider.Name, prefix) {
 			continue
 		}
+		insert := commandPrefix + provider.Name
+		if appendDot {
+			insert += "."
+		}
 		items = append(items, CompletionItem{
 			Display: provider.Name,
-			Insert:  "/tool call " + provider.Name,
+			Insert:  insert,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Display < items[j].Display })
 	return items
 }
 
-func providerToolSuggestions(client autocompleteClient, qualifiedPrefix string) []CompletionItem {
+func providerToolSuggestions(
+	client autocompleteClient,
+	commandPrefix string,
+	qualifiedPrefix string,
+	appendSpace bool,
+) []CompletionItem {
 	provider, toolPrefix, ok := strings.Cut(qualifiedPrefix, ".")
 	if !ok {
 		return nil
@@ -194,9 +251,13 @@ func providerToolSuggestions(client autocompleteClient, qualifiedPrefix string) 
 		if !strings.HasPrefix(suffix, toolPrefix) {
 			continue
 		}
+		insert := commandPrefix + tool.Name
+		if appendSpace {
+			insert += " "
+		}
 		items = append(items, CompletionItem{
 			Display: suffix,
-			Insert:  "/tool call " + tool.Name + " ",
+			Insert:  insert,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Display < items[j].Display })

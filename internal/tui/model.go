@@ -176,11 +176,19 @@ func (m *Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "up":
+		if len(m.matches) > 0 {
+			m.moveSelection(-1)
+			return m, nil
+		}
 		m.input.SetValue(m.history.Previous(m.input.Value()))
 		m.input.SetCursor(len(m.input.Value()))
 		m.refreshMatches()
 		return m, nil
 	case "down":
+		if len(m.matches) > 0 {
+			m.moveSelection(1)
+			return m, nil
+		}
 		m.input.SetValue(m.history.Next())
 		m.input.SetCursor(len(m.input.Value()))
 		m.refreshMatches()
@@ -246,7 +254,7 @@ func (m *Model) submitInput() (tea.Model, tea.Cmd) {
 	if value == "" {
 		return m, nil
 	}
-	echo := fmt.Sprintf("%s %s", m.theme.Magenta("❯"), value)
+	echo := fmt.Sprintf("%s %s", m.theme.Yellow("❯"), value)
 	m.input.SetValue("")
 	m.input.SetCursor(0)
 	_ = m.history.Add(value)
@@ -282,7 +290,7 @@ func (m *Model) View() string {
 	hr := horizontalRule(m.width)
 	b.WriteString(hr)
 	b.WriteString("\n")
-	b.WriteString(m.theme.Magenta("❯"))
+	b.WriteString(m.theme.Yellow("❯"))
 	b.WriteString(" ")
 	b.WriteString(m.input.View())
 	b.WriteString("\n")

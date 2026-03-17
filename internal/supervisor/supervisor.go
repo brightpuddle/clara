@@ -5,6 +5,7 @@ package supervisor
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,18 +92,8 @@ func (s *Supervisor) Start(ctx context.Context) error {
 		return errors.Wrap(err, "create tasks dir")
 	}
 
-	entries, err := os.ReadDir(s.tasksDir)
-	if err != nil {
-		return errors.Wrap(err, "read tasks dir")
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && isIntentFile(entry.Name()) {
-			path := filepath.Join(s.tasksDir, entry.Name())
-			s.log.Info().Str("path", path).Msg("loading existing task")
-			if err := s.processFile(path); err != nil {
-				s.log.Error().Err(err).Str("path", path).Msg("failed to process task file")
-			}
-		}
+	if err := s.loadIntentTree(s.tasksDir); err != nil {
+		return errors.Wrap(err, "load tasks dir")
 	}
 
 	watcher, err := fsnotify.NewWatcher()
@@ -111,7 +102,8 @@ func (s *Supervisor) Start(ctx context.Context) error {
 	}
 	defer watcher.Close()
 
-	if err := watcher.Add(s.tasksDir); err != nil {
+	watchedDirs := make(map[string]struct{})
+	if err := addWatchTree(watcher, watchedDirs, s.tasksDir); err != nil {
 		return errors.Wrap(err, "watch tasks dir")
 	}
 
@@ -126,18 +118,45 @@ func (s *Supervisor) Start(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
-			if !isIntentFile(event.Name) {
-				continue
-			}
+			cleanPath := filepath.Clean(event.Name)
 			switch {
-			case event.Has(fsnotify.Create), event.Has(fsnotify.Write):
-				s.log.Info().Str("path", event.Name).Msg("task file changed")
-				if err := s.processFile(event.Name); err != nil {
-					s.log.Error().Err(err).Str("path", event.Name).Msg("failed to process task")
+			case event.Has(fsnotify.Create):
+				info, statErr := os.Stat(cleanPath)
+				switch {
+				case statErr == nil && info.IsDir():
+					if err := addWatchTree(watcher, watchedDirs, cleanPath); err != nil {
+						s.log.Error().
+							Err(err).
+							Str("path", cleanPath).
+							Msg("failed to watch task dir")
+						continue
+					}
+					if err := s.loadIntentTree(cleanPath); err != nil {
+						s.log.Error().Err(err).Str("path", cleanPath).Msg("failed to load task dir")
+					}
+				case statErr == nil && isIntentFile(cleanPath):
+					s.log.Info().Str("path", cleanPath).Msg("task file changed")
+					if err := s.processFile(cleanPath); err != nil {
+						s.log.Error().Err(err).Str("path", cleanPath).Msg("failed to process task")
+					}
+				case statErr != nil && !errors.Is(statErr, os.ErrNotExist):
+					s.log.Error().
+						Err(statErr).
+						Str("path", cleanPath).
+						Msg("failed to stat task path")
+				}
+			case event.Has(fsnotify.Write):
+				if !isIntentFile(cleanPath) {
+					continue
+				}
+				s.log.Info().Str("path", cleanPath).Msg("task file changed")
+				if err := s.processFile(cleanPath); err != nil {
+					s.log.Error().Err(err).Str("path", cleanPath).Msg("failed to process task")
 				}
 			case event.Has(fsnotify.Remove), event.Has(fsnotify.Rename):
-				s.log.Info().Str("path", event.Name).Msg("task file removed")
-				s.removeIntent(event.Name)
+				s.log.Info().Str("path", cleanPath).Msg("task path removed")
+				removeWatchTree(watcher, watchedDirs, cleanPath, s.log)
+				s.removeIntentsUnderPath(cleanPath)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -145,6 +164,65 @@ func (s *Supervisor) Start(ctx context.Context) error {
 			}
 			s.log.Error().Err(err).Msg("file watcher error")
 		}
+	}
+}
+
+func (s *Supervisor) loadIntentTree(root string) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.Wrapf(err, "walk task path %q", path)
+		}
+		if d.IsDir() || !isIntentFile(path) {
+			return nil
+		}
+		s.log.Info().Str("path", path).Msg("loading existing task")
+		if err := s.processFile(path); err != nil {
+			s.log.Error().Err(err).Str("path", path).Msg("failed to process task file")
+		}
+		return nil
+	})
+}
+
+func addWatchTree(
+	watcher *fsnotify.Watcher,
+	watchedDirs map[string]struct{},
+	root string,
+) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return errors.Wrapf(err, "walk watch path %q", path)
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		cleanPath := filepath.Clean(path)
+		if _, ok := watchedDirs[cleanPath]; ok {
+			return nil
+		}
+		if err := watcher.Add(cleanPath); err != nil {
+			return errors.Wrapf(err, "watch path %q", cleanPath)
+		}
+		watchedDirs[cleanPath] = struct{}{}
+		return nil
+	})
+}
+
+func removeWatchTree(
+	watcher *fsnotify.Watcher,
+	watchedDirs map[string]struct{},
+	root string,
+	log zerolog.Logger,
+) {
+	cleanRoot := filepath.Clean(root)
+	prefix := cleanRoot + string(os.PathSeparator)
+	for dir := range watchedDirs {
+		if dir != cleanRoot && !strings.HasPrefix(dir, prefix) {
+			continue
+		}
+		if err := watcher.Remove(dir); err != nil {
+			log.Debug().Err(err).Str("path", dir).Msg("failed to remove task dir watch")
+		}
+		delete(watchedDirs, dir)
 	}
 }
 
@@ -214,7 +292,9 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 
 func shouldAutoStart(intent *orchestrator.Intent) bool {
 	switch intent.RuntimeMode() {
-	case orchestrator.IntentModeSchedule, orchestrator.IntentModeWorker, orchestrator.IntentModeEvent:
+	case orchestrator.IntentModeSchedule,
+		orchestrator.IntentModeWorker,
+		orchestrator.IntentModeEvent:
 		return true
 	default:
 		return false
@@ -421,21 +501,21 @@ func (s *Supervisor) markIntentInactive(id string, runSeq int64) {
 	managed.cancel = nil
 }
 
-func (s *Supervisor) removeIntent(path string) {
+func (s *Supervisor) removeIntentsUnderPath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cleanPath := filepath.Clean(path)
+	prefix := cleanPath + string(os.PathSeparator)
 	for id, managed := range s.intents {
-		if managed.path != cleanPath {
+		if managed.path != cleanPath && !strings.HasPrefix(managed.path, prefix) {
 			continue
 		}
 		if managed.cancel != nil {
 			managed.cancel()
 		}
 		delete(s.intents, id)
-		s.log.Info().Str("intent_id", id).Msg("intent removed")
-		return
+		s.log.Info().Str("intent_id", id).Str("path", managed.path).Msg("intent removed")
 	}
 }
 

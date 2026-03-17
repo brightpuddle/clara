@@ -9,6 +9,7 @@ package registry
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -450,15 +451,31 @@ func normalizeCallToolResult(toolName string, res *mcp.CallToolResult) (any, err
 	if res.StructuredContent != nil {
 		return res.StructuredContent, nil
 	}
+
+	var result any
 	if len(res.Content) == 1 {
 		if text, ok := res.Content[0].(mcp.TextContent); ok {
-			return text.Text, nil
+			result = text.Text
 		}
 	}
-	if text := extractCallToolText(res); text != "" {
-		return text, nil
+	if result == nil {
+		result = extractCallToolText(res)
 	}
-	return res, nil
+
+	// Transparent JSON Promotion: If the result is a string, try to parse it as JSON.
+	if s, ok := result.(string); ok && s != "" {
+		trimmed := strings.TrimSpace(s)
+		if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+			(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+			var parsed any
+			// Note: We ignore the error and fall back to the raw string if parsing fails.
+			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+				return parsed, nil
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func extractCallToolText(res *mcp.CallToolResult) string {
