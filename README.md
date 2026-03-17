@@ -96,9 +96,9 @@ clara agent logs --watch
 ```
 
 The launchd-managed daemon writes to `~/.local/share/clara/clara.log`. That log
-is application-managed and rotates automatically, so you can safely `tail -f`
-it during development without it growing forever. By default Clara keeps the
-active log plus a small set of rotated backups.
+is application-managed and rotates automatically, so you can safely `tail -f` it
+during development without it growing forever. By default Clara keeps the active
+log plus a small set of rotated backups.
 
 To remove the local install again:
 
@@ -227,18 +227,18 @@ as the user-facing SQLite MCP server.
 
 ### Top-level commands
 
-| Command              | Description                                      |
-| -------------------- | ------------------------------------------------ |
-| `clara`              | Launch the interactive TUI/HUD                   |
-| `clara serve`        | Start the Clara agent in the foreground          |
+| Command              | Description                                            |
+| -------------------- | ------------------------------------------------------ |
+| `clara`              | Launch the interactive TUI/HUD                         |
+| `clara serve`        | Start the Clara agent in the foreground                |
 | `clara agent start`  | Start the LaunchAgent-managed daemon in the background |
-| `clara agent stop`   | Gracefully stop the daemon and unload its LaunchAgent |
-| `clara agent status` | Show daemon status                               |
-| `clara agent logs`   | Show the recent daemon log output                |
-| `clara intent ...`   | Manage installed intents and one-off intent runs |
-| `clara tool ...`     | Inspect or call registered tools                 |
-| `clara gateway`      | Start an aggregated MCP gateway on stdio         |
-| `clara mcp ...`      | Start built-in MCP servers on stdio              |
+| `clara agent stop`   | Gracefully stop the daemon and unload its LaunchAgent  |
+| `clara agent status` | Show daemon status                                     |
+| `clara agent logs`   | Show the recent daemon log output                      |
+| `clara intent ...`   | Manage installed intents and one-off intent runs       |
+| `clara tool ...`     | Inspect or call registered tools                       |
+| `clara gateway`      | Start an aggregated MCP gateway on stdio               |
+| `clara mcp ...`      | Start built-in MCP servers on stdio                    |
 
 ### Intent commands
 
