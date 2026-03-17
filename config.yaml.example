@@ -10,6 +10,14 @@ log_level: info
 # (default: ~/.local/share/clara)
 # data_dir: /custom/path/clara
 
+# Additional search paths used to resolve bare MCP server commands like `clara`,
+# `uvx`, or tools installed with `go install` when Clara runs under launchd.
+# These paths are prepended to the normal PATH lookup; common local defaults
+# such as /usr/local/bin and /opt/homebrew/bin are also included automatically.
+# mcp_command_search_paths:
+#   - ${HOME}/go/bin
+#   - /custom/tools/bin
+ 
 # MCP services managed by the Clara daemon.
 # Every intent-visible capability should be exposed via one of these services,
 # including built-in Clara services like filesystem, SQLite, and macOS bridge tools.

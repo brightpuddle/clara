@@ -6,6 +6,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/client"
@@ -20,9 +23,12 @@ type MCPServer struct {
 	command     string
 	args        []string
 	env         []string // KEY=VALUE pairs injected into the subprocess
+	searchPaths []string
 	log         zerolog.Logger
 
 	mcpClient *client.Client
+	startFn   func(ctx context.Context, r *Registry) error
+	stopFn    func()
 }
 
 // NewMCPServer creates an MCPServer descriptor. Call Start to launch it.
@@ -30,18 +36,16 @@ func NewMCPServer(
 	name, description, command string,
 	args []string,
 	env map[string]string,
+	searchPaths []string,
 	log zerolog.Logger,
 ) *MCPServer {
-	envPairs := os.Environ()
-	for k, v := range env {
-		envPairs = append(envPairs, fmt.Sprintf("%s=%s", k, v))
-	}
 	return &MCPServer{
 		name:        name,
 		description: description,
 		command:     command,
 		args:        args,
-		env:         envPairs,
+		env:         buildServerEnv(env, searchPaths),
+		searchPaths: append([]string(nil), searchPaths...),
 		log:         log.With().Str("mcp_server", name).Logger(),
 	}
 }
@@ -49,7 +53,16 @@ func NewMCPServer(
 // Start launches the subprocess, negotiates the MCP handshake, discovers
 // available tools, resources, and prompts, then registers tools in r.
 func (s *MCPServer) Start(ctx context.Context, r *Registry) error {
-	c, err := client.NewStdioMCPClient(s.command, s.env, s.args...)
+	if s.startFn != nil {
+		return s.startFn(ctx, r)
+	}
+
+	command, err := resolveMCPCommand(s.command, s.searchPaths)
+	if err != nil {
+		return err
+	}
+
+	c, err := client.NewStdioMCPClient(command, s.env, s.args...)
 	if err != nil {
 		return errors.Wrap(err, "create stdio MCP client")
 	}
@@ -74,10 +87,88 @@ func (s *MCPServer) Start(ctx context.Context, r *Registry) error {
 
 // Stop terminates the MCP subprocess.
 func (s *MCPServer) Stop() {
+	if s.stopFn != nil {
+		s.stopFn()
+		return
+	}
 	if s.mcpClient != nil {
 		s.mcpClient.Close()
 		s.log.Info().Msg("MCP server stopped")
 	}
+}
+
+func buildServerEnv(env map[string]string, searchPaths []string) []string {
+	envMap := make(map[string]string, len(os.Environ())+len(env)+1)
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		envMap[key] = value
+	}
+
+	pathEntries := make([]string, 0, len(searchPaths)+8)
+	pathEntries = append(pathEntries, searchPaths...)
+	if existingPath, ok := env["PATH"]; ok {
+		pathEntries = append(pathEntries, filepath.SplitList(existingPath)...)
+	} else {
+		pathEntries = append(pathEntries, filepath.SplitList(envMap["PATH"])...)
+	}
+	envMap["PATH"] = strings.Join(dedupeSearchPaths(pathEntries), string(os.PathListSeparator))
+
+	for k, v := range env {
+		if k == "PATH" {
+			continue
+		}
+		envMap[k] = v
+	}
+
+	envPairs := make([]string, 0, len(envMap))
+	for key, value := range envMap {
+		envPairs = append(envPairs, fmt.Sprintf("%s=%s", key, value))
+	}
+	return envPairs
+}
+
+func resolveMCPCommand(command string, searchPaths []string) (string, error) {
+	if strings.Contains(command, string(os.PathSeparator)) {
+		return command, nil
+	}
+
+	for _, dir := range dedupeSearchPaths(searchPaths) {
+		candidate := filepath.Join(dir, command)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if info.Mode()&0o111 == 0 {
+			continue
+		}
+		return candidate, nil
+	}
+
+	resolved, err := exec.LookPath(command)
+	if err == nil {
+		return resolved, nil
+	}
+	return "", errors.Wrapf(err, "resolve MCP command %q", command)
+}
+
+func dedupeSearchPaths(paths []string) []string {
+	seen := make(map[string]struct{}, len(paths))
+	deduped := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		deduped = append(deduped, path)
+	}
+	return deduped
 }
 
 func initializeConnectedClient(

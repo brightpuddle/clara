@@ -72,6 +72,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.DataDir == "" {
 		t.Error("DataDir should have a default value")
 	}
+	if got := cfg.MCPCommandSearchPathList(); len(got) == 0 {
+		t.Fatal("MCPCommandSearchPathList should include defaults")
+	}
 }
 
 func TestLoad_DefaultLogLevel(t *testing.T) {
@@ -143,6 +146,31 @@ func TestLogLevelNormalized(t *testing.T) {
 		}
 		if got := loaded.LogLevelNormalized(); got != tc.want {
 			t.Errorf("LogLevelNormalized(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestMCPCommandSearchPathList_PrependsConfiguredPaths(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+	yaml := `
+mcp_command_search_paths:
+  - /custom/bin
+  - /usr/local/bin
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	got := cfg.MCPCommandSearchPathList()
+	wantPrefix := []string{"/custom/bin", "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"}
+	if len(got) < len(wantPrefix) {
+		t.Fatalf("search path list too short: %v", got)
+	}
+	for i, want := range wantPrefix {
+		if got[i] != want {
+			t.Fatalf("path %d = %q, want %q (full=%v)", i, got[i], want, got)
 		}
 	}
 }

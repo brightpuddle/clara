@@ -316,10 +316,18 @@ func (r *Registry) serversSnapshot() []*MCPServer {
 }
 
 func (r *Registry) startServers(ctx context.Context, servers []*MCPServer) error {
+	started := 0
 	for _, srv := range servers {
 		if err := srv.Start(ctx, r); err != nil {
-			return errors.Wrapf(err, "start MCP server %q", srv.name)
+			r.log.Error().Err(err).Str("mcp_server", srv.name).Msg("failed to start MCP server")
+			continue
 		}
+		started++
+	}
+	if len(servers) > 0 && started == 0 {
+		r.log.Warn().
+			Int("configured_servers", len(servers)).
+			Msg("no MCP servers started successfully")
 	}
 	return nil
 }

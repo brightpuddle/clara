@@ -196,7 +196,13 @@ func runIntentResume(cmd *cobra.Command, args []string) error {
 	reg := registry.New(logger)
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
-			srv.Name, srv.Description, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
+			srv.Name,
+			srv.Description,
+			srv.Command,
+			srv.Args,
+			srv.ResolvedEnv(),
+			cfg.MCPCommandSearchPathList(),
+			logger,
 		)
 		if err := reg.AddServer(mcpSrv); err != nil {
 			return err
@@ -307,7 +313,11 @@ func newIntentWatchPrinter(theme tui.Theme, verbose, showID bool) *intentWatchPr
 	}
 }
 
-func (p *intentWatchPrinter) printCurrentStates(ctx context.Context, db *store.Store, intentID string) error {
+func (p *intentWatchPrinter) printCurrentStates(
+	ctx context.Context,
+	db *store.Store,
+	intentID string,
+) error {
 	states, err := db.ActiveRunStates(ctx, intentID)
 	if err != nil {
 		return errors.Wrap(err, "load active intent states")

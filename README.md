@@ -65,6 +65,11 @@ cp config.yaml.example ~/.config/clara/config.yaml
 Edit `~/.config/clara/config.yaml` so `mcp_servers` contains the MCP services
 you want Clara to manage.
 
+If Clara runs under launchd and your MCP server commands live outside the
+default system path, set `mcp_command_search_paths` to include those binary
+directories (for example `${HOME}/go/bin`). Clara prepends those paths when
+resolving bare MCP commands and when constructing the subprocess `PATH`.
+
 ### Install Clara as a LaunchAgent
 
 For local development on macOS, the easiest way to install or update Clara is:
@@ -114,6 +119,9 @@ The daemon will:
 - start configured MCP servers
 - watch the tasks directory for `.star` intents
 - expose the control socket used by the CLI
+
+If one configured MCP server fails to start, Clara now logs the error and
+continues starting the remaining MCP servers.
 
 ### Check the daemon
 

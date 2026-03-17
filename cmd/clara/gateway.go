@@ -46,6 +46,7 @@ func runGateway(cmd *cobra.Command, args []string) error {
 			srv.Command,
 			srv.Args,
 			srv.ResolvedEnv(),
+			cfg.MCPCommandSearchPathList(),
 			logger,
 		)
 		if err := reg.AddServer(mcpSrv); err != nil {
@@ -103,7 +104,7 @@ func buildStderrLogger() zerolog.Logger {
 	if err != nil {
 		level = zerolog.InfoLevel
 	}
-	if fi, _ := os.Stderr.Stat(); fi != nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+	if isTerminalFile(os.Stderr) {
 		return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).
 			Level(level).
 			With().Timestamp().Logger()

@@ -72,7 +72,13 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
-			srv.Name, srv.Description, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
+			srv.Name,
+			srv.Description,
+			srv.Command,
+			srv.Args,
+			srv.ResolvedEnv(),
+			cfg.MCPCommandSearchPathList(),
+			logger,
 		)
 		if err := reg.AddServer(mcpSrv); err != nil {
 			return err
@@ -379,7 +385,7 @@ func buildLogger() zerolog.Logger {
 	if err != nil {
 		level = zerolog.InfoLevel
 	}
-	if fi, _ := os.Stderr.Stat(); fi != nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+	if isTerminalFile(os.Stderr) {
 		return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).
 			Level(level).
 			With().Timestamp().Logger()
@@ -392,7 +398,7 @@ func buildDaemonLogger() zerolog.Logger {
 	if err != nil {
 		level = zerolog.InfoLevel
 	}
-	if fi, _ := os.Stderr.Stat(); fi != nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+	if isTerminalFile(os.Stderr) {
 		return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).
 			Level(level).
 			With().Timestamp().Logger()

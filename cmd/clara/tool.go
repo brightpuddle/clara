@@ -298,11 +298,7 @@ func useToolColors() bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
 	}
-	fi, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
+	return isTerminalFile(os.Stdout)
 }
 
 func stringValue(value any) string {

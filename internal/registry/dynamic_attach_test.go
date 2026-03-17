@@ -18,7 +18,7 @@ func TestDynamicAttachServerRegisterValidation(t *testing.T) {
 		t.Fatal("expected dotted server name to be rejected")
 	}
 
-	if err := reg.AddServer(NewMCPServer("tui", "", "noop", nil, nil, zerolog.Nop())); err != nil {
+	if err := reg.AddServer(NewMCPServer("tui", "", "noop", nil, nil, nil, zerolog.Nop())); err != nil {
 		t.Fatalf("AddServer failed: %v", err)
 	}
 	if _, err := attach.Register("tui"); err == nil {

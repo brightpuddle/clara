@@ -47,7 +47,13 @@ func runOneOff(parent context.Context, taskFile string, verbose bool) error {
 	reg := registry.New(logger)
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := registry.NewMCPServer(
-			srv.Name, srv.Description, srv.Command, srv.Args, srv.ResolvedEnv(), logger,
+			srv.Name,
+			srv.Description,
+			srv.Command,
+			srv.Args,
+			srv.ResolvedEnv(),
+			cfg.MCPCommandSearchPathList(),
+			logger,
 		)
 		if err := reg.AddServer(mcpSrv); err != nil {
 			return err
@@ -118,7 +124,10 @@ func runOneOff(parent context.Context, taskFile string, verbose bool) error {
 			return
 		}
 		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, status, errorText); finishErr != nil {
-			logger.Warn().Err(finishErr).Str("run_id", runID).Msg("failed to persist one-off run completion")
+			logger.Warn().
+				Err(finishErr).
+				Str("run_id", runID).
+				Msg("failed to persist one-off run completion")
 		}
 		if ctx.Err() != nil {
 			runErrCh <- nil

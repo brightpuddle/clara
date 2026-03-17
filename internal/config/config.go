@@ -32,6 +32,10 @@ type Config struct {
 	// DataDir overrides the default runtime data directory.
 	DataDir string `yaml:"data_dir"`
 
+	// MCPCommandSearchPaths prepends additional search paths used to locate
+	// bare MCP server commands and to build the PATH passed to subprocesses.
+	MCPCommandSearchPaths []string `yaml:"mcp_command_search_paths"`
+
 	// MCPServers lists the MCP servers the daemon manages.
 	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
 }
@@ -116,6 +120,30 @@ func expandEnvInMap(m map[string]string) map[string]string {
 // references expanded. Call this when building the subprocess environment.
 func (s *MCPServerConfig) ResolvedEnv() map[string]string {
 	return expandEnvInMap(s.Env)
+}
+
+// MCPCommandSearchPathList returns the effective command search paths used to
+// resolve bare MCP server commands and to build subprocess PATH values.
+func (c *Config) MCPCommandSearchPathList() []string {
+	paths := make([]string, 0, len(c.MCPCommandSearchPaths)+8)
+	paths = append(paths, c.MCPCommandSearchPaths...)
+	paths = append(paths, "/usr/local/bin", "/opt/homebrew/bin")
+	paths = append(paths, filepath.SplitList(os.Getenv("PATH"))...)
+
+	seen := make(map[string]struct{}, len(paths))
+	effective := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		effective = append(effective, path)
+	}
+	return effective
 }
 
 // DBPath returns the absolute path to the SQLite database file used internally

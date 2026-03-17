@@ -137,6 +137,7 @@ Note: during migrations, legacy bridge/proto artifacts may still exist in the re
 
 - Config is loaded from `config.yaml` (default path: `~/.config/clara/config.yaml`).
 - Runtime data (internal DB, control socket, logs, tasks) is stored under `~/.local/share/clara/` by default.
+- Bare MCP server commands are resolved through `mcp_command_search_paths` plus common local binary directories and the ambient `PATH`, so launchd-managed Clara installs can still find tools like `clara`, `uvx`, or binaries installed under `${HOME}/go/bin`.
 - Intent-visible services are configured under `mcp_servers`.
 - Use `os.ExpandEnv` when parsing string values to support `${ENV_VAR}` credential injection.
 - **Never** commit real credentials or API keys. The `config.yaml.example` file shows only placeholder `${VAR}` references.
@@ -144,6 +145,9 @@ Note: during migrations, legacy bridge/proto artifacts may still exist in the re
 Example service entries:
 
 ```yaml
+mcp_command_search_paths:
+  - ${HOME}/go/bin
+
 mcp_servers:
   - name: fs
     command: clara
@@ -161,6 +165,8 @@ mcp_servers:
     command: /usr/local/bin/ClaraBridge
     args: []
 ```
+
+Startup should be best-effort across configured MCP servers: one failing server should be logged and skipped without preventing the others from starting.
 
 ---
 
