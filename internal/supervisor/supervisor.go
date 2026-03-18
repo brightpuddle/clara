@@ -81,6 +81,10 @@ func New(
 		bus:       NewEventBus(),
 	}
 	reg.Subscribe(func(serverName, method string, params any) {
+		// Normalize MCP notification methods that use a "clara/" prefix
+		// (e.g. "clara/reminders_changed" → "reminders_changed") so that
+		// intent triggers of the form "bridge.reminders_changed" match.
+		method = strings.TrimPrefix(method, "clara/")
 		sup.bus.Publish(Event{
 			Server: serverName,
 			Method: method,

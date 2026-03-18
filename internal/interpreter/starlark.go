@@ -120,7 +120,7 @@ func (it *StarlarkInterpreter) Execute(
 	thread := &starlark.Thread{
 		Name: intent.ID,
 		Print: func(_ *starlark.Thread, msg string) {
-			runtime.log.Debug().Msg(msg)
+			runtime.emitStep("print", nil, msg, "")
 		},
 	}
 

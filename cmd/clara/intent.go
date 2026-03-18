@@ -21,10 +21,13 @@ import (
 )
 
 var (
-	intentWatchVerbose bool
-	intentRunVerbose   bool
-	intentResumeInput  string
-	intentTriggerInput string
+	intentWatchVerbose  bool
+	intentWatchFollow   bool
+	intentRunVerbose    bool
+	intentResumeInput   string
+	intentTriggerInput  string
+	intentTriggerFollow bool
+	intentStartFollow   bool
 )
 
 var intentCmd = &cobra.Command{
@@ -72,9 +75,13 @@ var intentStopCmd = &cobra.Command{
 }
 
 var intentWatchCmd = &cobra.Command{
-	Use:          "watch [id]",
-	Short:        "Watch intent execution",
-	Args:         cobra.MaximumNArgs(1),
+	Use:   "watch [id]",
+	Short: "Show current intent run states, or follow live with -f",
+	Args:  cobra.MaximumNArgs(1),
+	Long: `Show a snapshot of current active intent runs and exit.
+
+With -f/--follow the command instead streams live run events continuously
+until interrupted (Ctrl-C).`,
 	RunE:         runIntentWatch,
 	SilenceUsage: true,
 }
@@ -90,10 +97,16 @@ var intentResumeCmd = &cobra.Command{
 func init() {
 	intentWatchCmd.Flags().
 		BoolVarP(&intentWatchVerbose, "verbose", "v", false, "show full tool args/results")
+	intentWatchCmd.Flags().
+		BoolVarP(&intentWatchFollow, "follow", "f", false, "stream live events until interrupted")
 	intentRunCmd.Flags().
 		BoolVarP(&intentRunVerbose, "verbose", "v", false, "show full tool args/results")
 	intentTriggerCmd.Flags().
 		StringVar(&intentTriggerInput, "input", "", "JSON value to deliver to the latest waiting run")
+	intentTriggerCmd.Flags().
+		BoolVarP(&intentTriggerFollow, "follow", "f", false, "follow run output after triggering")
+	intentStartCmd.Flags().
+		BoolVarP(&intentStartFollow, "follow", "f", false, "follow run output after starting")
 	intentResumeCmd.Flags().
 		StringVar(&intentResumeInput, "input", "", "JSON value to satisfy the pending wait")
 	intentCmd.AddCommand(
@@ -112,7 +125,66 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("list request failed: %w", err)
 	}
-	prettyPrint(resp.Data)
+
+	if wantJSON() {
+		prettyPrint(resp.Data)
+		return nil
+	}
+
+	// Human-friendly table: decode list of intent maps.
+	items, _ := resp.Data.([]any)
+	if len(items) == 0 {
+		theme := tui.DetectTheme()
+		fmt.Println(theme.Dimmed("No intents registered."))
+		return nil
+	}
+
+	theme := tui.DetectTheme()
+
+	// Compute column widths for id and mode.
+	maxID, maxMode := 0, 0
+	for _, raw := range items {
+		m, _ := raw.(map[string]any)
+		if id, _ := m["id"].(string); len(id) > maxID {
+			maxID = len(id)
+		}
+		if mode, _ := m["mode"].(string); len(mode) > maxMode {
+			maxMode = len(mode)
+		}
+	}
+
+	for _, raw := range items {
+		m, _ := raw.(map[string]any)
+		id, _ := m["id"].(string)
+		mode, _ := m["mode"].(string)
+		desc, _ := m["description"].(string)
+
+		// Pick the most informative detail for the schedule/trigger column.
+		detail := ""
+		switch {
+		case m["trigger"] != nil && m["trigger"] != "":
+			detail, _ = m["trigger"].(string)
+		case m["schedule"] != nil && m["schedule"] != "":
+			detail, _ = m["schedule"].(string)
+		case m["interval"] != nil && m["interval"] != "" && m["interval"] != "0s":
+			detail, _ = m["interval"].(string)
+		}
+
+		active, _ := m["active"].(bool)
+		activeMarker := theme.Dimmed("·")
+		if active {
+			activeMarker = theme.Green("●")
+		}
+
+		fmt.Printf(
+			"  %s  %-*s  %-*s  %-20s  %s\n",
+			activeMarker,
+			maxID, theme.Cyan(id),
+			maxMode, theme.Dimmed(mode),
+			theme.Dimmed(detail),
+			desc,
+		)
+	}
 	return nil
 }
 
@@ -121,7 +193,8 @@ func runIntentRun(cmd *cobra.Command, args []string) error {
 }
 
 func runIntentTrigger(cmd *cobra.Command, args []string) error {
-	params := map[string]any{"id": args[0]}
+	intentID := args[0]
+	params := map[string]any{"id": intentID}
 	if strings.TrimSpace(intentTriggerInput) != "" {
 		var input any
 		if err := json.Unmarshal([]byte(intentTriggerInput), &input); err != nil {
@@ -137,18 +210,27 @@ func runIntentTrigger(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("run request failed: %w", err)
 	}
 	fmt.Println(resp.Message)
+
+	if intentTriggerFollow {
+		return followIntentEvents(cmd.Context(), intentID, intentWatchVerbose)
+	}
 	return nil
 }
 
 func runIntentStart(cmd *cobra.Command, args []string) error {
+	intentID := args[0]
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodStart,
-		Params: map[string]any{"id": args[0]},
+		Params: map[string]any{"id": intentID},
 	})
 	if err != nil {
 		return fmt.Errorf("start request failed: %w", err)
 	}
 	fmt.Println(resp.Message)
+
+	if intentStartFollow {
+		return followIntentEvents(cmd.Context(), intentID, intentWatchVerbose)
+	}
 	return nil
 }
 
@@ -272,6 +354,11 @@ func runIntentWatch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Without -f, print the snapshot and exit.
+	if !intentWatchFollow {
+		return nil
+	}
+
 	lastEventID, err := db.LatestRunEventID(ctx, intentID)
 	if err != nil {
 		return errors.Wrap(err, "load latest run event id")
@@ -296,6 +383,51 @@ func runIntentWatch(cmd *cobra.Command, args []string) error {
 		}
 	}
 }
+
+// followIntentEvents opens the DB and streams run events for intentID until
+// interrupted. Used by 'intent start -f' and 'intent trigger -f'.
+func followIntentEvents(parent context.Context, intentID string, verbose bool) error {
+	logger := buildLogger()
+	db, err := store.Open(cfg.DBPath(), logger)
+	if err != nil {
+		return errors.Wrap(err, "open database")
+	}
+	defer db.Close()
+
+	ctx, cancel := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	printer := newIntentWatchPrinter(tui.DetectTheme(), verbose, false)
+	if err := printer.printCurrentStates(ctx, db, intentID); err != nil {
+		return err
+	}
+
+	lastEventID, err := db.LatestRunEventID(ctx, intentID)
+	if err != nil {
+		return errors.Wrap(err, "load latest run event id")
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			events, err := db.RunEventsSince(ctx, lastEventID, intentID)
+			if err != nil {
+				return errors.Wrap(err, "load run events")
+			}
+			for _, event := range events {
+				printer.printEvent(event)
+				lastEventID = event.ID
+			}
+		}
+	}
+}
+
+// ── Printer ───────────────────────────────────────────────────────────────────
 
 type intentWatchPrinter struct {
 	theme     tui.Theme
@@ -328,8 +460,8 @@ func (p *intentWatchPrinter) printCurrentStates(
 		if intentID == "" {
 			fmt.Println(p.theme.Dimmed("No active intents. Waiting for events..."))
 		} else {
-			fmt.Printf("%s %s\n", p.theme.Dimmed("Intent:"), p.paintIntentID(intentID))
-			fmt.Println(p.theme.Dimmed("No active runs. Waiting for events..."))
+			fmt.Printf("%s %s\n", p.theme.Dimmed("intent:"), p.paintIntentID(intentID))
+			fmt.Println(p.theme.Dimmed("No active runs."))
 		}
 		p.printRule()
 		return nil
@@ -342,7 +474,7 @@ func (p *intentWatchPrinter) printCurrentStates(
 		return states[i].IntentID < states[j].IntentID
 	})
 
-	fmt.Println(p.theme.Dimmed("Current active runs"))
+	fmt.Println(p.theme.Dimmed("Active runs"))
 	for _, state := range states {
 		p.lastState[state.RunID] = state.State
 		p.printStateSnapshot(state)
@@ -363,6 +495,22 @@ func (p *intentWatchPrinter) printStateSnapshot(state store.RunState) {
 }
 
 func (p *intentWatchPrinter) printEvent(event store.RunEvent) {
+	// Print events (from Starlark print()) get a compact dedicated rendering.
+	if event.Action == "print" {
+		p.printRule()
+		header := []string{p.theme.Dimmed(formatUnixTime(event.CreatedAt))}
+		if p.showID {
+			header = append(header, p.paintIntentID(event.IntentID))
+		}
+		header = append(header, p.theme.Magenta(event.State))
+		fmt.Println(strings.Join(header, "  "))
+		fmt.Printf("  %s %s\n", p.theme.Dimmed("run:"), event.RunID)
+		if msg, ok := event.Result.(string); ok {
+			fmt.Printf("  %s %s\n", p.theme.Dimmed("print:"), msg)
+		}
+		return
+	}
+
 	p.printRule()
 	header := []string{p.theme.Dimmed(formatUnixTime(event.CreatedAt))}
 	if p.showID {

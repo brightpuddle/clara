@@ -24,19 +24,31 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+var serveDaemon bool
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the Clara agent in the foreground",
-	Long: `Start the Clara background agent in the foreground.
+	Short: "Start the Clara agent",
+	Long: `Start the Clara agent.
 
-The agent watches the tasks directory for .star intent files and executes the
-resulting workflows. Use a process manager (launchd, systemd, etc.) to run
-this as a persistent daemon.`,
+Without -d, the agent runs in the foreground of the current terminal — useful
+for development or running under an external process supervisor.
+
+With -d, the agent is started as a background macOS LaunchAgent via launchctl.
+This is equivalent to 'clara agent start'.`,
 	RunE:         runServe,
 	SilenceUsage: true,
 }
 
+func init() {
+	serveCmd.Flags().BoolVarP(&serveDaemon, "daemon", "d", false, "run as a background launchd agent")
+}
+
 func runServe(cmd *cobra.Command, args []string) error {
+	if serveDaemon {
+		return runDaemonize(cmd.Context())
+	}
+
 	if err := os.MkdirAll(cfg.DataDir, 0o750); err != nil {
 		return errors.Wrapf(err, "create data dir %q", cfg.DataDir)
 	}

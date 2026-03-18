@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	cfgFile string
-	cfg     *config.Config
+	cfgFile   string
+	cfg       *config.Config
+	outputFmt string // "json" or "" (auto)
 )
 
 var rootCmd = &cobra.Command{
@@ -27,9 +28,26 @@ var rootCmd = &cobra.Command{
 	Long: `Clara is a local-first agentic orchestrator for macOS.
 
 Run 'clara serve' to start the background agent.
-Run 'clara agent status' to check on a running agent.
+Run 'clara status' to check on a running agent.
 Run 'clara --help' to see all available commands.`,
 	RunE:         runHUD,
+	SilenceUsage: true,
+}
+
+// statusCmd mirrors 'clara agent status' at the top level for quick access.
+var statusCmd = &cobra.Command{
+	Use:          "status",
+	Short:        "Show agent status (alias for 'clara agent status')",
+	RunE:         runAgentStatus,
+	SilenceUsage: true,
+}
+
+// runCmd mirrors 'clara intent run' at the top level for quick access.
+var runCmd = &cobra.Command{
+	Use:          "run <intent-file>",
+	Short:        "Execute an intent file (alias for 'clara intent run')",
+	Args:         cobra.ExactArgs(1),
+	RunE:         runIntentRun,
 	SilenceUsage: true,
 }
 
@@ -37,15 +55,23 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(
 		&cfgFile, "config", "c", "", "path to config file",
 	)
+	rootCmd.PersistentFlags().StringVarP(
+		&outputFmt, "output", "o", "", `output format: "" (auto) or "json"`,
+	)
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		return loadConfig()
 	}
+
+	// Mirror the verbose flag onto the top-level run command.
+	runCmd.Flags().BoolVarP(&intentRunVerbose, "verbose", "v", false, "show full tool args/results")
 
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(intentCmd)
 	rootCmd.AddCommand(toolCmd)
 	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(runCmd)
 }
 
 func main() {
@@ -69,6 +95,15 @@ func runHUD(cmd *cobra.Command, args []string) error {
 	return tui.Run(cfg)
 }
 
+// wantJSON returns true when output should be machine-readable JSON:
+// either the caller passed -o json, or stdout is not a terminal.
+func wantJSON() bool {
+	if outputFmt == "json" {
+		return true
+	}
+	return !isTerminalFile(os.Stdout)
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 // isRunning returns true if the agent control socket is reachable.
@@ -81,7 +116,7 @@ func isRunning(socketPath string) bool {
 	return true
 }
 
-// sendRequest dials the agent control socket and sends a JSON-encoded request.
+// sendRawRequest dials the agent control socket and sends a JSON-encoded request.
 func sendRawRequest(socketPath string, req ipc.Request) (*ipc.Response, error) {
 	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
 	if err != nil {

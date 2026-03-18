@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/ipc"
+	"github.com/brightpuddle/clara/internal/tui"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +42,7 @@ var agentCmd = &cobra.Command{
 
 var agentStartCmd = &cobra.Command{
 	Use:          "start",
-	Short:        "Start the Clara agent",
+	Short:        "Start the Clara agent as a background daemon",
 	RunE:         runAgentStart,
 	SilenceUsage: true,
 }
@@ -61,8 +62,8 @@ var agentStatusCmd = &cobra.Command{
 }
 
 var (
-	agentLogsWatch bool
-	agentLogsCmd   = &cobra.Command{
+	agentLogsFollow bool
+	agentLogsCmd    = &cobra.Command{
 		Use:          "logs",
 		Short:        "Show recent daemon logs",
 		RunE:         runAgentLogs,
@@ -71,11 +72,13 @@ var (
 )
 
 func init() {
-	agentLogsCmd.Flags().BoolVarP(&agentLogsWatch, "watch", "w", false, "follow log output")
+	agentLogsCmd.Flags().BoolVarP(&agentLogsFollow, "follow", "f", false, "follow log output")
 	agentCmd.AddCommand(agentStartCmd, agentStopCmd, agentStatusCmd, agentLogsCmd)
 }
 
-func runAgentStart(cmd *cobra.Command, args []string) error {
+// runDaemonize starts the Clara agent via launchctl. It is shared between
+// 'clara agent start' and 'clara serve -d'.
+func runDaemonize(ctx context.Context) error {
 	if isRunning(cfg.ControlSocketPath()) {
 		fmt.Println("Clara agent is already running.")
 		return nil
@@ -95,7 +98,7 @@ func runAgentStart(cmd *cobra.Command, args []string) error {
 		return errors.Wrapf(err, "stat launch agent plist %q", plistPath)
 	}
 
-	ctx, cancel := context.WithTimeout(cmd.Context(), agentLifecycleTimeout)
+	ctx, cancel := context.WithTimeout(ctx, agentLifecycleTimeout)
 	defer cancel()
 
 	loaded, err := launchAgentLoaded(ctx)
@@ -117,6 +120,10 @@ func runAgentStart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("Clara agent started.")
 	return nil
+}
+
+func runAgentStart(cmd *cobra.Command, args []string) error {
+	return runDaemonize(cmd.Context())
 }
 
 func runAgentStop(cmd *cobra.Command, args []string) error {
@@ -157,20 +164,52 @@ func runAgentStop(cmd *cobra.Command, args []string) error {
 }
 
 func runAgentStatus(cmd *cobra.Command, args []string) error {
+	theme := tui.DetectTheme()
+
 	if !isRunning(cfg.ControlSocketPath()) {
-		fmt.Println("Clara agent is not running.")
+		if wantJSON() {
+			prettyPrint(map[string]any{"running": false})
+		} else {
+			fmt.Println(theme.Dimmed("status:"), "not running")
+		}
 		return nil
 	}
+
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{Method: ipc.MethodStatus})
 	if err != nil {
 		return fmt.Errorf("status request failed: %w", err)
 	}
-	prettyPrint(resp.Data)
+
+	if wantJSON() {
+		prettyPrint(resp.Data)
+		return nil
+	}
+
+	// Human-friendly table output.
+	fields, _ := resp.Data.(map[string]any)
+	fmt.Printf("  %s %s\n", theme.Dimmed("status:        "), theme.Green("running"))
+	if v, ok := fields["servers"]; ok {
+		fmt.Printf("  %s %v\n", theme.Dimmed("servers:       "), v)
+	}
+	if intents, ok := fields["intents"]; ok {
+		active := fields["active_intents"]
+		fmt.Printf("  %s %v  %s\n",
+			theme.Dimmed("intents:       "),
+			intents,
+			theme.Dimmed(fmt.Sprintf("(%v active)", active)),
+		)
+	}
+	if v, ok := fields["tools"]; ok {
+		fmt.Printf("  %s %v\n", theme.Dimmed("tools:         "), v)
+	}
+	if v, ok := fields["dynamic_mcp"]; ok {
+		fmt.Printf("  %s %v\n", theme.Dimmed("dynamic mcp:   "), v)
+	}
 	return nil
 }
 
 func runAgentLogs(cmd *cobra.Command, args []string) error {
-	if agentLogsWatch {
+	if agentLogsFollow {
 		return followAgentLog(cmd.Context(), cfg.LogPath(), watchLogTailLines)
 	}
 	return printAgentLogTail(cfg.LogPath(), defaultLogTailLines)
