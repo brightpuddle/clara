@@ -81,6 +81,7 @@ func runOneOff(parent context.Context, taskFile string, verbose bool) error {
 		intent.ID,
 		initialState,
 		intent.WorkflowKind(),
+		"",
 		intent.Script,
 		nil,
 	); err != nil {
@@ -106,7 +107,7 @@ func runOneOff(parent context.Context, taskFile string, verbose bool) error {
 
 	runErrCh := make(chan error, 1)
 	go func() {
-		err := executeIntentRun(ctx, intent, runID, reg, db, logger)
+		err := executeIntentRun(ctx, intent, runID, "", nil, reg, db, logger)
 		status := "completed"
 		errorText := ""
 		var pauseErr *interpreter.PauseError

@@ -15,12 +15,14 @@ func executeIntentRun(
 	ctx context.Context,
 	intent *orchestrator.Intent,
 	runID string,
+	entrypoint string,
+	args any,
 	reg *registry.Registry,
 	db *store.Store,
 	log zerolog.Logger,
 ) error {
 	if intent.WorkflowKind() == orchestrator.WorkflowTypeStarlark {
-		return executeStarlarkRun(ctx, intent, runID, reg, db, log)
+		return executeStarlarkRun(ctx, intent, runID, entrypoint, args, reg, db, log)
 	}
 	return executeStateMachineRun(ctx, intent, runID, reg, db, log)
 }
@@ -49,6 +51,8 @@ func executeStarlarkRun(
 	ctx context.Context,
 	intent *orchestrator.Intent,
 	runID string,
+	entrypoint string,
+	args any,
 	reg *registry.Registry,
 	db *store.Store,
 	log zerolog.Logger,
@@ -71,31 +75,39 @@ func executeStarlarkRun(
 				converted := make([]interpreter.ReplayEntry, 0, len(entries))
 				for _, entry := range entries {
 					converted = append(converted, interpreter.ReplayEntry{
-						Sequence: entry.Sequence,
-						Kind:     entry.Kind,
-						Name:     entry.Name,
-						Args:     entry.Args,
-						Result:   entry.Result,
-						Error:    entry.Error,
+						Sequence:   entry.Sequence,
+						RunID:      entry.RunID,
+						IntentID:   entry.IntentID,
+						Entrypoint: entry.Entrypoint,
+						Kind:       entry.Kind,
+						Name:       entry.Name,
+						Args:       entry.Args,
+						Result:     entry.Result,
+						Error:      entry.Error,
 					})
 				}
 				return converted, nil
 			},
 			func(ctx context.Context, runID, intentID string, entry interpreter.ReplayEntry) error {
 				return db.AppendReplayHistory(ctx, store.ReplayHistoryEntry{
-					Sequence: entry.Sequence,
-					RunID:    runID,
-					IntentID: intentID,
-					Kind:     entry.Kind,
-					Name:     entry.Name,
-					Args:     entry.Args,
+					Sequence:   entry.Sequence,
+					RunID:      runID,
+					IntentID:   intentID,
+					Entrypoint: entry.Entrypoint,
+					Kind:       entry.Kind,
+					Name:       entry.Name,
+					Args:       entry.Args,
 					Result:   entry.Result,
 					Error:    entry.Error,
 				})
 			},
 		)
 
-	err := it.Execute(ctx, intent, "", interpreter.RunOptions{RunID: runID})
+	err := it.Execute(ctx, intent, "", interpreter.RunOptions{
+		RunID:       runID,
+		Entrypoint:  entrypoint,
+		HandlerArgs: args,
+	})
 	var pauseErr *interpreter.PauseError
 	if errors.As(err, &pauseErr) {
 		if markErr := db.MarkRunWaiting(context.WithoutCancel(ctx), runID, pauseErr.Request.Name, pauseErr.Request.Args); markErr != nil {
@@ -182,13 +194,14 @@ func appendWaitInput(
 		return errors.Wrap(err, "load replay history")
 	}
 	if err := db.AppendReplayHistory(ctx, store.ReplayHistoryEntry{
-		RunID:    runState.RunID,
-		IntentID: runState.IntentID,
-		Sequence: len(history),
-		Kind:     "wait",
-		Name:     runState.WaitName,
-		Args:     runState.WaitArgs,
-		Result:   input,
+		RunID:      runState.RunID,
+		IntentID:   runState.IntentID,
+		Entrypoint: runState.Entrypoint,
+		Sequence:   len(history),
+		Kind:       "wait",
+		Name:       runState.WaitName,
+		Args:       runState.WaitArgs,
+		Result:     input,
 	}); err != nil {
 		return errors.Wrap(err, "append wait result")
 	}
@@ -216,13 +229,14 @@ func resumeStoredStarlarkRun(
 		runState.IntentID,
 		"SCRIPT",
 		orchestrator.WorkflowTypeStarlark,
+		runState.Entrypoint,
 		runState.ScriptSource,
 		nil,
 	); err != nil {
 		return errors.Wrap(err, "reinitialize run")
 	}
 
-	err := executeIntentRun(ctx, intent, runState.RunID, reg, db, log)
+	err := executeIntentRun(ctx, intent, runState.RunID, runState.Entrypoint, nil, reg, db, log)
 	var pauseErr *interpreter.PauseError
 	switch {
 	case ctx.Err() != nil:

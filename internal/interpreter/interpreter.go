@@ -80,6 +80,10 @@ func (it *Interpreter) WithOnStep(fn StepFunc) *Interpreter {
 type RunOptions struct {
 	// RunID is a unique identifier for this execution (used for state persistence).
 	RunID string
+	// Entrypoint is the name of the function to call in Starlark.
+	Entrypoint string
+	// HandlerArgs is the data passed to the entrypoint function.
+	HandlerArgs any
 	// InitialMem optionally pre-seeds the mem map (e.g. for resuming a run).
 	InitialMem map[string]any
 }

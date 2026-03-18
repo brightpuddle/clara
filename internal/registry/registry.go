@@ -32,6 +32,8 @@ type ToolInfo struct {
 	Examples    []string
 }
 
+type NotificationHandler func(serverName, method string, params any)
+
 // ServerCapabilities holds the full capability set discovered from an MCP server.
 type ServerCapabilities struct {
 	// Name is the registry alias for this server.
@@ -48,16 +50,17 @@ type ServerCapabilities struct {
 
 // Registry holds the set of available Tools and MCP server managers.
 type Registry struct {
-	mu           sync.RWMutex
-	tools        map[string]Tool
-	descriptions map[string]string
-	specs        map[string]mcp.Tool
-	examples     map[string][]string
-	servers      []*MCPServer
-	serverNames  map[string]struct{}
-	dynamic      map[string]dynamicServer
-	capabilities map[string]*ServerCapabilities
-	log          zerolog.Logger
+	mu            sync.RWMutex
+	tools         map[string]Tool
+	descriptions  map[string]string
+	specs         map[string]mcp.Tool
+	examples      map[string][]string
+	servers       []*MCPServer
+	serverNames   map[string]struct{}
+	dynamic       map[string]dynamicServer
+	capabilities  map[string]*ServerCapabilities
+	notifications []NotificationHandler
+	log           zerolog.Logger
 }
 
 type dynamicServer struct {
@@ -75,6 +78,24 @@ func New(log zerolog.Logger) *Registry {
 		dynamic:      make(map[string]dynamicServer),
 		capabilities: make(map[string]*ServerCapabilities),
 		log:          log,
+	}
+}
+
+// Subscribe registers a callback for MCP notifications.
+func (r *Registry) Subscribe(handler NotificationHandler) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.notifications = append(r.notifications, handler)
+}
+
+// EmitNotification triggers notification handlers manually.
+// Primarily used for testing or built-in event sources.
+func (r *Registry) EmitNotification(serverName, method string, params any) {
+	r.mu.RLock()
+	handlers := append([]NotificationHandler(nil), r.notifications...)
+	r.mu.RUnlock()
+	for _, handler := range handlers {
+		handler(serverName, method, params)
 	}
 }
 
@@ -359,6 +380,16 @@ func (r *Registry) RegisterConnectedClient(
 	if closeFn != nil {
 		r.dynamic[serverName] = dynamicServer{close: closeFn}
 	}
+
+	mcpClient.OnNotification(func(notification mcp.JSONRPCNotification) {
+		r.mu.RLock()
+		handlers := append([]NotificationHandler(nil), r.notifications...)
+		r.mu.RUnlock()
+		for _, handler := range handlers {
+			handler(serverName, notification.Method, notification.Params)
+		}
+	})
+
 	if err := r.registerMCPToolsLocked(serverName, mcpClient, caps.Tools); err != nil {
 		if closeFn != nil {
 			delete(r.dynamic, serverName)

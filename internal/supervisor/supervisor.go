@@ -28,6 +28,7 @@ type Supervisor struct {
 	runIntent  IntentRunner
 	log        zerolog.Logger
 	onFinished RunFinishedFunc
+	bus        *EventBus
 
 	mu      sync.RWMutex
 	rootCtx context.Context
@@ -39,6 +40,8 @@ type IntentRunner func(
 	ctx context.Context,
 	intent *orchestrator.Intent,
 	runID string,
+	entrypoint string,
+	args any,
 ) error
 
 type IntentInfo struct {
@@ -49,15 +52,17 @@ type IntentInfo struct {
 	Interval    string
 	Trigger     string
 	Active      bool
+	Tasks       []orchestrator.Task
 }
 
 type managedIntent struct {
-	intent  *orchestrator.Intent
-	path    string
-	cancel  context.CancelFunc
-	active  bool
-	started time.Time
-	runSeq  int64
+	intent      *orchestrator.Intent
+	path        string
+	cancels     []context.CancelFunc
+	active      bool
+	activeTasks int
+	started     time.Time
+	runSeq      int64
 }
 
 // New creates a Supervisor.
@@ -67,13 +72,22 @@ func New(
 	runner IntentRunner,
 	log zerolog.Logger,
 ) *Supervisor {
-	return &Supervisor{
+	sup := &Supervisor{
 		tasksDir:  tasksDir,
 		reg:       reg,
 		runIntent: runner,
 		log:       log.With().Str("component", "supervisor").Logger(),
 		intents:   make(map[string]*managedIntent),
+		bus:       NewEventBus(),
 	}
+	reg.Subscribe(func(serverName, method string, params any) {
+		sup.bus.Publish(Event{
+			Server: serverName,
+			Method: method,
+			Params: params,
+		})
+	})
+	return sup
 }
 
 func (s *Supervisor) WithOnRunFinished(fn RunFinishedFunc) *Supervisor {
@@ -275,8 +289,8 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 
 	if existing, ok := s.intents[intent.ID]; ok {
 		s.log.Info().Str("intent_id", intent.ID).Msg("stopping previous intent instance")
-		if existing.cancel != nil {
-			existing.cancel()
+		for _, cancel := range existing.cancels {
+			cancel()
 		}
 	}
 
@@ -291,14 +305,15 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 }
 
 func shouldAutoStart(intent *orchestrator.Intent) bool {
-	switch intent.RuntimeMode() {
-	case orchestrator.IntentModeSchedule,
-		orchestrator.IntentModeWorker,
-		orchestrator.IntentModeEvent:
-		return true
-	default:
-		return false
+	for _, task := range intent.EffectiveTasks() {
+		switch task.Mode {
+		case orchestrator.IntentModeSchedule,
+			orchestrator.IntentModeWorker,
+			orchestrator.IntentModeEvent:
+			return true
+		}
 	}
+	return false
 }
 
 func (s *Supervisor) StartIntent(id string) error {
@@ -318,31 +333,42 @@ func (s *Supervisor) startIntentLocked(id string) error {
 	if s.rootCtx == nil {
 		return errors.New("supervisor is not running")
 	}
-	if managed.intent.RuntimeMode() == orchestrator.IntentModeOnDemand {
-		return errors.New("on_demand intents use 'clara intent trigger', not 'start'")
-	}
 
-	runCtx, cancel := context.WithCancel(s.rootCtx)
 	managed.runSeq++
 	runSeq := managed.runSeq
-	managed.cancel = cancel
-	managed.active = true
 	managed.started = time.Now()
+	managed.activeTasks = 0
+	managed.cancels = nil
 
-	switch managed.intent.RuntimeMode() {
-	case orchestrator.IntentModeSchedule:
-		go s.runScheduledIntent(runCtx, managed.intent, runSeq)
-	case orchestrator.IntentModeWorker:
-		go s.runWorkerIntent(runCtx, managed.intent, runSeq)
-	case orchestrator.IntentModeEvent:
-		go s.runEventIntent(runCtx, managed.intent, runSeq)
-	default:
-		cancel()
-		managed.cancel = nil
-		managed.active = false
-		return errors.Newf("unsupported runtime mode %q", managed.intent.RuntimeMode())
+	for _, task := range managed.intent.EffectiveTasks() {
+		if task.Mode == orchestrator.IntentModeOnDemand {
+			continue
+		}
+		runCtx, cancel := context.WithCancel(s.rootCtx)
+		managed.cancels = append(managed.cancels, cancel)
+		managed.activeTasks++
+		s.runTask(runCtx, managed.intent, task, runSeq)
 	}
+	managed.active = managed.activeTasks > 0
 	return nil
+}
+
+func (s *Supervisor) runTask(
+	ctx context.Context,
+	intent *orchestrator.Intent,
+	task orchestrator.Task,
+	runSeq int64,
+) {
+	switch task.Mode {
+	case orchestrator.IntentModeSchedule:
+		go s.runScheduledTask(ctx, intent, task, runSeq)
+	case orchestrator.IntentModeWorker:
+		go s.runWorkerTask(ctx, intent, task, runSeq)
+	case orchestrator.IntentModeEvent:
+		go s.runEventTask(ctx, intent, task, runSeq)
+	default:
+		s.log.Error().Str("intent_id", intent.ID).Str("mode", task.Mode).Msg("unsupported task mode")
+	}
 }
 
 func (s *Supervisor) StopIntent(id string) error {
@@ -353,10 +379,11 @@ func (s *Supervisor) StopIntent(id string) error {
 	if !ok {
 		return errors.Newf("intent %q not found", id)
 	}
-	if managed.cancel != nil {
-		managed.cancel()
+	for _, cancel := range managed.cancels {
+		cancel()
 	}
-	managed.cancel = nil
+	managed.cancels = nil
+	managed.activeTasks = 0
 	managed.active = false
 	return nil
 }
@@ -386,20 +413,22 @@ func (s *Supervisor) IntentInfos() []IntentInfo {
 			Interval:    managed.intent.Interval,
 			Trigger:     managed.intent.Trigger,
 			Active:      managed.active,
+			Tasks:       managed.intent.EffectiveTasks(),
 		})
 	}
 	return infos
 }
 
-func (s *Supervisor) runScheduledIntent(
+func (s *Supervisor) runScheduledTask(
 	ctx context.Context,
 	intent *orchestrator.Intent,
+	task orchestrator.Task,
 	runSeq int64,
 ) {
 	defer s.markIntentInactive(intent.ID, runSeq)
 
 	for {
-		next, err := nextCronTime(intent.Schedule, time.Now())
+		next, err := nextCronTime(task.Schedule, time.Now())
 		if err != nil {
 			s.log.Error().Err(err).Str("intent_id", intent.ID).Msg("invalid intent schedule")
 			return
@@ -412,26 +441,27 @@ func (s *Supervisor) runScheduledIntent(
 		case <-timer.C:
 		}
 
-		if err := s.executeManagedRun(ctx, intent); shouldHaltAutoMode(err) {
+		if err := s.executeManagedRun(ctx, intent, task.Handler, nil); shouldHaltAutoMode(err) {
 			return
 		}
 	}
 }
 
-func (s *Supervisor) runWorkerIntent(
+func (s *Supervisor) runWorkerTask(
 	ctx context.Context,
 	intent *orchestrator.Intent,
+	task orchestrator.Task,
 	runSeq int64,
 ) {
 	defer s.markIntentInactive(intent.ID, runSeq)
 
-	interval, err := time.ParseDuration(intent.Interval)
+	interval, err := time.ParseDuration(task.Interval)
 	if err != nil {
 		s.log.Error().Err(err).Str("intent_id", intent.ID).Msg("invalid worker interval")
 		return
 	}
 	for {
-		if err := s.executeManagedRun(ctx, intent); shouldHaltAutoMode(err) {
+		if err := s.executeManagedRun(ctx, intent, task.Handler, nil); shouldHaltAutoMode(err) {
 			return
 		}
 
@@ -445,13 +475,47 @@ func (s *Supervisor) runWorkerIntent(
 	}
 }
 
-func (s *Supervisor) runEventIntent(
+func (s *Supervisor) runEventTask(
 	ctx context.Context,
 	intent *orchestrator.Intent,
+	task orchestrator.Task,
 	runSeq int64,
 ) {
 	defer s.markIntentInactive(intent.ID, runSeq)
-	_ = s.executeManagedRun(ctx, intent)
+
+	if task.Trigger == "" {
+		_ = s.executeManagedRun(ctx, intent, task.Handler, nil)
+		return
+	}
+
+	ch, unsubscribe := s.bus.Subscribe()
+	defer unsubscribe()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			// Check if event matches trigger.
+			// Format: "server.method"
+			fqMethod := event.Server + "." + event.Method
+			if fqMethod != task.Trigger {
+				continue
+			}
+
+			// Triggered!
+			s.log.Info().
+				Str("intent_id", intent.ID).
+				Str("handler", task.Handler).
+				Str("trigger", task.Trigger).
+				Msg("event trigger matched, starting handler")
+
+			_ = s.executeManagedRun(ctx, intent, task.Handler, event.Params)
+		}
+	}
 }
 
 func shouldHaltAutoMode(err error) bool {
@@ -462,9 +526,14 @@ func shouldHaltAutoMode(err error) bool {
 	return errors.As(err, &pauseErr)
 }
 
-func (s *Supervisor) executeManagedRun(ctx context.Context, intent *orchestrator.Intent) error {
+func (s *Supervisor) executeManagedRun(
+	ctx context.Context,
+	intent *orchestrator.Intent,
+	entrypoint string,
+	args any,
+) error {
 	runID := fmt.Sprintf("%s-%d", intent.ID, time.Now().UnixNano())
-	err := s.runIntent(ctx, intent, runID)
+	err := s.runIntent(ctx, intent, runID, entrypoint, args)
 	if s.onFinished != nil {
 		status := "completed"
 		errorText := ""
@@ -497,8 +566,13 @@ func (s *Supervisor) markIntentInactive(id string, runSeq int64) {
 	if managed.runSeq != runSeq {
 		return
 	}
-	managed.active = false
-	managed.cancel = nil
+	if managed.activeTasks > 0 {
+		managed.activeTasks--
+	}
+	if managed.activeTasks == 0 {
+		managed.active = false
+		managed.cancels = nil
+	}
 }
 
 func (s *Supervisor) removeIntentsUnderPath(path string) {
@@ -511,9 +585,10 @@ func (s *Supervisor) removeIntentsUnderPath(path string) {
 		if managed.path != cleanPath && !strings.HasPrefix(managed.path, prefix) {
 			continue
 		}
-		if managed.cancel != nil {
-			managed.cancel()
+		for _, cancel := range managed.cancels {
+			cancel()
 		}
+		managed.activeTasks = 0
 		delete(s.intents, id)
 		s.log.Info().Str("intent_id", id).Str("path", managed.path).Msg("intent removed")
 	}
@@ -525,10 +600,11 @@ func (s *Supervisor) shutdown() {
 
 	for id, managed := range s.intents {
 		s.log.Info().Str("intent_id", id).Msg("stopping intent on shutdown")
-		if managed.cancel != nil {
-			managed.cancel()
+		for _, cancel := range managed.cancels {
+			cancel()
 		}
-		managed.cancel = nil
+		managed.cancels = nil
+		managed.activeTasks = 0
 		managed.active = false
 	}
 }

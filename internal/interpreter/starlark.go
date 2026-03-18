@@ -17,12 +17,15 @@ import (
 const starlarkScriptState = "SCRIPT"
 
 type ReplayEntry struct {
-	Sequence int
-	Kind     string
-	Name     string
-	Args     any
-	Result   any
-	Error    string
+	Sequence   int
+	RunID      string
+	IntentID   string
+	Entrypoint string
+	Kind       string
+	Name       string
+	Args       any
+	Result     any
+	Error      string
 }
 
 type HistoryLoadFunc func(ctx context.Context, runID string) ([]ReplayEntry, error)
@@ -105,6 +108,7 @@ func (it *StarlarkInterpreter) Execute(
 		ctx:           ctx,
 		runID:         opts.RunID,
 		intentID:      intent.ID,
+		entrypoint:    opts.Entrypoint,
 		reg:           it.reg,
 		wait:          it.wait,
 		onStep:        it.onStep,
@@ -122,6 +126,7 @@ func (it *StarlarkInterpreter) Execute(
 
 	predeclared := starlark.StringDict{
 		"init": starlark.NewBuiltin("init", runtime.initBuiltin),
+		"task": starlark.NewBuiltin("task", runtime.taskBuiltin),
 		"tool": starlark.NewBuiltin("tool", runtime.toolBuiltin),
 		"wait": starlark.NewBuiltin("wait", runtime.waitBuiltin),
 	}
@@ -144,14 +149,34 @@ func (it *StarlarkInterpreter) Execute(
 	}
 
 	mainValue, ok := globals["main"]
+	if opts.Entrypoint != "" {
+		mainValue, ok = globals[opts.Entrypoint]
+	}
+
 	if !ok {
+		if opts.Entrypoint != "" {
+			return errors.Newf("starlark workflow entrypoint %q not found", opts.Entrypoint)
+		}
 		return errors.New("starlark workflow must define main()")
 	}
 	mainFn, ok := mainValue.(starlark.Callable)
 	if !ok {
+		if opts.Entrypoint != "" {
+			return errors.Newf("starlark workflow entrypoint %q must be callable", opts.Entrypoint)
+		}
 		return errors.New("starlark workflow main must be callable")
 	}
-	mainResult, err := starlark.Call(thread, mainFn, nil, nil)
+
+	var args starlark.Tuple
+	if opts.HandlerArgs != nil {
+		dict, err := goToStarlark(opts.HandlerArgs)
+		if err != nil {
+			return errors.Wrap(err, "prepare handler arguments")
+		}
+		args = starlark.Tuple{dict}
+	}
+
+	mainResult, err := starlark.Call(thread, mainFn, args, nil)
 	if err != nil {
 		var pauseErr *PauseError
 		if errors.As(err, &pauseErr) {
@@ -189,6 +214,7 @@ type starlarkRuntime struct {
 	ctx           context.Context
 	runID         string
 	intentID      string
+	entrypoint    string
 	reg           *registry.Registry
 	wait          WaitFunc
 	onStep        StepFunc
@@ -201,36 +227,18 @@ type starlarkRuntime struct {
 func (rt *starlarkRuntime) initBuiltin(
 	_ *starlark.Thread,
 	_ *starlark.Builtin,
-	args starlark.Tuple,
-	kwargs []starlark.Tuple,
+	_ starlark.Tuple,
+	_ []starlark.Tuple,
 ) (starlark.Value, error) {
-	var (
-		id          string
-		description string
-		mode        string
-		interval    string
-		schedule    string
-		trigger     string
-	)
-	if err := starlark.UnpackArgs(
-		"init",
-		args,
-		kwargs,
-		"id",
-		&id,
-		"description?",
-		&description,
-		"mode?",
-		&mode,
-		"interval?",
-		&interval,
-		"schedule?",
-		&schedule,
-		"trigger?",
-		&trigger,
-	); err != nil {
-		return nil, errors.Wrap(err, "parse init arguments")
-	}
+	return starlark.None, nil
+}
+
+func (rt *starlarkRuntime) taskBuiltin(
+	_ *starlark.Thread,
+	_ *starlark.Builtin,
+	_ starlark.Tuple,
+	_ []starlark.Tuple,
+) (starlark.Value, error) {
 	return starlark.None, nil
 }
 
@@ -351,11 +359,14 @@ func (rt *starlarkRuntime) recordFresh(
 	callErr error,
 ) error {
 	entry := ReplayEntry{
-		Sequence: rt.cursor,
-		Kind:     kind,
-		Name:     name,
-		Args:     cloneMap(args),
-		Result:   result,
+		Sequence:   rt.cursor,
+		RunID:      rt.runID,
+		IntentID:   rt.intentID,
+		Entrypoint: rt.entrypoint,
+		Kind:       kind,
+		Name:       name,
+		Args:       cloneMap(args),
+		Result:     result,
 	}
 	if callErr != nil {
 		entry.Error = callErr.Error()

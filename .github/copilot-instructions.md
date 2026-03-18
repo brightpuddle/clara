@@ -209,7 +209,7 @@ Clara's authored intent format is `.star`.
 Every intent file must:
 
 - call `init(...)` exactly once at top level
-- define a callable `main()`
+- define a callable `main()` unless the file only declares managed `tasks=[...]`
 
 Current supported `init(...)` fields:
 
@@ -219,6 +219,25 @@ Current supported `init(...)` fields:
 - `interval` (required for `worker`)
 - `schedule` (required for `schedule`)
 - `trigger` (optional metadata for `event`)
+- `tasks` (optional list of `task(...)` declarations)
+
+`task(...)` supports:
+
+- `handler` (required callable)
+- `mode` (`on_demand`, `schedule`, `worker`, `event`)
+- `interval`
+- `schedule`
+- `trigger`
+
+Mode inference for `task(...)` follows the provided fields:
+
+- `trigger` => `event`
+- `schedule` => `schedule`
+- `interval` => `worker`
+- otherwise `on_demand`
+
+Legacy top-level `mode` / `interval` / `schedule` / `trigger` metadata still maps
+to a default task that invokes `main()`.
 
 Runtime builtins available to Starlark:
 

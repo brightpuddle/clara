@@ -89,6 +89,8 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		runCtx context.Context,
 		intent *orchestrator.Intent,
 		runID string,
+		entrypoint string,
+		args any,
 	) error {
 		if err := db.InitRun(
 			context.WithoutCancel(runCtx),
@@ -96,12 +98,13 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			intent.ID,
 			initialRunState(intent),
 			intent.WorkflowKind(),
+			entrypoint,
 			intent.Script,
 			nil,
 		); err != nil {
 			return errors.Wrap(err, "initialize intent run")
 		}
-		return executeIntentRun(runCtx, intent, runID, reg, db, logger)
+		return executeIntentRun(runCtx, intent, runID, entrypoint, args, reg, db, logger)
 	}, logger).
 		WithOnRunFinished(func(ctx context.Context, runID, intentID, status, errorText string) {
 			if status == "waiting" {
@@ -368,13 +371,14 @@ func runIntentInBackground(
 		intent.ID,
 		initialRunState(intent),
 		intent.WorkflowKind(),
+		"",
 		intent.Script,
 		nil,
 	); err != nil {
 		log.Warn().Err(err).Str("run_id", runID).Msg("failed to initialize manual run")
 		return
 	}
-	err := executeIntentRun(ctx, intent, runID, reg, db, log)
+	err := executeIntentRun(ctx, intent, runID, "", nil, reg, db, log)
 	if err != nil {
 		var pauseErr *interpreter.PauseError
 		if errors.As(err, &pauseErr) {

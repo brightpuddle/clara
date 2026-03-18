@@ -307,6 +307,51 @@ func TestCompileStarlarkIntent_RequiresInitAndMain(t *testing.T) {
 	}
 }
 
+func TestCompileStarlarkIntent_Tasks(t *testing.T) {
+	intent, err := orchestrator.CompileStarlarkIntent("/tmp/tasks.star", `
+def on_event(event):
+    return event
+
+def on_timer():
+    return None
+
+init(
+    id = "tasks-test",
+    tasks = [
+        task(handler = on_event, trigger = "bridge.reminders_changed"),
+        task(handler = on_timer, schedule = "0 7 * * *"),
+    ],
+)
+`)
+	if err != nil {
+		t.Fatalf("CompileStarlarkIntent failed: %v", err)
+	}
+	if len(intent.Tasks) != 2 {
+		t.Fatalf("expected 2 tasks, got %d", len(intent.Tasks))
+	}
+	if intent.Tasks[0].Handler != "on_event" || intent.Tasks[0].Trigger != "bridge.reminders_changed" {
+		t.Fatalf("unexpected first task: %+v", intent.Tasks[0])
+	}
+	if intent.Tasks[1].Handler != "on_timer" || intent.Tasks[1].Schedule != "0 7 * * *" {
+		t.Fatalf("unexpected second task: %+v", intent.Tasks[1])
+	}
+}
+
+func TestCompileStarlarkIntent_RejectsOnDemandTasksWithoutMain(t *testing.T) {
+	_, err := orchestrator.CompileStarlarkIntent("/tmp/tasks.star", `
+def background():
+    return None
+
+init(
+    id = "bad-tasks",
+    tasks = [task(handler = background)],
+)
+`)
+	if err == nil {
+		t.Fatal("expected on_demand task without main to be rejected")
+	}
+}
+
 func TestLoadIntentFile_OnlySupportsStar(t *testing.T) {
 	_, err := orchestrator.LoadIntentFile(
 		filepath.Join("/tmp", "intent.yaml"),

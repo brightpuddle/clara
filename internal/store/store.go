@@ -50,6 +50,7 @@ type RunState struct {
 	Status       string
 	Error        string
 	WorkflowType string
+	Entrypoint   string
 	ScriptSource string
 	WaitName     string
 	WaitArgs     any
@@ -71,15 +72,16 @@ type RunEvent struct {
 }
 
 type ReplayHistoryEntry struct {
-	Sequence  int
-	RunID     string
-	IntentID  string
-	Kind      string
-	Name      string
-	Args      any
-	Result    any
-	Error     string
-	CreatedAt int64
+	Sequence   int
+	RunID      string
+	IntentID   string
+	Entrypoint string
+	Kind       string
+	Name       string
+	Args       any
+	Result     any
+	Error      string
+	CreatedAt  int64
 }
 
 // Open opens or creates the SQLite database at dbPath.
@@ -126,6 +128,7 @@ func (s *Store) migrate() error {
 			status     TEXT    NOT NULL DEFAULT 'running',
 			error      TEXT    NOT NULL DEFAULT '',
 			workflow_type TEXT NOT NULL DEFAULT 'state_machine',
+			entrypoint TEXT NOT NULL DEFAULT '',
 			script_source TEXT NOT NULL DEFAULT '',
 			wait_name TEXT NOT NULL DEFAULT '',
 			wait_args_json TEXT NOT NULL DEFAULT 'null',
@@ -160,6 +163,7 @@ func (s *Store) migrate() error {
 			run_id      TEXT    NOT NULL,
 			sequence    INTEGER NOT NULL,
 			intent_id   TEXT    NOT NULL,
+			entrypoint  TEXT    NOT NULL DEFAULT '',
 			kind        TEXT    NOT NULL,
 			name        TEXT    NOT NULL,
 			args_json   TEXT    NOT NULL DEFAULT 'null',
@@ -195,10 +199,12 @@ func (s *Store) ensureIntentRunsColumns() error {
 		`ALTER TABLE intent_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running'`,
 		`ALTER TABLE intent_runs ADD COLUMN error TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE intent_runs ADD COLUMN workflow_type TEXT NOT NULL DEFAULT 'state_machine'`,
+		`ALTER TABLE intent_runs ADD COLUMN entrypoint TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE intent_runs ADD COLUMN script_source TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE intent_runs ADD COLUMN wait_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE intent_runs ADD COLUMN wait_args_json TEXT NOT NULL DEFAULT 'null'`,
 		`ALTER TABLE intent_runs ADD COLUMN finished_at INTEGER`,
+		`ALTER TABLE intent_replay_history ADD COLUMN entrypoint TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil && !isDuplicateColumnError(err) {
 			return errors.Wrap(err, "ensure intent_runs columns")
@@ -330,10 +336,10 @@ func (s *Store) SaveRunState(
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO intent_runs (
-			id, intent_id, state, mem_json, status, error, workflow_type, script_source,
+			id, intent_id, state, mem_json, status, error, workflow_type, entrypoint, script_source,
 			wait_name, wait_args_json, updated_at, finished_at
 		)
-		VALUES (?, ?, ?, ?, 'running', '', 'state_machine', '', '', 'null', unixepoch(), NULL)
+		VALUES (?, ?, ?, ?, 'running', '', 'state_machine', '', '', '', 'null', unixepoch(), NULL)
 		ON CONFLICT(id) DO UPDATE SET
 			state      = excluded.state,
 			mem_json   = excluded.mem_json,
@@ -350,7 +356,7 @@ func (s *Store) SaveRunState(
 
 func (s *Store) InitRun(
 	ctx context.Context,
-	runID, intentID, state, workflowType, scriptSource string,
+	runID, intentID, state, workflowType, entrypoint, scriptSource string,
 	mem map[string]any,
 ) error {
 	memJSON, err := json.Marshal(memOrEmpty(mem))
@@ -362,10 +368,10 @@ func (s *Store) InitRun(
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO intent_runs (
-			id, intent_id, state, mem_json, status, error, workflow_type, script_source,
+			id, intent_id, state, mem_json, status, error, workflow_type, entrypoint, script_source,
 			wait_name, wait_args_json, updated_at, finished_at
 		)
-		VALUES (?, ?, ?, ?, 'running', '', ?, ?, '', 'null', unixepoch(), NULL)
+		VALUES (?, ?, ?, ?, 'running', '', ?, ?, ?, '', 'null', unixepoch(), NULL)
 		ON CONFLICT(id) DO UPDATE SET
 			intent_id = excluded.intent_id,
 			state = excluded.state,
@@ -373,12 +379,13 @@ func (s *Store) InitRun(
 			status = 'running',
 			error = '',
 			workflow_type = excluded.workflow_type,
+			entrypoint = excluded.entrypoint,
 			script_source = excluded.script_source,
 			wait_name = '',
 			wait_args_json = 'null',
 			finished_at = NULL,
 			updated_at = unixepoch()
-	`, runID, intentID, state, string(memJSON), workflowType, scriptSource)
+	`, runID, intentID, state, string(memJSON), workflowType, entrypoint, scriptSource)
 	return errors.Wrap(err, "init run")
 }
 
@@ -478,7 +485,7 @@ func (s *Store) LoadRunState(
 func (s *Store) ActiveRunStates(ctx context.Context, intentID string) ([]RunState, error) {
 	query := `
 		SELECT id, intent_id, state, status, error, started_at, updated_at, finished_at
-		     , workflow_type, script_source, wait_name, wait_args_json
+		     , workflow_type, entrypoint, script_source, wait_name, wait_args_json
 		FROM intent_runs
 		WHERE status IN ('running', 'waiting')
 	`
@@ -511,6 +518,7 @@ func (s *Store) ActiveRunStates(ctx context.Context, intentID string) ([]RunStat
 			&state.UpdatedAt,
 			&state.FinishedAt,
 			&state.WorkflowType,
+			&state.Entrypoint,
 			&state.ScriptSource,
 			&state.WaitName,
 			&waitArgsJSON,
@@ -535,8 +543,8 @@ func (s *Store) LoadRun(ctx context.Context, runID string) (RunState, map[string
 		memJSON      string
 	)
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, intent_id, state, status, error, workflow_type, script_source, wait_name,
-		       wait_args_json, mem_json, started_at, updated_at, finished_at
+		SELECT id, intent_id, state, status, error, workflow_type, entrypoint, script_source,
+		       wait_name, wait_args_json, mem_json, started_at, updated_at, finished_at
 		FROM intent_runs
 		WHERE id = ?
 	`, runID).Scan(
@@ -546,6 +554,7 @@ func (s *Store) LoadRun(ctx context.Context, runID string) (RunState, map[string
 		&state.Status,
 		&state.Error,
 		&state.WorkflowType,
+		&state.Entrypoint,
 		&state.ScriptSource,
 		&state.WaitName,
 		&waitArgsJSON,
@@ -593,16 +602,16 @@ func (s *Store) AppendReplayHistory(ctx context.Context, entry ReplayHistoryEntr
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO intent_replay_history (
-			run_id, sequence, intent_id, kind, name, args_json, result_json, error, created_at
+			run_id, sequence, intent_id, entrypoint, kind, name, args_json, result_json, error, created_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
-	`, entry.RunID, entry.Sequence, entry.IntentID, entry.Kind, entry.Name, argsJSON, resultJSON, entry.Error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+	`, entry.RunID, entry.Sequence, entry.IntentID, entry.Entrypoint, entry.Kind, entry.Name, argsJSON, resultJSON, entry.Error)
 	return errors.Wrap(err, "append replay history")
 }
 
 func (s *Store) LoadReplayHistory(ctx context.Context, runID string) ([]ReplayHistoryEntry, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT sequence, run_id, intent_id, kind, name, args_json, result_json, error, created_at
+		SELECT sequence, run_id, intent_id, entrypoint, kind, name, args_json, result_json, error, created_at
 		FROM intent_replay_history
 		WHERE run_id = ?
 		ORDER BY sequence
@@ -623,6 +632,7 @@ func (s *Store) LoadReplayHistory(ctx context.Context, runID string) ([]ReplayHi
 			&entry.Sequence,
 			&entry.RunID,
 			&entry.IntentID,
+			&entry.Entrypoint,
 			&entry.Kind,
 			&entry.Name,
 			&argsJSON,

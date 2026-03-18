@@ -132,3 +132,33 @@ def main():
 		t.Fatalf("wait should be called once, got %d", waitCalls)
 	}
 }
+
+func TestStarlarkInterpreter_EntrypointReceivesArgs(t *testing.T) {
+	reg := registry.New(zerolog.Nop())
+	it := interpreter.NewStarlark(reg, zerolog.Nop())
+
+	intent := &orchestrator.Intent{
+		ID:           "entrypoint-script",
+		WorkflowType: orchestrator.WorkflowTypeStarlark,
+		Script: `
+init(id = "entrypoint-script")
+
+def main():
+    return "main"
+
+def on_change(event):
+    return event["kind"] + ":" + event["value"]
+`,
+	}
+
+	if err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{
+		RunID:      "run-entrypoint",
+		Entrypoint: "on_change",
+		HandlerArgs: map[string]any{
+			"kind":  "reminder",
+			"value": "updated",
+		},
+	}); err != nil {
+		t.Fatalf("Execute entrypoint failed: %v", err)
+	}
+}

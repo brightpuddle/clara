@@ -23,6 +23,7 @@ type Intent struct {
 	Interval     string            `json:"interval,omitempty"       yaml:"interval,omitempty"`
 	Schedule     string            `json:"schedule,omitempty"       yaml:"schedule,omitempty"` // cron expression
 	Trigger      string            `json:"trigger,omitempty"        yaml:"trigger,omitempty"`  // event expression
+	Tasks        []Task            `json:"tasks,omitempty"          yaml:"tasks,omitempty"`
 	WorkflowType string            `json:"workflow_type,omitempty"  yaml:"workflow_type,omitempty"`
 	Script       string            `json:"script,omitempty"         yaml:"script,omitempty"`
 	InitialState string            `json:"initial_state,omitempty"  yaml:"initial_state,omitempty"`
@@ -30,11 +31,27 @@ type Intent struct {
 	States       map[string]State  `json:"states,omitempty"         yaml:"states,omitempty"`
 }
 
+// Task is a single execution unit within an Intent.
+type Task struct {
+	Handler  string `json:"handler"            yaml:"handler"`
+	Mode     string `json:"mode"               yaml:"mode"`
+	Interval string `json:"interval,omitempty" yaml:"interval,omitempty"`
+	Schedule string `json:"schedule,omitempty" yaml:"schedule,omitempty"`
+	Trigger  string `json:"trigger,omitempty"  yaml:"trigger,omitempty"`
+}
+
 // Validate returns an error if the Intent is structurally invalid.
 func (b *Intent) Validate() error {
 	if b.ID == "" {
 		return &ValidationError{Field: "id", Message: "must not be empty"}
 	}
+
+	for i, task := range b.Tasks {
+		if err := task.validate(i); err != nil {
+			return err
+		}
+	}
+
 	if err := validateIntentMode(b.Mode); err != nil {
 		return err
 	}
@@ -95,6 +112,47 @@ const (
 	IntentModeEvent    = "event"
 )
 
+func (t *Task) validate(index int) error {
+	if t.Handler == "" {
+		return &ValidationError{Field: "tasks[" + itoa(index) + "].handler", Message: "must not be empty"}
+	}
+	if err := validateIntentMode(t.Mode); err != nil {
+		return &ValidationError{Field: "tasks[" + itoa(index) + "].mode", Message: err.(*ValidationError).Message}
+	}
+	switch t.Mode {
+	case IntentModeSchedule:
+		if t.Schedule == "" {
+			return &ValidationError{Field: "tasks[" + itoa(index) + "].schedule", Message: "must not be empty for schedule mode"}
+		}
+	case IntentModeWorker:
+		if t.Interval == "" {
+			return &ValidationError{Field: "tasks[" + itoa(index) + "].interval", Message: "must not be empty for worker mode"}
+		}
+		if _, err := time.ParseDuration(t.Interval); err != nil {
+			return &ValidationError{Field: "tasks[" + itoa(index) + "].interval", Message: "must be a valid duration for worker mode"}
+		}
+	case IntentModeEvent:
+		if t.Trigger == "" {
+			return &ValidationError{Field: "tasks[" + itoa(index) + "].trigger", Message: "must not be empty for event mode"}
+		}
+	}
+	return nil
+}
+
+func (b *Intent) EffectiveTasks() []Task {
+	if len(b.Tasks) > 0 {
+		return b.Tasks
+	}
+	return []Task{{
+		Handler:  "main",
+		Mode:     b.RuntimeMode(),
+		Interval: b.Interval,
+		Schedule: b.Schedule,
+		Trigger:  b.Trigger,
+	}}
+}
+
+// WorkflowKind returns the active execution engine for this Intent.
 func (b *Intent) WorkflowKind() string {
 	switch b.WorkflowType {
 	case "", WorkflowTypeStateMachine:

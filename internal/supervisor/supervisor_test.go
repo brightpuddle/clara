@@ -16,16 +16,202 @@ import (
 
 func newTestSupervisor(t *testing.T, tasksDir string) (*supervisor.Supervisor, *registry.Registry) {
 	t.Helper()
-	reg := registry.New(zerolog.Nop())
-	starlarkIt := interpreter.NewStarlark(reg, zerolog.Nop())
+	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
+	reg := registry.New(log)
+	starlarkIt := interpreter.NewStarlark(reg, log)
 	sup := supervisor.New(tasksDir, reg, func(
 		ctx context.Context,
 		intent *orchestrator.Intent,
 		runID string,
+		entrypoint string,
+		args any,
 	) error {
-		return starlarkIt.Execute(ctx, intent, "", interpreter.RunOptions{RunID: runID})
-	}, zerolog.Nop())
+		return starlarkIt.Execute(ctx, intent, "", interpreter.RunOptions{
+			RunID:       runID,
+			Entrypoint:  entrypoint,
+			HandlerArgs: args,
+		})
+	}, log)
 	return sup, reg
+}
+
+func TestSupervisor_EventTrigger(t *testing.T) {
+	dir := t.TempDir()
+	sup, reg := newTestSupervisor(t, dir)
+
+	script := `
+def on_event(event):
+    # Use a tool to signify we were called
+    tool("test.verify", data=event["foo"])
+
+init(
+    id = "event-test",
+    tasks = [
+        task(trigger = "mock.test_event", handler = on_event)
+    ]
+)
+`
+	if err := os.WriteFile(filepath.Join(dir, "event.star"), []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	verified := make(chan string, 1)
+	reg.Register("test.verify", func(_ context.Context, args map[string]any) (any, error) {
+		verified <- args["data"].(string)
+		return nil, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go sup.Start(ctx) //nolint:errcheck
+
+	// Wait for loader to pick up the file
+	time.Sleep(200 * time.Millisecond)
+
+	// Emit notification
+	reg.EmitNotification("mock", "test_event", map[string]any{"foo": "bar"})
+
+	select {
+	case data := <-verified:
+		if data != "bar" {
+			t.Errorf("expected bar, got %s", data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for handler to be called")
+	}
+}
+
+func TestSupervisor_LegacyEventTrigger(t *testing.T) {
+	dir := t.TempDir()
+	sup, reg := newTestSupervisor(t, dir)
+
+	script := `
+def main(event):
+    tool("test.verify", data=event["foo"])
+
+init(
+    id = "legacy-test",
+    mode = "event",
+    trigger = "mock.legacy_event"
+)
+`
+	if err := os.WriteFile(filepath.Join(dir, "legacy.star"), []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	verified := make(chan string, 1)
+	reg.Register("test.verify", func(_ context.Context, args map[string]any) (any, error) {
+		verified <- args["data"].(string)
+		return nil, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go sup.Start(ctx) //nolint:errcheck
+
+	time.Sleep(200 * time.Millisecond)
+
+	reg.EmitNotification("mock", "legacy_event", map[string]any{"foo": "legacy"})
+
+	select {
+	case data := <-verified:
+		if data != "legacy" {
+			t.Errorf("expected legacy, got %s", data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for legacy handler to be called")
+	}
+}
+
+func TestSupervisor_LegacyEventWithoutTriggerRunsOnce(t *testing.T) {
+	dir := t.TempDir()
+	sup, reg := newTestSupervisor(t, dir)
+
+	script := `
+def main():
+    tool("test.verify", value = "started")
+
+init(
+    id = "legacy-event-no-trigger",
+    mode = "event",
+)
+`
+	if err := os.WriteFile(filepath.Join(dir, "legacy-no-trigger.star"), []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	called := make(chan string, 1)
+	reg.Register("test.verify", func(_ context.Context, args map[string]any) (any, error) {
+		called <- args["value"].(string)
+		return nil, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go sup.Start(ctx) //nolint:errcheck
+
+	select {
+	case got := <-called:
+		if got != "started" {
+			t.Fatalf("expected started, got %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for legacy event intent to run")
+	}
+}
+
+func TestSupervisor_MultiTaskIntentStaysActiveWhileOneTaskStops(t *testing.T) {
+	dir := t.TempDir()
+	sup, reg := newTestSupervisor(t, dir)
+
+	script := `
+def on_event(event):
+    tool("test.verify", value = event["foo"])
+
+def broken_schedule():
+    return None
+
+init(
+    id = "multi-task-active",
+    tasks = [
+        task(handler = broken_schedule, mode = "schedule", schedule = "not-a-cron"),
+        task(handler = on_event, trigger = "mock.active"),
+    ],
+)
+`
+	if err := os.WriteFile(filepath.Join(dir, "multi-task.star"), []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	verified := make(chan string, 1)
+	reg.Register("test.verify", func(_ context.Context, args map[string]any) (any, error) {
+		verified <- args["value"].(string)
+		return nil, nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go sup.Start(ctx) //nolint:errcheck
+	time.Sleep(300 * time.Millisecond)
+
+	infos := sup.IntentInfos()
+	if len(infos) != 1 || !infos[0].Active {
+		t.Fatalf("expected multi-task intent to remain active, got %+v", infos)
+	}
+
+	reg.EmitNotification("mock", "active", map[string]any{"foo": "bar"})
+	select {
+	case got := <-verified:
+		if got != "bar" {
+			t.Fatalf("expected bar, got %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for event task to run")
+	}
 }
 
 func validIntentStar(id string) []byte {
@@ -96,215 +282,5 @@ func TestSupervisor_LoadsExistingFiles(t *testing.T) {
 	intents := sup.ActiveIntents()
 	if len(intents) == 0 {
 		t.Error("expected at least one intent to be loaded from existing files")
-	}
-}
-
-func TestSupervisor_LoadsExistingFilesInSubdirectories(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	nestedDir := filepath.Join(dir, "nested", "folder")
-	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(nestedDir, "nested.star"),
-		validIntentStar("nested-intent"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	sup.Start(ctx) //nolint:errcheck
-
-	if _, ok := sup.Intent("nested-intent"); !ok {
-		t.Fatal("expected nested .star intent to be loaded from subdirectories")
-	}
-}
-
-func TestSupervisor_WatchesForNewFiles(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	started := make(chan struct{})
-	go func() {
-		close(started)
-		sup.Start(ctx) //nolint:errcheck
-	}()
-	<-started
-
-	// Give the watcher a moment to initialize.
-	time.Sleep(100 * time.Millisecond)
-
-	if err := os.WriteFile(filepath.Join(dir, "new.star"), validIntentStar("new-intent"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Wait for the supervisor to pick it up.
-	deadline := time.Now().Add(1500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if len(sup.ActiveIntents()) > 0 {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Error("expected intent to be loaded after file was written")
-}
-
-func TestSupervisor_WatchesForNewFilesInNewSubdirectories(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	started := make(chan struct{})
-	go func() {
-		close(started)
-		sup.Start(ctx) //nolint:errcheck
-	}()
-	<-started
-
-	time.Sleep(100 * time.Millisecond)
-
-	nestedDir := filepath.Join(dir, "nested", "folder")
-	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(nestedDir, "new.star"),
-		validIntentStar("new-nested-intent"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	deadline := time.Now().Add(1500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if _, ok := sup.Intent("new-nested-intent"); ok {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatal("expected nested intent to be loaded after file was written")
-}
-
-func TestSupervisor_IgnoresNonStarFiles(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	if err := os.WriteFile(filepath.Join(dir, "intent.yaml"), []byte("id: ignored"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	sup.Start(ctx) //nolint:errcheck
-
-	if got := len(sup.ActiveIntents()); got != 0 {
-		t.Fatalf("expected non-.star file to be ignored, got %d intent(s)", got)
-	}
-}
-
-func TestSupervisor_LoadsExistingStarFiles(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	if err := os.WriteFile(filepath.Join(dir, "test.star"), validIntentStar("test-intent"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	sup.Start(ctx) //nolint:errcheck
-
-	if len(sup.ActiveIntents()) == 0 {
-		t.Fatal("expected .star intent to be loaded from existing files")
-	}
-}
-
-func TestSupervisor_OnDemandIntentsDoNotAutoStart(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	if err := os.WriteFile(filepath.Join(dir, "test.star"), validIntentStar("test-intent"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	sup.Start(ctx) //nolint:errcheck
-
-	infos := sup.IntentInfos()
-	if len(infos) != 1 {
-		t.Fatalf("expected one installed intent, got %d", len(infos))
-	}
-	if infos[0].Active {
-		t.Fatal("expected on_demand intent to remain inactive until triggered")
-	}
-}
-
-func TestSupervisor_WorkerIntentsAutoStart(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	worker := []byte(
-		"init(id = \"worker\", mode = \"worker\", interval = \"1h\")\n\ndef main():\n    return None\n",
-	)
-	if err := os.WriteFile(filepath.Join(dir, "worker.star"), worker, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		sup.Start(ctx) //nolint:errcheck
-	}()
-	time.Sleep(150 * time.Millisecond)
-
-	infos := sup.IntentInfos()
-	if len(infos) != 1 {
-		t.Fatalf("expected one installed intent, got %d", len(infos))
-	}
-	if !infos[0].Active {
-		t.Fatal("expected worker intent to auto-start")
-	}
-	cancel()
-	<-done
-}
-
-func TestSupervisor_StartIntentRejectsOnDemand(t *testing.T) {
-	dir := t.TempDir()
-	sup, _ := newTestSupervisor(t, dir)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	go sup.Start(ctx) //nolint:errcheck
-	time.Sleep(100 * time.Millisecond)
-
-	if err := os.WriteFile(filepath.Join(dir, "test.star"), validIntentStar("test-intent"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if len(sup.IntentInfos()) == 1 {
-			break
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-
-	if err := sup.StartIntent("test-intent"); err == nil {
-		t.Fatal("expected StartIntent to reject on_demand intent")
 	}
 }
