@@ -277,9 +277,8 @@ representation. `.star` is the authored source of truth.
 | `clara agent status` | Show agent status and active intents |
 | `clara agent logs [-w]` | Show recent daemon logs or follow them live |
 | `clara intent list` | List installed intents (one row per task) |
-| `clara intent trigger <id> [task]` | Run an intent task (defaults to `main` or the sole task) |
-| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run |
-| `clara intent start <id> [task]` | Start a managed `schedule`, `worker`, or `event` task |
+| `clara intent start <id> [task]` | Start an intent task — fires a run for on-demand tasks, activates the persistent loop for schedule/worker/event |
+| `clara intent start <id> --input '<json>'` | Deliver JSON input to the latest waiting run |
 | `clara intent stop <id> [task]` | Stop a managed `schedule`, `worker`, or `event` task |
 | `clara intent watch [id]` | Watch intent execution |
 | `clara intent resume <run-id>` | Resume a paused Starlark run directly |

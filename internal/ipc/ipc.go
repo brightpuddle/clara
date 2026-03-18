@@ -7,7 +7,6 @@ const (
 	MethodShutdown      = "shutdown"
 	MethodStatus        = "status"
 	MethodList          = "list"
-	MethodRun           = "run"
 	MethodStart         = "start"
 	MethodStop          = "stop"
 	MethodToolList      = "tool_list"

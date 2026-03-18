@@ -151,10 +151,10 @@ def main():
     return tool("fs.list_directory", path = ".")
 ```
 
-For an `on_demand` intent, trigger it manually:
+For an `on_demand` intent, start it manually:
 
 ```bash
-clara intent trigger hello-world
+clara intent start hello-world
 clara intent watch hello-world
 ```
 
@@ -245,10 +245,9 @@ as the user-facing SQLite MCP server.
 | Command                                      | Description                                                                              |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `clara intent list`                          | List installed intents with mode and lifecycle state                                     |
-| `clara intent trigger <id>`                  | Run an installed intent once                                                             |
-| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run for that intent                             |
-| `clara intent start <id>`                    | Start a managed `schedule`, `worker`, or `event` intent                                  |
-| `clara intent stop <id>`                     | Stop a managed `schedule`, `worker`, or `event` intent and cancel its latest waiting run |
+| `clara intent start <id> [task]`             | Start an intent task (fires a run for on-demand; activates loop for schedule/worker/event) |
+| `clara intent start <id> --input '<json>'`   | Deliver JSON input to the latest waiting run for that intent                             |
+| `clara intent stop <id> [task]`              | Stop a managed `schedule`, `worker`, or `event` intent and cancel its latest waiting run |
 | `clara intent watch [id]`                    | Stream run activity                                                                      |
 | `clara intent resume <run-id>`               | Resume a paused Starlark run directly by run ID                                          |
 | `clara intent run <file.star>`               | Run a `.star` file once without installing it                                            |
@@ -281,7 +280,7 @@ make install
 clara agent logs --watch
 clara tool list
 clara intent list
-clara intent trigger hello-world
+clara intent start hello-world
 clara intent watch hello-world
 ```
 
@@ -511,7 +510,7 @@ Pauses execution and stores a wait request.
 The run can later be resumed:
 
 - by run ID using `clara intent resume <run-id>`
-- by installed intent ID using `clara intent trigger <id> --input '<json>'`
+- by installed intent ID using `clara intent start <id> --input '<json>'`
 
 Example:
 
@@ -541,16 +540,16 @@ rather than use Clara's persisted `wait(...)` / `trigger --input` path.
 
 #### `on_demand`
 
-Installed but idle until triggered.
+Installed but idle until started.
 
 ```bash
-clara intent trigger <id>
+clara intent start <id>
 ```
 
 When a file has multiple on-demand tasks, specify the handler name:
 
 ```bash
-clara intent trigger <id> <handler>
+clara intent start <id> <handler>
 ```
 
 #### `schedule`

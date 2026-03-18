@@ -21,13 +21,12 @@ import (
 )
 
 var (
-	intentWatchVerbose  bool
-	intentWatchFollow   bool
-	intentRunVerbose    bool
-	intentResumeInput   string
-	intentTriggerInput  string
-	intentTriggerFollow bool
-	intentStartFollow   bool
+	intentWatchVerbose bool
+	intentWatchFollow  bool
+	intentRunVerbose   bool
+	intentResumeInput  string
+	intentStartInput   string
+	intentStartFollow  bool
 )
 
 var intentCmd = &cobra.Command{
@@ -50,17 +49,16 @@ var intentRunCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
-var intentTriggerCmd = &cobra.Command{
-	Use:          "trigger <id> [task]",
-	Short:        "Run an intent task or deliver input to its latest waiting run",
-	Args:         cobra.RangeArgs(1, 2),
-	RunE:         runIntentTrigger,
-	SilenceUsage: true,
-}
-
 var intentStartCmd = &cobra.Command{
-	Use:          "start <id> [task]",
-	Short:        "Start a managed schedule, worker, or event task",
+	Use:   "start <id> [task]",
+	Short: "Start an intent task (fires a run for on-demand tasks, activates the loop for schedule/worker/event)",
+	Long: `Start an installed intent task.
+
+For on-demand tasks, fires a single run and returns.
+For schedule, worker, or event tasks, activates the persistent loop.
+
+Use --input to deliver JSON input to a waiting run instead of starting a new one.
+Use --follow/-f to stream run events after starting.`,
 	Args:         cobra.RangeArgs(1, 2),
 	RunE:         runIntentStart,
 	SilenceUsage: true,
@@ -101,10 +99,8 @@ func init() {
 		BoolVarP(&intentWatchFollow, "follow", "f", false, "stream live events until interrupted")
 	intentRunCmd.Flags().
 		BoolVarP(&intentRunVerbose, "verbose", "v", false, "show full tool args/results")
-	intentTriggerCmd.Flags().
-		StringVar(&intentTriggerInput, "input", "", "JSON value to deliver to the latest waiting run")
-	intentTriggerCmd.Flags().
-		BoolVarP(&intentTriggerFollow, "follow", "f", false, "follow run output after triggering")
+	intentStartCmd.Flags().
+		StringVar(&intentStartInput, "input", "", "JSON value to deliver to the latest waiting run")
 	intentStartCmd.Flags().
 		BoolVarP(&intentStartFollow, "follow", "f", false, "follow run output after starting")
 	intentResumeCmd.Flags().
@@ -113,7 +109,6 @@ func init() {
 		intentListCmd,
 		intentRunCmd,
 		intentResumeCmd,
-		intentTriggerCmd,
 		intentStartCmd,
 		intentStopCmd,
 		intentWatchCmd,
@@ -197,39 +192,18 @@ func runIntentRun(cmd *cobra.Command, args []string) error {
 	return runOneOff(cmd.Context(), args[0], intentRunVerbose)
 }
 
-func runIntentTrigger(cmd *cobra.Command, args []string) error {
-	intentID := args[0]
-	params := map[string]any{"id": intentID}
-	if len(args) == 2 {
-		params["task"] = args[1]
-	}
-	if strings.TrimSpace(intentTriggerInput) != "" {
-		var input any
-		if err := json.Unmarshal([]byte(intentTriggerInput), &input); err != nil {
-			return errors.Wrap(err, "parse --input JSON")
-		}
-		params["input"] = input
-	}
-	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
-		Method: ipc.MethodRun,
-		Params: params,
-	})
-	if err != nil {
-		return fmt.Errorf("run request failed: %w", err)
-	}
-	fmt.Println(resp.Message)
-
-	if intentTriggerFollow {
-		return followIntentEvents(cmd.Context(), intentID, intentWatchVerbose)
-	}
-	return nil
-}
-
 func runIntentStart(cmd *cobra.Command, args []string) error {
 	intentID := args[0]
 	params := map[string]any{"id": intentID}
 	if len(args) == 2 {
 		params["task"] = args[1]
+	}
+	if strings.TrimSpace(intentStartInput) != "" {
+		var input any
+		if err := json.Unmarshal([]byte(intentStartInput), &input); err != nil {
+			return errors.Wrap(err, "parse --input JSON")
+		}
+		params["input"] = input
 	}
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodStart,
@@ -401,7 +375,7 @@ func runIntentWatch(cmd *cobra.Command, args []string) error {
 }
 
 // followIntentEvents opens the DB and streams run events for intentID until
-// interrupted. Used by 'intent start -f' and 'intent trigger -f'.
+// interrupted. Used by 'intent start -f'.
 func followIntentEvents(parent context.Context, intentID string, verbose bool) error {
 	logger := buildLogger()
 	db, err := store.Open(cfg.DBPath(), logger)

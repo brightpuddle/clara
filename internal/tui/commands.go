@@ -42,9 +42,9 @@ func commandSpecs() []CommandSpec {
 		{Path: "/agent stop", Summary: "Stop the running agent", Usage: "/agent stop"},
 		{Path: "/intent list", Summary: "List active intents", Usage: "/intent list"},
 		{
-			Path:    "/intent trigger",
-			Summary: "Trigger an installed intent by id",
-			Usage:   "/intent trigger <id>",
+			Path:    "/intent start",
+			Summary: "Start an installed intent by id",
+			Usage:   "/intent start <id>",
 		},
 		{
 			Path:    "/mcp fs",
@@ -141,8 +141,8 @@ func runSlashCommand(
 			return slashCommandResult{}, err
 		}
 		return slashCommandResult{output: formatIntentList(intents)}, nil
-	case len(tokens) >= 3 && tokens[0] == "/intent" && tokens[1] == "trigger":
-		resp, err := client.Request(ipc.MethodRun, map[string]any{"id": tokens[2]})
+	case len(tokens) >= 3 && tokens[0] == "/intent" && tokens[1] == "start":
+		resp, err := client.Request(ipc.MethodStart, map[string]any{"id": tokens[2]})
 		if err != nil {
 			return slashCommandResult{}, err
 		}

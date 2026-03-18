@@ -254,7 +254,7 @@ func buildHandler(
 			}
 			return &ipc.Response{Data: list}
 
-		case ipc.MethodRun:
+		case ipc.MethodStart:
 			id, _ := req.Params["id"].(string)
 			if id == "" {
 				return &ipc.Response{Error: "missing intent id"}
@@ -264,6 +264,8 @@ func buildHandler(
 				return &ipc.Response{Error: "intent " + id + " not found"}
 			}
 			taskName, _ := req.Params["task"].(string)
+
+			// --input delivers JSON to a waiting run rather than starting a new one.
 			if input, ok := req.Params["input"]; ok {
 				runState, _, err := db.LoadLatestWaitingRun(ctx, id)
 				if err != nil || runState.RunID == "" {
@@ -274,18 +276,17 @@ func buildHandler(
 				go resumeIntentByIDInBackground(ctx, intent, input, reg, db, log)
 				return &ipc.Response{Message: "delivered input to waiting intent " + id}
 			}
-			go runIntentInBackground(ctx, intent, taskName, reg, db, log)
-			if taskName != "" {
-				return &ipc.Response{Message: "intent " + id + " task " + taskName + " triggered"}
-			}
-			return &ipc.Response{Message: "intent " + id + " triggered"}
 
-		case ipc.MethodStart:
-			id, _ := req.Params["id"].(string)
-			if id == "" {
-				return &ipc.Response{Error: "missing intent id"}
+			// Dispatch by task mode: on-demand fires a single run; auto tasks
+			// (schedule/worker/event) activate the persistent loop.
+			isOnDemand := intentTaskIsOnDemand(intent, taskName)
+			if isOnDemand {
+				go runIntentInBackground(ctx, intent, taskName, reg, db, log)
+				if taskName != "" {
+					return &ipc.Response{Message: "intent " + id + " task " + taskName + " started"}
+				}
+				return &ipc.Response{Message: "intent " + id + " started"}
 			}
-			taskName, _ := req.Params["task"].(string)
 			if err := sup.StartIntent(id, taskName); err != nil {
 				return &ipc.Response{Error: err.Error()}
 			}
@@ -449,6 +450,27 @@ func initialRunState(intent *orchestrator.Intent) string {
 		return "SCRIPT"
 	}
 	return intent.InitialState
+}
+
+// intentTaskIsOnDemand reports whether the target task for a start request is
+// on-demand. If taskName is empty, it returns true only when every task in the
+// intent is on-demand (i.e. there are no auto tasks to activate).
+func intentTaskIsOnDemand(intent *orchestrator.Intent, taskName string) bool {
+	if taskName != "" {
+		for _, t := range intent.Tasks {
+			if t.Handler == taskName {
+				return t.Mode == "" || t.Mode == orchestrator.IntentModeOnDemand
+			}
+		}
+		// Named task not found — let StartIntent return the appropriate error.
+		return false
+	}
+	for _, t := range intent.Tasks {
+		if t.Mode != "" && t.Mode != orchestrator.IntentModeOnDemand {
+			return false
+		}
+	}
+	return true
 }
 
 func buildLogger() zerolog.Logger {
