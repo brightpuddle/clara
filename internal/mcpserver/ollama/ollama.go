@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	Description           = "Built-in Ollama MCP server for local text generation and embeddings."
-	DefaultEmbedModel     = "nomic-embed-text"
-	DefaultGenerateModel  = "qwen2.5-coder:14b"
-	DefaultURL            = "http://localhost:11434"
+	Description          = "Built-in Ollama MCP server for local text generation and embeddings."
+	DefaultEmbedModel    = "nomic-embed-text"
+	DefaultGenerateModel = "qwen2.5-coder:14b"
+	DefaultURL           = "http://localhost:11434"
 )
 
 type Service struct {
@@ -61,9 +61,14 @@ func (s *Service) NewServer() *server.MCPServer {
 
 	mcpServer.AddTool(mcp.NewTool(
 		"embed",
-		mcp.WithDescription("Generate embeddings for one string or a batch of strings using Ollama."),
+		mcp.WithDescription(
+			"Generate embeddings for one string or a batch of strings using Ollama.",
+		),
 		mcp.WithString("input", mcp.Description("Single input string to embed.")),
-		mcp.WithArray("inputs", mcp.Description("Array of strings to embed in one request when supported.")),
+		mcp.WithArray(
+			"inputs",
+			mcp.Description("Array of strings to embed in one request when supported."),
+		),
 		mcp.WithString("model", mcp.Description("Override the default embedding model.")),
 	), s.handleEmbed)
 
@@ -73,8 +78,14 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithString("prompt", mcp.Description("The prompt to generate a response for.")),
 		mcp.WithString("model", mcp.Description("Override the default generation model.")),
 		mcp.WithString("system", mcp.Description("System prompt to use.")),
-		mcp.WithBoolean("stream", mcp.Description("Whether to stream the response (default false).")),
-		mcp.WithObject("options", mcp.Description("Additional model parameters (e.g. temperature).")),
+		mcp.WithBoolean(
+			"stream",
+			mcp.Description("Whether to stream the response (default false)."),
+		),
+		mcp.WithObject(
+			"options",
+			mcp.Description("Additional model parameters (e.g. temperature)."),
+		),
 	), s.handleGenerate)
 
 	return mcpServer
@@ -185,7 +196,11 @@ func (s *Service) embed(ctx context.Context, model string, inputs []string) ([][
 	return s.embedViaLegacyAPI(ctx, model, inputs)
 }
 
-func (s *Service) embedViaAPIEmbed(ctx context.Context, model string, inputs []string) ([][]float64, error) {
+func (s *Service) embedViaAPIEmbed(
+	ctx context.Context,
+	model string,
+	inputs []string,
+) ([][]float64, error) {
 	body, err := json.Marshal(map[string]any{
 		"model": model,
 		"input": inputPayload(inputs),
@@ -194,7 +209,12 @@ func (s *Service) embedViaAPIEmbed(ctx context.Context, model string, inputs []s
 		return nil, errors.Wrap(err, "marshal ollama embed request")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/embed", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		s.baseURL+"/api/embed",
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "create ollama embed request")
 	}
@@ -227,7 +247,11 @@ func (s *Service) embedViaAPIEmbed(ctx context.Context, model string, inputs []s
 	}
 }
 
-func (s *Service) embedViaLegacyAPI(ctx context.Context, model string, inputs []string) ([][]float64, error) {
+func (s *Service) embedViaLegacyAPI(
+	ctx context.Context,
+	model string,
+	inputs []string,
+) ([][]float64, error) {
 	embeddings := make([][]float64, 0, len(inputs))
 	for _, input := range inputs {
 		body, err := json.Marshal(map[string]any{
@@ -304,7 +328,12 @@ func (s *Service) generate(
 		return "", errors.Wrap(err, "marshal ollama generate request")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/api/generate", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		s.baseURL+"/api/generate",
+		bytes.NewReader(body),
+	)
 	if err != nil {
 		return "", errors.Wrap(err, "create ollama generate request")
 	}

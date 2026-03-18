@@ -108,7 +108,9 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithString("status", mcp.Description("Optional Taskwarrior status filter.")),
 		mcp.WithString(
 			"updated_after",
-			mcp.Description("Optional lower-bound modified timestamp. Only tasks updated on or after this time are returned."),
+			mcp.Description(
+				"Optional lower-bound modified timestamp. Only tasks updated on or after this time are returned.",
+			),
 		),
 	), s.handleListTasks)
 
@@ -298,7 +300,8 @@ func (s *Service) handleTaskList(
 		}
 		tasks = filterDueTasks(tasks, before)
 	}
-	if rawUpdatedAfter, ok := stringArg(args, "updated_after"); ok && strings.TrimSpace(rawUpdatedAfter) != "" {
+	if rawUpdatedAfter, ok := stringArg(args, "updated_after"); ok &&
+		strings.TrimSpace(rawUpdatedAfter) != "" {
 		updatedAfter, err := parseTaskTime(rawUpdatedAfter)
 		if err != nil {
 			return mcp.NewToolResultError(

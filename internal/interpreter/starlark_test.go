@@ -41,8 +41,6 @@ func TestStarlarkInterpreter_ReplaysToolCalls(t *testing.T) {
 		ID:           "script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
 		Script: `
-init(id = "script", description = "test")
-
 def main():
     return tool("echo", value = "hello")
 `,
@@ -74,8 +72,6 @@ func TestStarlarkInterpreter_WaitReturnsPauseError(t *testing.T) {
 		ID:           "pause-script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
 		Script: `
-init(id = "pause-script")
-
 def main():
     return wait("approval", prompt = "Continue?")
 `,
@@ -115,8 +111,6 @@ func TestStarlarkInterpreter_ReplaysWaitResults(t *testing.T) {
 		ID:           "wait-script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
 		Script: `
-init(id = "wait-script")
-
 def main():
     return wait("approval", prompt = "Ship it?")
 `,
@@ -141,8 +135,6 @@ func TestStarlarkInterpreter_EntrypointReceivesArgs(t *testing.T) {
 		ID:           "entrypoint-script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
 		Script: `
-init(id = "entrypoint-script")
-
 def main():
     return "main"
 

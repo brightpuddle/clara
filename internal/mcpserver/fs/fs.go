@@ -112,7 +112,9 @@ func New() *server.MCPServer {
 
 	s.AddTool(mcp.NewTool(
 		"wait_for_change",
-		mcp.WithDescription("Block until a matching create, change, or delete happens under a directory."),
+		mcp.WithDescription(
+			"Block until a matching create, change, or delete happens under a directory.",
+		),
 		mcp.WithString("path",
 			mcp.Required(),
 			mcp.Description("Directory to watch for filesystem changes."),
@@ -123,8 +125,11 @@ func New() *server.MCPServer {
 		mcp.WithBoolean("recursive",
 			mcp.Description("When true, watch existing and newly created subdirectories."),
 		),
-		mcp.WithNumber("timeout_seconds",
-			mcp.Description("Optional timeout in seconds. When reached, the tool returns timed_out."),
+		mcp.WithNumber(
+			"timeout_seconds",
+			mcp.Description(
+				"Optional timeout in seconds. When reached, the tool returns timed_out.",
+			),
 		),
 	), handleWaitForChange)
 
@@ -302,7 +307,10 @@ func handleGetFileInfo(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 	return mcp.NewToolResultText(string(data)), nil
 }
 
-func handleWaitForChange(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func handleWaitForChange(
+	ctx context.Context,
+	req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
 	root, err := stringArg(req, "path")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

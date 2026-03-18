@@ -16,7 +16,10 @@ import (
 
 func newTestSupervisor(t *testing.T, tasksDir string) (*supervisor.Supervisor, *registry.Registry) {
 	t.Helper()
-	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
+	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
+		With().
+		Timestamp().
+		Logger()
 	reg := registry.New(log)
 	starlarkIt := interpreter.NewStarlark(reg, log)
 	sup := supervisor.New(tasksDir, reg, func(
@@ -44,12 +47,7 @@ def on_event(event):
     # Use a tool to signify we were called
     tool("test.verify", data=event["foo"])
 
-init(
-    id = "event-test",
-    tasks = [
-        task(trigger = "mock.test_event", handler = on_event)
-    ]
-)
+task(on_event, trigger = "mock.test_event")
 `
 	if err := os.WriteFile(filepath.Join(dir, "event.star"), []byte(script), 0o600); err != nil {
 		t.Fatal(err)
@@ -82,7 +80,7 @@ init(
 	}
 }
 
-func TestSupervisor_LegacyEventTrigger(t *testing.T) {
+func TestSupervisor_EventTriggerInline(t *testing.T) {
 	dir := t.TempDir()
 	sup, reg := newTestSupervisor(t, dir)
 
@@ -90,11 +88,7 @@ func TestSupervisor_LegacyEventTrigger(t *testing.T) {
 def main(event):
     tool("test.verify", data=event["foo"])
 
-init(
-    id = "legacy-test",
-    mode = "event",
-    trigger = "mock.legacy_event"
-)
+task(main, trigger = "mock.legacy_event")
 `
 	if err := os.WriteFile(filepath.Join(dir, "legacy.star"), []byte(script), 0o600); err != nil {
 		t.Fatal(err)
@@ -125,18 +119,15 @@ init(
 	}
 }
 
-func TestSupervisor_LegacyEventWithoutTriggerRunsOnce(t *testing.T) {
+func TestSupervisor_WorkerRunsOnInterval(t *testing.T) {
 	dir := t.TempDir()
 	sup, reg := newTestSupervisor(t, dir)
 
 	script := `
-def main():
+def run():
     tool("test.verify", value = "started")
 
-init(
-    id = "legacy-event-no-trigger",
-    mode = "event",
-)
+task(run, interval = "100ms")
 `
 	if err := os.WriteFile(filepath.Join(dir, "legacy-no-trigger.star"), []byte(script), 0o600); err != nil {
 		t.Fatal(err)
@@ -144,7 +135,10 @@ init(
 
 	called := make(chan string, 1)
 	reg.Register("test.verify", func(_ context.Context, args map[string]any) (any, error) {
-		called <- args["value"].(string)
+		select {
+		case called <- args["value"].(string):
+		default:
+		}
 		return nil, nil
 	})
 
@@ -159,7 +153,7 @@ init(
 			t.Fatalf("expected started, got %q", got)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for legacy event intent to run")
+		t.Fatal("timeout waiting for worker task to run")
 	}
 }
 
@@ -174,13 +168,8 @@ def on_event(event):
 def broken_schedule():
     return None
 
-init(
-    id = "multi-task-active",
-    tasks = [
-        task(handler = broken_schedule, mode = "schedule", schedule = "not-a-cron"),
-        task(handler = on_event, trigger = "mock.active"),
-    ],
-)
+task(broken_schedule, schedule = "not-a-cron")
+task(on_event, trigger = "mock.active")
 `
 	if err := os.WriteFile(filepath.Join(dir, "multi-task.star"), []byte(script), 0o600); err != nil {
 		t.Fatal(err)
@@ -215,7 +204,7 @@ init(
 }
 
 func validIntentStar(id string) []byte {
-	return []byte("init(id = \"" + id + "\")\n\ndef main():\n    return None\n")
+	return []byte("def main():\n    return None\n")
 }
 
 func TestSupervisor_ValidateIntent_Valid(t *testing.T) {

@@ -150,8 +150,6 @@ func TestIntentValidate_ValidStarlark(t *testing.T) {
 		ID:           "starlark-intent",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
 		Script: `
-init(id = "starlark-intent")
-
 def main():
     return "ok"
 `,
@@ -203,34 +201,37 @@ states:
 	}
 }
 
-func TestIntentValidate_InvalidMode(t *testing.T) {
+func TestIntentValidate_TaskInvalidMode(t *testing.T) {
 	intent := &orchestrator.Intent{
 		ID:           "bad-mode",
-		Mode:         "forever",
-		InitialState: "START",
-		States: map[string]orchestrator.State{
-			"START": {Terminal: true},
+		WorkflowType: orchestrator.WorkflowTypeStarlark,
+		Script:       `def main(): return None`,
+		Tasks: []orchestrator.Task{
+			{Handler: "main", Mode: "forever"},
 		},
 	}
 	if err := intent.Validate(); err == nil {
-		t.Fatal("expected invalid mode to be rejected")
+		t.Fatal("expected invalid task mode to be rejected")
 	}
 }
 
-func TestIntentValidate_WorkerRequiresValidInterval(t *testing.T) {
+func TestIntentValidate_TaskWorkerRequiresValidInterval(t *testing.T) {
 	cases := []orchestrator.Intent{
 		{
 			ID:           "worker-missing-interval",
-			Mode:         orchestrator.IntentModeWorker,
 			WorkflowType: orchestrator.WorkflowTypeStarlark,
 			Script:       `def main(): return None`,
+			Tasks: []orchestrator.Task{
+				{Handler: "main", Mode: orchestrator.IntentModeWorker},
+			},
 		},
 		{
 			ID:           "worker-bad-interval",
-			Mode:         orchestrator.IntentModeWorker,
-			Interval:     "tomorrow",
 			WorkflowType: orchestrator.WorkflowTypeStarlark,
 			Script:       `def main(): return None`,
+			Tasks: []orchestrator.Task{
+				{Handler: "main", Mode: orchestrator.IntentModeWorker, Interval: "tomorrow"},
+			},
 		},
 	}
 	for _, intent := range cases {
@@ -240,32 +241,34 @@ func TestIntentValidate_WorkerRequiresValidInterval(t *testing.T) {
 	}
 }
 
+// TestCompileStarlarkIntent verifies the new top-level task() API.
 func TestCompileStarlarkIntent(t *testing.T) {
 	intent, err := orchestrator.CompileStarlarkIntent("/tmp/weather.star", `
-init(
-    id = "daily-weather",
-    description = "Notify when rain is forecast",
-    mode = "schedule",
-    schedule = "0 7 * * *",
-)
+describe("Notify when rain is forecast")
 
 def main():
     return None
+
+task(main, schedule = "0 7 * * *")
 `)
 	if err != nil {
 		t.Fatalf("CompileStarlarkIntent failed: %v", err)
 	}
-	if intent.ID != "daily-weather" {
+	if intent.ID != "weather" {
 		t.Fatalf("unexpected id: %q", intent.ID)
 	}
 	if intent.Description != "Notify when rain is forecast" {
 		t.Fatalf("unexpected description: %q", intent.Description)
 	}
-	if intent.Mode != orchestrator.IntentModeSchedule {
-		t.Fatalf("unexpected mode: %q", intent.Mode)
+	if len(intent.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(intent.Tasks))
 	}
-	if intent.Schedule != "0 7 * * *" {
-		t.Fatalf("unexpected schedule: %q", intent.Schedule)
+	task := intent.Tasks[0]
+	if task.Mode != orchestrator.IntentModeSchedule {
+		t.Fatalf("unexpected mode: %q", task.Mode)
+	}
+	if task.Schedule != "0 7 * * *" {
+		t.Fatalf("unexpected schedule: %q", task.Schedule)
 	}
 	if intent.WorkflowKind() != orchestrator.WorkflowTypeStarlark {
 		t.Fatalf("unexpected workflow kind: %q", intent.WorkflowKind())
@@ -274,36 +277,55 @@ def main():
 
 func TestCompileStarlarkIntent_WorkerInterval(t *testing.T) {
 	intent, err := orchestrator.CompileStarlarkIntent("/tmp/indexer.star", `
-init(
-    id = "note-indexer",
-    mode = "worker",
-    interval = "15m",
-)
+def main():
+    return None
 
+task(main, interval = "15m")
+`)
+	if err != nil {
+		t.Fatalf("CompileStarlarkIntent failed: %v", err)
+	}
+	if len(intent.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(intent.Tasks))
+	}
+	task := intent.Tasks[0]
+	if task.Mode != orchestrator.IntentModeWorker {
+		t.Fatalf("unexpected mode: %q", task.Mode)
+	}
+	if task.Interval != "15m" {
+		t.Fatalf("unexpected interval: %q", task.Interval)
+	}
+}
+
+// TestCompileStarlarkIntent_ImplicitMain verifies that a file with main() but no
+// explicit task() call automatically registers main as an on_demand task.
+func TestCompileStarlarkIntent_ImplicitMain(t *testing.T) {
+	intent, err := orchestrator.CompileStarlarkIntent("/tmp/hello.star", `
 def main():
     return None
 `)
 	if err != nil {
 		t.Fatalf("CompileStarlarkIntent failed: %v", err)
 	}
-	if intent.Mode != orchestrator.IntentModeWorker {
-		t.Fatalf("unexpected mode: %q", intent.Mode)
+	if len(intent.Tasks) != 1 {
+		t.Fatalf("expected 1 implicit task, got %d", len(intent.Tasks))
 	}
-	if intent.Interval != "15m" {
-		t.Fatalf("unexpected interval: %q", intent.Interval)
+	if intent.Tasks[0].Handler != "main" {
+		t.Fatalf("expected handler 'main', got %q", intent.Tasks[0].Handler)
+	}
+	if intent.Tasks[0].Mode != orchestrator.IntentModeOnDemand {
+		t.Fatalf("expected on_demand mode, got %q", intent.Tasks[0].Mode)
 	}
 }
 
-func TestCompileStarlarkIntent_RequiresInitAndMain(t *testing.T) {
-	for name, script := range map[string]string{
-		"missing init": "def main():\n    return None\n",
-		"missing main": "init(id = \"missing-main\")\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := orchestrator.CompileStarlarkIntent("/tmp/test.star", script); err == nil {
-				t.Fatal("expected compile error")
-			}
-		})
+// TestCompileStarlarkIntent_RequiresMainOrTask verifies that a file with neither
+// main() nor any task() calls is rejected.
+func TestCompileStarlarkIntent_RequiresMainOrTask(t *testing.T) {
+	_, err := orchestrator.CompileStarlarkIntent("/tmp/empty.star", `
+x = 1
+`)
+	if err == nil {
+		t.Fatal("expected compile error for file with no main() and no task() calls")
 	}
 }
 
@@ -315,13 +337,8 @@ def on_event(event):
 def on_timer():
     return None
 
-init(
-    id = "tasks-test",
-    tasks = [
-        task(handler = on_event, trigger = "bridge.reminders_changed"),
-        task(handler = on_timer, schedule = "0 7 * * *"),
-    ],
-)
+task(on_event, trigger = "bridge.reminders_changed")
+task(on_timer, schedule = "0 7 * * *")
 `)
 	if err != nil {
 		t.Fatalf("CompileStarlarkIntent failed: %v", err)
@@ -329,7 +346,8 @@ init(
 	if len(intent.Tasks) != 2 {
 		t.Fatalf("expected 2 tasks, got %d", len(intent.Tasks))
 	}
-	if intent.Tasks[0].Handler != "on_event" || intent.Tasks[0].Trigger != "bridge.reminders_changed" {
+	if intent.Tasks[0].Handler != "on_event" ||
+		intent.Tasks[0].Trigger != "bridge.reminders_changed" {
 		t.Fatalf("unexpected first task: %+v", intent.Tasks[0])
 	}
 	if intent.Tasks[1].Handler != "on_timer" || intent.Tasks[1].Schedule != "0 7 * * *" {
@@ -337,18 +355,20 @@ init(
 	}
 }
 
-func TestCompileStarlarkIntent_RejectsOnDemandTasksWithoutMain(t *testing.T) {
-	_, err := orchestrator.CompileStarlarkIntent("/tmp/tasks.star", `
-def background():
-    return None
+// TestCompileStarlarkIntent_IDFromFilename verifies that the intent ID is always
+// derived from the file basename, ignoring any describe() call.
+func TestCompileStarlarkIntent_IDFromFilename(t *testing.T) {
+	intent, err := orchestrator.CompileStarlarkIntent("/tmp/my-intent.star", `
+describe("An intent whose ID comes from its filename")
 
-init(
-    id = "bad-tasks",
-    tasks = [task(handler = background)],
-)
+def main():
+    return None
 `)
-	if err == nil {
-		t.Fatal("expected on_demand task without main to be rejected")
+	if err != nil {
+		t.Fatalf("CompileStarlarkIntent failed: %v", err)
+	}
+	if intent.ID != "my-intent" {
+		t.Fatalf("expected id 'my-intent', got %q", intent.ID)
 	}
 }
 
@@ -359,5 +379,18 @@ func TestLoadIntentFile_OnlySupportsStar(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected non-.star file to be rejected")
+	}
+}
+
+func TestCompileStarlarkIntent_DescribeOnce(t *testing.T) {
+	_, err := orchestrator.CompileStarlarkIntent("/tmp/dup.star", `
+describe("first")
+describe("second")
+
+def main():
+    return None
+`)
+	if err == nil {
+		t.Fatal("expected error for calling describe() twice")
 	}
 }

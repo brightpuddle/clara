@@ -576,7 +576,10 @@ func (s *Store) LoadRun(ctx context.Context, runID string) (RunState, map[string
 	return state, mem, nil
 }
 
-func (s *Store) LoadLatestWaitingRun(ctx context.Context, intentID string) (RunState, map[string]any, error) {
+func (s *Store) LoadLatestWaitingRun(
+	ctx context.Context,
+	intentID string,
+) (RunState, map[string]any, error) {
 	var runID string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id
@@ -656,15 +659,27 @@ func (s *Store) LoadReplayHistory(ctx context.Context, runID string) ([]ReplayHi
 	return history, nil
 }
 
-func (s *Store) RunEventsSince(ctx context.Context, sinceID int64, intentID string) ([]RunEvent, error) {
+func (s *Store) RunEventsSince(
+	ctx context.Context,
+	sinceID int64,
+	intentID string,
+) ([]RunEvent, error) {
 	return s.runEventsSince(ctx, sinceID, intentID, "")
 }
 
-func (s *Store) RunEventsForRunSince(ctx context.Context, sinceID int64, runID string) ([]RunEvent, error) {
+func (s *Store) RunEventsForRunSince(
+	ctx context.Context,
+	sinceID int64,
+	runID string,
+) ([]RunEvent, error) {
 	return s.runEventsSince(ctx, sinceID, "", runID)
 }
 
-func (s *Store) runEventsSince(ctx context.Context, sinceID int64, intentID, runID string) ([]RunEvent, error) {
+func (s *Store) runEventsSince(
+	ctx context.Context,
+	sinceID int64,
+	intentID, runID string,
+) ([]RunEvent, error) {
 	query := `
 		SELECT id, run_id, intent_id, state, action, args_json, result_json, error, created_at
 		FROM intent_events

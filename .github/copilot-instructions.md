@@ -206,45 +206,63 @@ Startup should be best-effort across configured MCP servers: one failing server 
 
 Clara's authored intent format is `.star`.
 
-Every intent file must:
+Every intent file must either:
 
-- call `init(...)` exactly once at top level
-- define a callable `main()` unless the file only declares managed `tasks=[...]`
+- define a callable `main()` (auto-registered as an on-demand task), or
+- register at least one task with `task(...)`
 
-Current supported `init(...)` fields:
+**Intent ID**: always derived from the filename stem. There is no `id` field.
 
-- `id` (required)
-- `description` (optional)
-- `mode` (`on_demand`, `schedule`, `worker`, `event`)
-- `interval` (required for `worker`)
-- `schedule` (required for `schedule`)
-- `trigger` (optional metadata for `event`)
-- `tasks` (optional list of `task(...)` declarations)
+### `describe(text)`
 
-`task(...)` supports:
+Optional. Sets the human-readable description. May only be called once per file.
 
-- `handler` (required callable)
-- `mode` (`on_demand`, `schedule`, `worker`, `event`)
-- `interval`
-- `schedule`
-- `trigger`
+### `task(handler, *, trigger=, schedule=, interval=)`
 
-Mode inference for `task(...)` follows the provided fields:
+Registers a handler as a task. The handler may be passed positionally or as
+`handler=`. Mode is always inferred from the arguments:
 
-- `trigger` => `event`
-- `schedule` => `schedule`
-- `interval` => `worker`
-- otherwise `on_demand`
+- `trigger` present → `event`
+- `schedule` present → `schedule`
+- `interval` present → `worker`
+- none of the above → `on_demand`
 
-Legacy top-level `mode` / `interval` / `schedule` / `trigger` metadata still maps
-to a default task that invokes `main()`.
+Multiple top-level `task(...)` calls register multiple tasks in a single file.
+There is no wrapping `init()` call and no `mode` argument.
 
-Runtime builtins available to Starlark:
+### Runtime builtins
 
-- `tool(name, **kwargs)` to call a registered tool
-- `wait(name, **kwargs)` to persist a wait request and resume later
+- `describe(text)` — file-level description (compile-time only, no-op at runtime)
+- `task(handler, ...)` — task registration (compile-time only, no-op at runtime)
+- `tool(name, **kwargs)` — call a registered tool
+- `wait(name, **kwargs)` — persist a wait request and resume later
 
-The daemon compiles `.star` files into the internal `orchestrator.Intent` runtime representation, but `.star` is the authored source of truth.
+### Minimal example
+
+```python
+# hello-world.star  →  intent id: "hello-world"
+def main():
+    return tool("fs.list_directory", path = ".")
+```
+
+### Multi-task example
+
+```python
+# reminders-sync.star
+describe("React to reminder changes and run nightly syncs")
+
+def on_reminder_change(event):
+    return tool("taskwarrior.sync_reminder", reminder = event["item"])
+
+def nightly_sync():
+    return tool("taskwarrior.full_sync")
+
+task(on_reminder_change, trigger = "bridge.reminders_changed")
+task(nightly_sync, schedule = "0 2 * * *")
+```
+
+The daemon compiles `.star` files into the internal `orchestrator.Intent` runtime
+representation. `.star` is the authored source of truth.
 
 ---
 
@@ -258,14 +276,14 @@ The daemon compiles `.star` files into the internal `orchestrator.Intent` runtim
 | `clara agent stop` | Gracefully stop the daemon and unload its LaunchAgent |
 | `clara agent status` | Show agent status and active intents |
 | `clara agent logs [-w]` | Show recent daemon logs or follow them live |
-| `clara intent list` | List installed intents |
-| `clara intent trigger <id>` | Run an installed intent once |
-| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run for an intent |
-| `clara intent start <id>` | Start a managed `schedule`, `worker`, or `event` intent |
-| `clara intent stop <id>` | Stop a managed `schedule`, `worker`, or `event` intent |
+| `clara intent list` | List installed intents (one row per task) |
+| `clara intent trigger <id> [task]` | Run an intent task (defaults to `main` or the sole task) |
+| `clara intent trigger <id> --input '<json>'` | Deliver JSON input to the latest waiting run |
+| `clara intent start <id> [task]` | Start a managed `schedule`, `worker`, or `event` task |
+| `clara intent stop <id> [task]` | Stop a managed `schedule`, `worker`, or `event` task |
 | `clara intent watch [id]` | Watch intent execution |
 | `clara intent resume <run-id>` | Resume a paused Starlark run directly |
-| `clara run <task-file>` | One-off execution of a `.star` intent file |
+| `clara intent run <task-file>` | One-off execution of a `.star` intent file |
 | `clara tool list` | List all registered tools with signatures |
 | `clara tool show <tool>` | Show full MCP-style details for one tool |
 | `clara tool call <tool> ...` | Call a registered tool directly |

@@ -125,10 +125,10 @@ func (it *StarlarkInterpreter) Execute(
 	}
 
 	predeclared := starlark.StringDict{
-		"init": starlark.NewBuiltin("init", runtime.initBuiltin),
-		"task": starlark.NewBuiltin("task", runtime.taskBuiltin),
-		"tool": starlark.NewBuiltin("tool", runtime.toolBuiltin),
-		"wait": starlark.NewBuiltin("wait", runtime.waitBuiltin),
+		"describe": starlark.NewBuiltin("describe", runtime.noopBuiltin),
+		"task":     starlark.NewBuiltin("task", runtime.noopBuiltin),
+		"tool":     starlark.NewBuiltin("tool", runtime.toolBuiltin),
+		"wait":     starlark.NewBuiltin("wait", runtime.waitBuiltin),
 	}
 
 	globals, err := starlark.ExecFile(thread, intent.ID+".star", intent.Script, predeclared)
@@ -224,16 +224,7 @@ type starlarkRuntime struct {
 	log           zerolog.Logger
 }
 
-func (rt *starlarkRuntime) initBuiltin(
-	_ *starlark.Thread,
-	_ *starlark.Builtin,
-	_ starlark.Tuple,
-	_ []starlark.Tuple,
-) (starlark.Value, error) {
-	return starlark.None, nil
-}
-
-func (rt *starlarkRuntime) taskBuiltin(
+func (rt *starlarkRuntime) noopBuiltin(
 	_ *starlark.Thread,
 	_ *starlark.Builtin,
 	_ starlark.Tuple,

@@ -17,18 +17,14 @@ type Tool func(ctx any, args map[string]any) (any, error)
 // It is the validated runtime form produced from authored intent sources such
 // as `.star` files.
 type Intent struct {
-	ID           string            `json:"id"                       yaml:"id"`
-	Description  string            `json:"description,omitempty"    yaml:"description,omitempty"`
-	Mode         string            `json:"mode,omitempty"           yaml:"mode,omitempty"`
-	Interval     string            `json:"interval,omitempty"       yaml:"interval,omitempty"`
-	Schedule     string            `json:"schedule,omitempty"       yaml:"schedule,omitempty"` // cron expression
-	Trigger      string            `json:"trigger,omitempty"        yaml:"trigger,omitempty"`  // event expression
-	Tasks        []Task            `json:"tasks,omitempty"          yaml:"tasks,omitempty"`
-	WorkflowType string            `json:"workflow_type,omitempty"  yaml:"workflow_type,omitempty"`
-	Script       string            `json:"script,omitempty"         yaml:"script,omitempty"`
-	InitialState string            `json:"initial_state,omitempty"  yaml:"initial_state,omitempty"`
-	Context      map[string]string `json:"context,omitempty"        yaml:"context,omitempty"` // alias → mcp:// URI
-	States       map[string]State  `json:"states,omitempty"         yaml:"states,omitempty"`
+	ID           string            `json:"id"                      yaml:"id"`
+	Description  string            `json:"description,omitempty"   yaml:"description,omitempty"`
+	Tasks        []Task            `json:"tasks,omitempty"         yaml:"tasks,omitempty"`
+	WorkflowType string            `json:"workflow_type,omitempty" yaml:"workflow_type,omitempty"`
+	Script       string            `json:"script,omitempty"        yaml:"script,omitempty"`
+	InitialState string            `json:"initial_state,omitempty" yaml:"initial_state,omitempty"`
+	Context      map[string]string `json:"context,omitempty"       yaml:"context,omitempty"` // alias → mcp:// URI
+	States       map[string]State  `json:"states,omitempty"        yaml:"states,omitempty"`
 }
 
 // Task is a single execution unit within an Intent.
@@ -52,12 +48,6 @@ func (b *Intent) Validate() error {
 		}
 	}
 
-	if err := validateIntentMode(b.Mode); err != nil {
-		return err
-	}
-	if err := validateRuntimeFields(b); err != nil {
-		return err
-	}
 	switch b.WorkflowKind() {
 	case WorkflowTypeStateMachine:
 		if b.InitialState == "" {
@@ -79,7 +69,10 @@ func (b *Intent) Validate() error {
 		}
 	case WorkflowTypeStarlark:
 		if b.Script == "" {
-			return &ValidationError{Field: "script", Message: "must not be empty for starlark workflows"}
+			return &ValidationError{
+				Field:   "script",
+				Message: "must not be empty for starlark workflows",
+			}
 		}
 		if len(b.States) > 0 {
 			return &ValidationError{
@@ -114,42 +107,47 @@ const (
 
 func (t *Task) validate(index int) error {
 	if t.Handler == "" {
-		return &ValidationError{Field: "tasks[" + itoa(index) + "].handler", Message: "must not be empty"}
+		return &ValidationError{
+			Field:   "tasks[" + itoa(index) + "].handler",
+			Message: "must not be empty",
+		}
 	}
-	if err := validateIntentMode(t.Mode); err != nil {
-		return &ValidationError{Field: "tasks[" + itoa(index) + "].mode", Message: err.(*ValidationError).Message}
+	if err := validateTaskMode(t.Mode); err != nil {
+		return &ValidationError{
+			Field:   "tasks[" + itoa(index) + "].mode",
+			Message: err.(*ValidationError).Message,
+		}
 	}
 	switch t.Mode {
 	case IntentModeSchedule:
 		if t.Schedule == "" {
-			return &ValidationError{Field: "tasks[" + itoa(index) + "].schedule", Message: "must not be empty for schedule mode"}
+			return &ValidationError{
+				Field:   "tasks[" + itoa(index) + "].schedule",
+				Message: "must not be empty for schedule mode",
+			}
 		}
 	case IntentModeWorker:
 		if t.Interval == "" {
-			return &ValidationError{Field: "tasks[" + itoa(index) + "].interval", Message: "must not be empty for worker mode"}
+			return &ValidationError{
+				Field:   "tasks[" + itoa(index) + "].interval",
+				Message: "must not be empty for worker mode",
+			}
 		}
 		if _, err := time.ParseDuration(t.Interval); err != nil {
-			return &ValidationError{Field: "tasks[" + itoa(index) + "].interval", Message: "must be a valid duration for worker mode"}
+			return &ValidationError{
+				Field:   "tasks[" + itoa(index) + "].interval",
+				Message: "must be a valid duration for worker mode",
+			}
 		}
 	case IntentModeEvent:
 		if t.Trigger == "" {
-			return &ValidationError{Field: "tasks[" + itoa(index) + "].trigger", Message: "must not be empty for event mode"}
+			return &ValidationError{
+				Field:   "tasks[" + itoa(index) + "].trigger",
+				Message: "must not be empty for event mode",
+			}
 		}
 	}
 	return nil
-}
-
-func (b *Intent) EffectiveTasks() []Task {
-	if len(b.Tasks) > 0 {
-		return b.Tasks
-	}
-	return []Task{{
-		Handler:  "main",
-		Mode:     b.RuntimeMode(),
-		Interval: b.Interval,
-		Schedule: b.Schedule,
-		Trigger:  b.Trigger,
-	}}
 }
 
 // WorkflowKind returns the active execution engine for this Intent.
@@ -167,14 +165,7 @@ func (b *Intent) WorkflowKind() string {
 	}
 }
 
-func (b *Intent) RuntimeMode() string {
-	if b.Mode == "" {
-		return IntentModeOnDemand
-	}
-	return b.Mode
-}
-
-func validateIntentMode(mode string) error {
+func validateTaskMode(mode string) error {
 	switch mode {
 	case "", IntentModeOnDemand, IntentModeSchedule, IntentModeWorker, IntentModeEvent:
 		return nil
@@ -183,30 +174,6 @@ func validateIntentMode(mode string) error {
 			Field:   "mode",
 			Message: "must be one of on_demand, schedule, worker, or event",
 		}
-	}
-}
-
-func validateRuntimeFields(intent *Intent) error {
-	switch intent.RuntimeMode() {
-	case IntentModeOnDemand:
-		return nil
-	case IntentModeSchedule:
-		if intent.Schedule == "" {
-			return &ValidationError{Field: "schedule", Message: "must not be empty for schedule mode"}
-		}
-		return nil
-	case IntentModeWorker:
-		if intent.Interval == "" {
-			return &ValidationError{Field: "interval", Message: "must not be empty for worker mode"}
-		}
-		if _, err := time.ParseDuration(intent.Interval); err != nil {
-			return &ValidationError{Field: "interval", Message: "must be a valid duration for worker mode"}
-		}
-		return nil
-	case IntentModeEvent:
-		return nil
-	default:
-		return nil
 	}
 }
 

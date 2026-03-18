@@ -47,10 +47,6 @@ type IntentRunner func(
 type IntentInfo struct {
 	ID          string
 	Description string
-	Mode        string
-	Schedule    string
-	Interval    string
-	Trigger     string
 	Active      bool
 	Tasks       []orchestrator.Task
 }
@@ -305,11 +301,11 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 	if !shouldAutoStart(intent) {
 		return nil
 	}
-	return s.startIntentLocked(intent.ID)
+	return s.startIntentLocked(intent.ID, "")
 }
 
 func shouldAutoStart(intent *orchestrator.Intent) bool {
-	for _, task := range intent.EffectiveTasks() {
+	for _, task := range intent.Tasks {
 		switch task.Mode {
 		case orchestrator.IntentModeSchedule,
 			orchestrator.IntentModeWorker,
@@ -320,18 +316,20 @@ func shouldAutoStart(intent *orchestrator.Intent) bool {
 	return false
 }
 
-func (s *Supervisor) StartIntent(id string) error {
+// StartIntent starts all auto tasks (schedule/worker/event) for the given intent.
+// If taskName is non-empty, only the task with that handler name is started.
+func (s *Supervisor) StartIntent(id, taskName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.startIntentLocked(id)
+	return s.startIntentLocked(id, taskName)
 }
 
-func (s *Supervisor) startIntentLocked(id string) error {
+func (s *Supervisor) startIntentLocked(id, taskName string) error {
 	managed, ok := s.intents[id]
 	if !ok {
 		return errors.Newf("intent %q not found", id)
 	}
-	if managed.active {
+	if managed.active && taskName == "" {
 		return nil
 	}
 	if s.rootCtx == nil {
@@ -341,11 +339,16 @@ func (s *Supervisor) startIntentLocked(id string) error {
 	managed.runSeq++
 	runSeq := managed.runSeq
 	managed.started = time.Now()
-	managed.activeTasks = 0
-	managed.cancels = nil
+	if taskName == "" {
+		managed.activeTasks = 0
+		managed.cancels = nil
+	}
 
-	for _, task := range managed.intent.EffectiveTasks() {
+	for _, task := range managed.intent.Tasks {
 		if task.Mode == orchestrator.IntentModeOnDemand {
+			continue
+		}
+		if taskName != "" && task.Handler != taskName {
 			continue
 		}
 		runCtx, cancel := context.WithCancel(s.rootCtx)
@@ -371,11 +374,16 @@ func (s *Supervisor) runTask(
 	case orchestrator.IntentModeEvent:
 		go s.runEventTask(ctx, intent, task, runSeq)
 	default:
-		s.log.Error().Str("intent_id", intent.ID).Str("mode", task.Mode).Msg("unsupported task mode")
+		s.log.Error().
+			Str("intent_id", intent.ID).
+			Str("mode", task.Mode).
+			Msg("unsupported task mode")
 	}
 }
 
-func (s *Supervisor) StopIntent(id string) error {
+// StopIntent stops all running tasks for the given intent.
+// If taskName is non-empty, only tasks with that handler name are stopped (best effort).
+func (s *Supervisor) StopIntent(id, taskName string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -383,6 +391,8 @@ func (s *Supervisor) StopIntent(id string) error {
 	if !ok {
 		return errors.Newf("intent %q not found", id)
 	}
+	// Cancel all goroutines — per-task cancel targeting is not yet supported
+	// because the cancels slice is not keyed by handler name.
 	for _, cancel := range managed.cancels {
 		cancel()
 	}
@@ -412,12 +422,8 @@ func (s *Supervisor) IntentInfos() []IntentInfo {
 		infos = append(infos, IntentInfo{
 			ID:          managed.intent.ID,
 			Description: managed.intent.Description,
-			Mode:        managed.intent.RuntimeMode(),
-			Schedule:    managed.intent.Schedule,
-			Interval:    managed.intent.Interval,
-			Trigger:     managed.intent.Trigger,
 			Active:      managed.active,
-			Tasks:       managed.intent.EffectiveTasks(),
+			Tasks:       managed.intent.Tasks,
 		})
 	}
 	return infos

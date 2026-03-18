@@ -157,7 +157,10 @@ func runMCPOllama(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	return serveMCP(ctx, ollamamcp.New(mcpOllamaURL, mcpOllamaEmbedModel, mcpOllamaGenerateModel).NewServer())
+	return serveMCP(
+		ctx,
+		ollamamcp.New(mcpOllamaURL, mcpOllamaEmbedModel, mcpOllamaGenerateModel).NewServer(),
+	)
 }
 
 func serveMCP(ctx context.Context, srv *server.MCPServer) error {

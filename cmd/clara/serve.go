@@ -41,7 +41,8 @@ This is equivalent to 'clara agent start'.`,
 }
 
 func init() {
-	serveCmd.Flags().BoolVarP(&serveDaemon, "daemon", "d", false, "run as a background launchd agent")
+	serveCmd.Flags().
+		BoolVarP(&serveDaemon, "daemon", "d", false, "run as a background launchd agent")
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
@@ -223,17 +224,33 @@ func buildHandler(
 
 		case ipc.MethodList:
 			intents := sup.IntentInfos()
-			list := make([]map[string]any, len(intents))
-			for i, intent := range intents {
-				list[i] = map[string]any{
-					"id":          intent.ID,
-					"description": intent.Description,
-					"mode":        intent.Mode,
-					"schedule":    intent.Schedule,
-					"interval":    intent.Interval,
-					"trigger":     intent.Trigger,
-					"active":      intent.Active,
+			type taskEntry struct {
+				IntentID    string `json:"intent_id"`
+				Description string `json:"description,omitempty"`
+				Handler     string `json:"handler"`
+				Mode        string `json:"mode"`
+				Schedule    string `json:"schedule,omitempty"`
+				Interval    string `json:"interval,omitempty"`
+				Trigger     string `json:"trigger,omitempty"`
+				Active      bool   `json:"active"`
+			}
+			var list []taskEntry
+			for _, intent := range intents {
+				for _, task := range intent.Tasks {
+					list = append(list, taskEntry{
+						IntentID:    intent.ID,
+						Description: intent.Description,
+						Handler:     task.Handler,
+						Mode:        task.Mode,
+						Schedule:    task.Schedule,
+						Interval:    task.Interval,
+						Trigger:     task.Trigger,
+						Active:      intent.Active,
+					})
 				}
+			}
+			if list == nil {
+				list = []taskEntry{}
 			}
 			return &ipc.Response{Data: list}
 
@@ -246,6 +263,7 @@ func buildHandler(
 			if !ok {
 				return &ipc.Response{Error: "intent " + id + " not found"}
 			}
+			taskName, _ := req.Params["task"].(string)
 			if input, ok := req.Params["input"]; ok {
 				runState, _, err := db.LoadLatestWaitingRun(ctx, id)
 				if err != nil || runState.RunID == "" {
@@ -256,7 +274,10 @@ func buildHandler(
 				go resumeIntentByIDInBackground(ctx, intent, input, reg, db, log)
 				return &ipc.Response{Message: "delivered input to waiting intent " + id}
 			}
-			go runIntentInBackground(ctx, intent, reg, db, log)
+			go runIntentInBackground(ctx, intent, taskName, reg, db, log)
+			if taskName != "" {
+				return &ipc.Response{Message: "intent " + id + " task " + taskName + " triggered"}
+			}
 			return &ipc.Response{Message: "intent " + id + " triggered"}
 
 		case ipc.MethodStart:
@@ -264,8 +285,12 @@ func buildHandler(
 			if id == "" {
 				return &ipc.Response{Error: "missing intent id"}
 			}
-			if err := sup.StartIntent(id); err != nil {
+			taskName, _ := req.Params["task"].(string)
+			if err := sup.StartIntent(id, taskName); err != nil {
 				return &ipc.Response{Error: err.Error()}
+			}
+			if taskName != "" {
+				return &ipc.Response{Message: "intent " + id + " task " + taskName + " started"}
 			}
 			return &ipc.Response{Message: "intent " + id + " started"}
 
@@ -274,10 +299,14 @@ func buildHandler(
 			if id == "" {
 				return &ipc.Response{Error: "missing intent id"}
 			}
-			if err := sup.StopIntent(id); err != nil {
+			taskName, _ := req.Params["task"].(string)
+			if err := sup.StopIntent(id, taskName); err != nil {
 				return &ipc.Response{Error: err.Error()}
 			}
 			cancelLatestWaitingRun(ctx, id, db, log)
+			if taskName != "" {
+				return &ipc.Response{Message: "intent " + id + " task " + taskName + " stopped"}
+			}
 			return &ipc.Response{Message: "intent " + id + " stopped"}
 
 		case ipc.MethodToolList:
@@ -372,6 +401,7 @@ func buildHandler(
 func runIntentInBackground(
 	ctx context.Context,
 	intent *orchestrator.Intent,
+	entrypoint string,
 	reg *registry.Registry,
 	db *store.Store,
 	log zerolog.Logger,
@@ -383,14 +413,14 @@ func runIntentInBackground(
 		intent.ID,
 		initialRunState(intent),
 		intent.WorkflowKind(),
-		"",
+		entrypoint,
 		intent.Script,
 		nil,
 	); err != nil {
 		log.Warn().Err(err).Str("run_id", runID).Msg("failed to initialize manual run")
 		return
 	}
-	err := executeIntentRun(ctx, intent, runID, "", nil, reg, db, log)
+	err := executeIntentRun(ctx, intent, runID, entrypoint, nil, reg, db, log)
 	if err != nil {
 		var pauseErr *interpreter.PauseError
 		if errors.As(err, &pauseErr) {

@@ -97,8 +97,8 @@ func executeStarlarkRun(
 					Kind:       entry.Kind,
 					Name:       entry.Name,
 					Args:       entry.Args,
-					Result:   entry.Result,
-					Error:    entry.Error,
+					Result:     entry.Result,
+					Error:      entry.Error,
 				})
 			},
 		)
@@ -154,7 +154,10 @@ func resumeIntentByIDInBackground(
 ) {
 	runState, _, err := db.LoadLatestWaitingRun(ctx, intent.ID)
 	if err != nil {
-		log.Error().Err(err).Str("intent_id", intent.ID).Msg("failed to load waiting run for trigger input")
+		log.Error().
+			Err(err).
+			Str("intent_id", intent.ID).
+			Msg("failed to load waiting run for trigger input")
 		return
 	}
 	if runState.RunID == "" {
@@ -170,7 +173,12 @@ func resumeIntentByIDInBackground(
 	}
 }
 
-func cancelLatestWaitingRun(ctx context.Context, intentID string, db *store.Store, log zerolog.Logger) {
+func cancelLatestWaitingRun(
+	ctx context.Context,
+	intentID string,
+	db *store.Store,
+	log zerolog.Logger,
+) {
 	runState, _, err := db.LoadLatestWaitingRun(ctx, intentID)
 	if err != nil {
 		return
@@ -245,12 +253,18 @@ func resumeStoredStarlarkRun(
 		return nil
 	case err != nil:
 		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "failed", err.Error()); finishErr != nil {
-			log.Warn().Err(finishErr).Str("run_id", runState.RunID).Msg("failed to persist resumed run failure")
+			log.Warn().
+				Err(finishErr).
+				Str("run_id", runState.RunID).
+				Msg("failed to persist resumed run failure")
 		}
 		return errors.Wrap(err, "resume workflow")
 	default:
 		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "completed", ""); finishErr != nil {
-			log.Warn().Err(finishErr).Str("run_id", runState.RunID).Msg("failed to persist resumed run completion")
+			log.Warn().
+				Err(finishErr).
+				Str("run_id", runState.RunID).
+				Msg("failed to persist resumed run completion")
 		}
 		return nil
 	}

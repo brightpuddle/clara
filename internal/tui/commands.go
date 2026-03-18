@@ -41,7 +41,11 @@ func commandSpecs() []CommandSpec {
 		{Path: "/agent status", Summary: "Show agent status", Usage: "/agent status"},
 		{Path: "/agent stop", Summary: "Stop the running agent", Usage: "/agent stop"},
 		{Path: "/intent list", Summary: "List active intents", Usage: "/intent list"},
-		{Path: "/intent trigger", Summary: "Trigger an installed intent by id", Usage: "/intent trigger <id>"},
+		{
+			Path:    "/intent trigger",
+			Summary: "Trigger an installed intent by id",
+			Usage:   "/intent trigger <id>",
+		},
 		{
 			Path:    "/mcp fs",
 			Summary: "Start the filesystem MCP server (not available in TUI)",

@@ -188,7 +188,7 @@ func TestStore_ReplayHistoryAndWaitingRun(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	if err := s.InitRun(ctx, "run-script", "intent-script", "SCRIPT", "starlark", `tool("echo")`, nil); err != nil {
+	if err := s.InitRun(ctx, "run-script", "intent-script", "SCRIPT", "starlark", "", `tool("echo")`, nil); err != nil {
 		t.Fatalf("InitRun: %v", err)
 	}
 	if err := s.AppendReplayHistory(ctx, store.ReplayHistoryEntry{
@@ -218,7 +218,8 @@ func TestStore_ReplayHistoryAndWaitingRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLatestWaitingRun: %v", err)
 	}
-	if state.Status != "waiting" || state.WaitName != "approval" || state.WorkflowType != "starlark" {
+	if state.Status != "waiting" || state.WaitName != "approval" ||
+		state.WorkflowType != "starlark" {
 		t.Fatalf("unexpected waiting state: %#v", state)
 	}
 	if len(mem) != 0 {

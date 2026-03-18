@@ -51,25 +51,25 @@ var intentRunCmd = &cobra.Command{
 }
 
 var intentTriggerCmd = &cobra.Command{
-	Use:          "trigger <id>",
-	Short:        "Run an intent or deliver input to its latest waiting run",
-	Args:         cobra.ExactArgs(1),
+	Use:          "trigger <id> [task]",
+	Short:        "Run an intent task or deliver input to its latest waiting run",
+	Args:         cobra.RangeArgs(1, 2),
 	RunE:         runIntentTrigger,
 	SilenceUsage: true,
 }
 
 var intentStartCmd = &cobra.Command{
-	Use:          "start <id>",
-	Short:        "Start a managed schedule, worker, or event intent",
-	Args:         cobra.ExactArgs(1),
+	Use:          "start <id> [task]",
+	Short:        "Start a managed schedule, worker, or event task",
+	Args:         cobra.RangeArgs(1, 2),
 	RunE:         runIntentStart,
 	SilenceUsage: true,
 }
 
 var intentStopCmd = &cobra.Command{
-	Use:          "stop <id>",
-	Short:        "Stop a managed schedule, worker, or event intent",
-	Args:         cobra.ExactArgs(1),
+	Use:          "stop <id> [task]",
+	Short:        "Stop a managed schedule, worker, or event task",
+	Args:         cobra.RangeArgs(1, 2),
 	RunE:         runIntentStop,
 	SilenceUsage: true,
 }
@@ -131,7 +131,7 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Human-friendly table: decode list of intent maps.
+	// Human-friendly table: decode list of task entries.
 	items, _ := resp.Data.([]any)
 	if len(items) == 0 {
 		theme := tui.DetectTheme()
@@ -141,12 +141,15 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 
 	theme := tui.DetectTheme()
 
-	// Compute column widths for id and mode.
-	maxID, maxMode := 0, 0
+	// Compute column widths.
+	maxID, maxHandler, maxMode := 0, 0, 0
 	for _, raw := range items {
 		m, _ := raw.(map[string]any)
-		if id, _ := m["id"].(string); len(id) > maxID {
+		if id, _ := m["intent_id"].(string); len(id) > maxID {
 			maxID = len(id)
+		}
+		if h, _ := m["handler"].(string); len(h) > maxHandler {
+			maxHandler = len(h)
 		}
 		if mode, _ := m["mode"].(string); len(mode) > maxMode {
 			maxMode = len(mode)
@@ -155,11 +158,12 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 
 	for _, raw := range items {
 		m, _ := raw.(map[string]any)
-		id, _ := m["id"].(string)
+		intentID, _ := m["intent_id"].(string)
+		handler, _ := m["handler"].(string)
 		mode, _ := m["mode"].(string)
 		desc, _ := m["description"].(string)
 
-		// Pick the most informative detail for the schedule/trigger column.
+		// Pick the most informative scheduling detail.
 		detail := ""
 		switch {
 		case m["trigger"] != nil && m["trigger"] != "":
@@ -177,9 +181,10 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Printf(
-			"  %s  %-*s  %-*s  %-20s  %s\n",
+			"  %s  %-*s  %-*s  %-*s  %-20s  %s\n",
 			activeMarker,
-			maxID, theme.Cyan(id),
+			maxID, theme.Cyan(intentID),
+			maxHandler, handler,
 			maxMode, theme.Dimmed(mode),
 			theme.Dimmed(detail),
 			desc,
@@ -195,6 +200,9 @@ func runIntentRun(cmd *cobra.Command, args []string) error {
 func runIntentTrigger(cmd *cobra.Command, args []string) error {
 	intentID := args[0]
 	params := map[string]any{"id": intentID}
+	if len(args) == 2 {
+		params["task"] = args[1]
+	}
 	if strings.TrimSpace(intentTriggerInput) != "" {
 		var input any
 		if err := json.Unmarshal([]byte(intentTriggerInput), &input); err != nil {
@@ -219,9 +227,13 @@ func runIntentTrigger(cmd *cobra.Command, args []string) error {
 
 func runIntentStart(cmd *cobra.Command, args []string) error {
 	intentID := args[0]
+	params := map[string]any{"id": intentID}
+	if len(args) == 2 {
+		params["task"] = args[1]
+	}
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodStart,
-		Params: map[string]any{"id": intentID},
+		Params: params,
 	})
 	if err != nil {
 		return fmt.Errorf("start request failed: %w", err)
@@ -235,9 +247,13 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 }
 
 func runIntentStop(cmd *cobra.Command, args []string) error {
+	params := map[string]any{"id": args[0]}
+	if len(args) == 2 {
+		params["task"] = args[1]
+	}
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodStop,
-		Params: map[string]any{"id": args[0]},
+		Params: params,
 	})
 	if err != nil {
 		return fmt.Errorf("stop request failed: %w", err)

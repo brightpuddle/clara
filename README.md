@@ -403,101 +403,93 @@ env:
 
 ## Intent files (`.star`)
 
-Clara now supports `.star` as the authored intent format.
+Clara uses `.star` (Starlark) files as the authored intent format.
 
 JSON, YAML, and Markdown are not supported as authored intent sources.
 
+### Intent ID
+
+The intent ID is always derived from the filename stem. A file named
+`reminders-sync.star` has intent ID `reminders-sync`. There is no `id` field
+inside the file.
+
 ### Required structure
 
-Every intent file must:
+Every intent file must either:
 
-- call `init(...)` once at top level
-- define a callable `main()`
+- define a callable `main()` (implicitly registered as an on-demand task), or
+- register at least one task with `task(...)`
 
-Minimal example:
+Minimal example — a single on-demand intent backed by `main()`:
 
 ```python
-init(
-    id = "example",
-    description = "Minimal example intent",
-)
-
+# hello-world.star  →  intent id: "hello-world"
 def main():
-    return None
+    return tool("fs.list_directory", path = ".")
 ```
 
-### `init(...)`
+### `describe(...)`
 
-Supported keyword arguments:
-
-| Field         | Required | Description                                                  |
-| ------------- | -------- | ------------------------------------------------------------ |
-| `id`          | yes      | Stable intent ID                                             |
-| `description` | no       | Human-readable description                                   |
-| `mode`        | no       | `on_demand`, `schedule`, `worker`, or `event`                |
-| `interval`    | no       | Go duration string for `worker` mode, such as `30s` or `15m` |
-| `schedule`    | no       | Cron-style expression for `schedule` mode                    |
-| `trigger`     | no       | Event name or routing label for `event` mode                 |
-
-Defaults:
-
-- `mode` defaults to `on_demand`
-
-Validation rules:
-
-- `schedule` mode requires `schedule`
-- `worker` mode requires `interval`
-- `.star` files must define `main()` unless they only declare managed `tasks=[...]`
-- a task without an explicit `mode` defaults to `on_demand`
-
-### `task(...)`
-
-`task(...)` declares an additional managed handler inside the same `.star` file.
-
-Supported keyword arguments:
-
-| Field      | Required | Description                                   |
-| ---------- | -------- | --------------------------------------------- |
-| `handler`  | yes      | Function to invoke when the task runs         |
-| `mode`     | no       | `on_demand`, `schedule`, `worker`, or `event` |
-| `interval` | no       | Go duration string for `worker` mode          |
-| `schedule` | no       | Cron-style expression for `schedule` mode     |
-| `trigger`  | no       | MCP notification name for `event` mode        |
-
-Mode inference:
-
-- `trigger` implies `event`
-- `schedule` implies `schedule`
-- `interval` implies `worker`
-- otherwise the task defaults to `on_demand`
-
-Use `tasks=[...]` in `init(...)` when one file needs multiple handlers:
+Optional. Sets a human-readable description for the intent.
+May only be called once per file.
 
 ```python
+describe("React to reminder changes and run nightly syncs")
+```
+
+### `task(handler, *, trigger=, schedule=, interval=)`
+
+Registers a task handler. The execution mode is inferred from the arguments:
+
+| Argument   | Mode       | Description                                      |
+| ---------- | ---------- | ------------------------------------------------ |
+| `trigger`  | `event`    | MCP notification name, e.g. `bridge.reminders_changed` |
+| `schedule` | `schedule` | Cron-style expression, e.g. `0 7 * * *`          |
+| `interval` | `worker`   | Go duration string, e.g. `10m` or `1h`           |
+| (none)     | `on_demand` | Idle until triggered via CLI                    |
+
+The `handler` argument is required and must be a callable defined in the file.
+It may be passed positionally or as a keyword argument.
+
+Mode inference rules:
+
+- `trigger` present → `event`
+- `schedule` present → `schedule`
+- `interval` present → `worker`
+- none of the above → `on_demand`
+
+Multiple `task(...)` calls in the same file register multiple handlers within a
+single intent:
+
+```python
+# reminders-sync.star
+describe("React to reminder changes and run nightly syncs")
+
 def on_reminder_change(event):
     return tool("taskwarrior.sync_reminder", reminder = event["item"])
 
 def nightly_sync():
     return tool("taskwarrior.full_sync")
 
-init(
-    id = "reminders-sync",
-    description = "React to reminder changes and run nightly syncs",
-    tasks = [
-        task(handler = on_reminder_change, trigger = "bridge.reminders_changed"),
-        task(handler = nightly_sync, schedule = "0 2 * * *"),
-    ],
-)
+task(on_reminder_change, trigger = "bridge.reminders_changed")
+task(nightly_sync, schedule = "0 2 * * *")
 ```
 
 ### `main()`
 
-`main()` is the default runtime entrypoint.
+`main()` is the default runtime entrypoint for on-demand intents.
 
-Clara executes the script, resolves metadata, then calls `main()` when the
-intent runs on demand. Legacy top-level `mode`, `schedule`, `interval`, and
-`trigger` fields are still supported and are internally mapped to a default task
-that calls `main()`.
+If no `task(...)` calls are present and `main()` is defined, Clara
+automatically registers `main` as an on-demand task — no explicit
+`task(main)` is required.
+
+When used with `task(...)`, `main()` is just another handler and must be
+explicitly registered if you want it to be callable:
+
+```python
+task(main)                     # on_demand
+task(main, schedule = "0 7 * * *")  # scheduled
+```
 
 ### Builtins available at runtime
 
@@ -524,11 +516,8 @@ The run can later be resumed:
 Example:
 
 ```python
-init(
-    id = "review-gate",
-    mode = "event",
-    trigger = "approval",
-)
+# review-gate.star
+describe("Gate a release on human approval")
 
 def main():
     approval = wait("approval", prompt = "Ship this release?")
@@ -554,10 +543,14 @@ rather than use Clara's persisted `wait(...)` / `trigger --input` path.
 
 Installed but idle until triggered.
 
-Use:
-
 ```bash
 clara intent trigger <id>
+```
+
+When a file has multiple on-demand tasks, specify the handler name:
+
+```bash
+clara intent trigger <id> <handler>
 ```
 
 #### `schedule`
@@ -581,96 +574,72 @@ Supported field patterns:
 Example:
 
 ```python
-init(
-    id = "daily-weather",
-    description = "Check the forecast each morning",
-    mode = "schedule",
-    schedule = "0 7 * * *",
-)
+# daily-weather.star
+describe("Check the forecast each morning")
 
 def main():
     weather = tool("weather.forecast_today")
     if weather.get("rain_expected"):
         return tool("bridge.notify", title = "Weather", body = "Bring an umbrella")
     return weather
+
+task(main, schedule = "0 7 * * *")
 ```
 
 #### `worker`
 
 Runs immediately, then repeats on a fixed interval.
 
-`interval` uses Go duration syntax.
-
-Examples:
-
-- `10s`
-- `5m`
-- `1h`
+`interval` uses Go duration syntax — `10s`, `5m`, `1h`.
 
 Example:
 
 ```python
-init(
-    id = "note-indexer",
-    description = "Continuously re-index notes",
-    mode = "worker",
-    interval = "10m",
-)
+# note-indexer.star
+describe("Continuously re-index notes")
 
 def main():
     notes = tool("fs.search_files", path = "~/Notes", pattern = "*.md")
     return tool("indexer.sync_notes", files = notes)
+
+task(main, interval = "10m")
 ```
 
 #### `event`
 
 Runs a specific handler each time a matching MCP notification arrives.
 
-For task-based intents, the trigger should match the fully-qualified
-notification name Clara receives from an MCP server, such as
-`bridge.reminders_changed` or `bridge.events_changed`.
+The `trigger` value must match the fully-qualified notification name Clara
+receives from an MCP server, such as `bridge.reminders_changed` or
+`bridge.events_changed`.
 
 Example:
 
 ```python
+# reminders-triage.star
+describe("React to reminder change notifications")
+
 def on_reminder_change(event):
     return tool("taskwarrior.sync_reminder", reminder = event["item"])
 
-init(
-    id = "reminders-triage",
-    description = "React to reminder change notifications",
-    tasks = [
-        task(handler = on_reminder_change, trigger = "bridge.reminders_changed"),
-    ],
-)
+task(on_reminder_change, trigger = "bridge.reminders_changed")
 ```
-
-Legacy compatibility:
-
-- top-level `mode = "event"` plus `trigger = "..."` still maps to `main(event)`
-- top-level `mode = "event"` without a trigger still runs `main()` once so the
-  script can pause with `wait(...)` or block in a wait-capable MCP tool
 
 ### Practical structure guidance
 
 Good intent structure usually looks like this:
 
-1. declare metadata in `init(...)`
+1. optional: call `describe("...")` once at the top
 2. define small helper functions
-3. keep `main()` as the default on-demand entrypoint
-4. call tools through `tool(...)`
-5. add `task(...)` handlers for managed schedules, workers, and event triggers
-6. use `wait(...)` when the script should suspend and later resume
+3. define handlers (`main`, or named functions)
+4. call `task(...)` to register each handler with its scheduling/trigger
+5. use `wait(...)` when the script should suspend and later resume
 
 Example:
 
 ```python
-init(
-    id = "morning-review",
-    description = "Collect daily review data",
-    mode = "schedule",
-    schedule = "30 8 * * 1-5",
-)
+# morning-review.star
+describe("Collect daily review data")
 
 def summarize(tasks, notes):
     return {
@@ -682,6 +651,8 @@ def main():
     tasks = tool("taskwarrior.list_tasks")
     notes = tool("fs.search_files", path = "~/Notes", pattern = "*.md")
     return summarize(tasks, notes)
+
+task(main, schedule = "30 8 * * 1-5")
 ```
 
 ## Supported features
@@ -689,12 +660,12 @@ def main():
 Clara currently supports:
 
 - `.star` intent authoring
-- explicit intent metadata with `init(...)`
-- `main()` as the default Starlark entrypoint
-- multi-handler `.star` intents via `task(...)` and `tasks=[...]`
-- one-off intent execution with `clara run`
+- intent ID derived from filename; optional `describe("...")` for human label
+- `main()` as the default Starlark entrypoint (auto-registered as on-demand)
+- multi-handler `.star` intents via top-level `task(...)` calls
+- one-off intent execution with `clara intent run`
 - installed intent management through the daemon
-- four runtime modes: `on_demand`, `schedule`, `worker`, `event`
+- four runtime modes: `on_demand`, `schedule`, `worker`, `event` (inferred from args)
 - persisted Starlark wait/resume behavior
 - event-style input delivery through `trigger --input`
 - MCP notification-driven event handlers for managed tasks
@@ -716,13 +687,13 @@ Clara currently supports:
 An intent is "installed" when its `.star` file exists in the watched tasks
 directory.
 
-`clara intent list` shows:
+`clara intent list` shows one row per task:
 
-- the intent ID
-- description
+- the intent ID (from filename)
+- handler name
 - mode
-- schedule/interval/trigger metadata
-- whether Clara currently considers the managed intent active
+- schedule/interval/trigger detail
+- whether the intent is currently active
 
 ### Run persistence
 
