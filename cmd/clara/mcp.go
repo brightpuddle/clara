@@ -13,6 +13,7 @@ import (
 	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
 	ollamamcp "github.com/brightpuddle/clara/internal/mcpserver/ollama"
 	taskwmcp "github.com/brightpuddle/clara/internal/mcpserver/taskwarrior"
+	zkmcp "github.com/brightpuddle/clara/internal/mcpserver/zk"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -41,7 +42,8 @@ Available servers:
   fs    filesystem operations (read, write, list, search, move, delete)
   db    SQLite query, exec, and vector-search tools
   ollama    local Ollama-powered generation and embeddings
-  taskwarrior    Taskwarrior CRUD, filtering, and due-task helpers`,
+  taskwarrior    Taskwarrior CRUD, filtering, and due-task helpers
+  zk    Zettelkasten Markdown vault (Obsidian, Zettlr, zk)`,
 }
 
 var mcpFsCmd = &cobra.Command{
@@ -99,6 +101,19 @@ var mcpOllamaCmd = &cobra.Command{
 	PersistentPreRunE: skipConfigLoad,
 }
 
+var mcpZKCmd = &cobra.Command{
+	Use:   "zk <vault-path>",
+	Short: "Start the built-in Zettelkasten MCP server",
+	Long: fmt.Sprintf(
+		"Start the Clara built-in Zettelkasten MCP server on stdio.\n\n%s",
+		zkmcp.Description,
+	),
+	Args:              cobra.ExactArgs(1),
+	RunE:              runMCPZK,
+	SilenceUsage:      true,
+	PersistentPreRunE: skipConfigLoad,
+}
+
 func init() {
 	mcpOllamaCmd.Flags().StringVar(
 		&mcpOllamaEmbedModel,
@@ -119,7 +134,7 @@ func init() {
 		"Base URL for the Ollama API",
 	)
 
-	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaCmd, mcpTaskwarriorCmd)
+	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaCmd, mcpTaskwarriorCmd, mcpZKCmd)
 }
 
 func runMCPFs(cmd *cobra.Command, args []string) error {
@@ -161,6 +176,17 @@ func runMCPOllama(cmd *cobra.Command, args []string) error {
 		ctx,
 		ollamamcp.New(mcpOllamaURL, mcpOllamaEmbedModel, mcpOllamaGenerateModel).NewServer(),
 	)
+}
+
+func runMCPZK(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	srv, err := zkmcp.New(args[0])
+	if err != nil {
+		return err
+	}
+	return serveMCP(ctx, srv)
 }
 
 func serveMCP(ctx context.Context, srv *server.MCPServer) error {

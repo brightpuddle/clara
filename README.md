@@ -155,7 +155,7 @@ For an `on_demand` intent, start it manually:
 
 ```bash
 clara intent start hello-world
-clara intent watch hello-world
+clara intent logs hello-world
 ```
 
 You can also run a one-off `.star` file directly without installing it into the
@@ -248,7 +248,7 @@ as the user-facing SQLite MCP server.
 | `clara intent start <id> [task]`             | Start an intent task (fires a run for on-demand; activates loop for schedule/worker/event) |
 | `clara intent start <id> --input '<json>'`   | Deliver JSON input to the latest waiting run for that intent                             |
 | `clara intent stop <id> [task]`              | Stop a managed `schedule`, `worker`, or `event` intent and cancel its latest waiting run |
-| `clara intent watch [id]`                    | Stream run activity                                                                      |
+| `clara intent logs [id]`                     | Stream run activity                                                                      |
 | `clara intent resume <run-id>`               | Resume a paused Starlark run directly by run ID                                          |
 | `clara intent run <file.star>`               | Run a `.star` file once without installing it                                            |
 
@@ -263,15 +263,42 @@ as the user-facing SQLite MCP server.
 
 ### Built-in MCP servers
 
-| Command                 | Description                                        |
-| ----------------------- | -------------------------------------------------- |
-| `clara mcp fs`          | Filesystem MCP server, including `wait_for_change` |
-| `clara mcp db [path]`   | SQLite MCP server                                  |
-| `clara mcp ollama`      | Ollama MCP server                                  |
-| `clara mcp taskwarrior` | Taskwarrior MCP server                             |
+| Command                    | Description                                        |
+| -------------------------- | -------------------------------------------------- |
+| `clara mcp fs`             | Filesystem MCP server, including `wait_for_change` |
+| `clara mcp db [path]`      | SQLite MCP server                                  |
+| `clara mcp ollama`         | Ollama MCP server                                  |
+| `clara mcp taskwarrior`    | Taskwarrior MCP server                             |
+| `clara mcp zk <vault-path>` | Zettelkasten Markdown vault MCP server            |
 
 `clara mcp ollama-embeddings` accepts `--model` and `--url` flags and defaults
 to `nomic-embed-text` and `http://localhost:11434`.
+
+The `zk` server indexes an Obsidian-style Markdown vault at startup (following
+symlinks up to 5 levels), and exposes tools for note CRUD, wikilink resolution,
+tag queries, and frontmatter access:
+
+| Tool                   | Description                                                    |
+| ---------------------- | -------------------------------------------------------------- |
+| `note_list`            | List all notes with metadata                                   |
+| `note_get`             | Get content and metadata for a note by name or path           |
+| `note_create`          | Create a new note                                              |
+| `note_update`          | Overwrite an existing note                                     |
+| `note_delete`          | Delete a note                                                  |
+| `note_resolve_wikilink` | Resolve `[[wikilink]]` target to absolute path               |
+| `tag_list`             | List all tags with note counts                                 |
+| `tag_notes`            | Find all notes with a given tag                                |
+| `vault_reload`         | Rebuild the in-memory index from disk                          |
+
+Configure it in `config.yaml`:
+
+```yaml
+mcp_servers:
+  - name: zk
+    command: clara
+    args: [mcp, zk, ~/notes]
+    description: "Zettelkasten vault"
+```
 
 ### Typical workflow
 
@@ -281,7 +308,7 @@ clara agent logs --watch
 clara tool list
 clara intent list
 clara intent start hello-world
-clara intent watch hello-world
+clara intent logs hello-world
 ```
 
 ### Using Clara as an MCP gateway

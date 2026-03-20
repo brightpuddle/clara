@@ -196,6 +196,10 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     private var pendingEventWaits: [String: PendingStoreWait] = [:]
     private var notificationCategories: [String: UNNotificationCategory] = [:]
 
+    // Proactive push baselines — nil until first successful snapshot.
+    private var reminderPushBaseline: [String: StoreSnapshotItem]? = nil
+    private var eventPushBaseline: [String: StoreSnapshotItem]? = nil
+
     override init() {
         super.init()
         eventStoreObserver = NotificationCenter.default.addObserver(
@@ -207,6 +211,17 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 await self?.handleEventStoreChanged()
             }
         }
+        // Eagerly request EventKit access so that proactive push notifications
+        // work immediately — even when no tool has been called yet.
+        Task { @MainActor [weak self] in
+            await self?.requestAccessEagerly()
+        }
+    }
+
+    @MainActor
+    private func requestAccessEagerly() async {
+        try? await ensureRemindersAccess()
+        try? await ensureEventsAccess()
     }
 
     @MainActor
@@ -429,11 +444,69 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
 
     @MainActor
     private func handleEventStoreChanged() async {
-        server?.sendNotification(method: "clara/eventkit_changed", params: [
-            "changed_at": ISO8601.dateString(from: Date()),
-        ])
+        await pushReminderNotifications()
+        await pushEventNotifications()
         await processPendingReminderWaits()
         await processPendingEventWaits()
+    }
+
+    // Proactively diff the reminder store and emit clara/reminders_changed for
+    // every detected change. On the first call, we just establish the baseline
+    // without emitting — there is nothing to diff against yet.
+    @MainActor
+    private func pushReminderNotifications() async {
+        guard remindersAuthorized else { return }
+        do {
+            let current = try await reminderSnapshot(listName: nil)
+            guard let baseline = reminderPushBaseline else {
+                reminderPushBaseline = current
+                return
+            }
+            let changes = diffSnapshots(old: baseline, new: current)
+            reminderPushBaseline = current
+            for change in changes {
+                let payload = waitPayload(
+                    resource: "reminder",
+                    changeType: change.type,
+                    filterKey: "list_name",
+                    filterValue: change.item["list_name"] as? String,
+                    item: change.item
+                )
+                server?.sendNotification(method: "clara/reminders_changed", params: payload)
+            }
+        } catch {
+            // Silently ignore snapshot errors — permissions may not be granted yet.
+        }
+    }
+
+    // Proactively diff the calendar store and emit clara/events_changed for
+    // every detected change. Uses a rolling ±1 year window centred on now.
+    @MainActor
+    private func pushEventNotifications() async {
+        guard eventsAuthorized else { return }
+        let startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date())!
+        let endDate = Calendar.current.date(byAdding: .year, value: 1, to: Date())!
+        do {
+            let current = try await eventSnapshot(calendarName: nil, startDate: startDate, endDate: endDate)
+            guard let baseline = eventPushBaseline else {
+                eventPushBaseline = current
+                return
+            }
+            let changes = diffSnapshots(old: baseline, new: current)
+            eventPushBaseline = current
+            for change in changes {
+                let payload = waitPayload(
+                    resource: "event",
+                    changeType: change.type,
+                    filterKey: "calendar_name",
+                    filterValue: change.item["calendar_name"] as? String,
+                    item: change.item
+                )
+                server?.sendNotification(method: "clara/events_changed", params: payload)
+            }
+        } catch {
+            // Silently ignore snapshot errors.
+        }
     }
 
     @MainActor

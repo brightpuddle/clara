@@ -21,12 +21,12 @@ import (
 )
 
 var (
-	intentWatchVerbose bool
-	intentWatchFollow  bool
-	intentRunVerbose   bool
-	intentResumeInput  string
-	intentStartInput   string
-	intentStartFollow  bool
+	intentLogsVerbose bool
+	intentLogsFollow  bool
+	intentRunVerbose  bool
+	intentResumeInput string
+	intentStartInput  string
+	intentStartFollow bool
 )
 
 var intentCmd = &cobra.Command{
@@ -72,15 +72,15 @@ var intentStopCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
-var intentWatchCmd = &cobra.Command{
-	Use:   "watch [id]",
+var intentLogsCmd = &cobra.Command{
+	Use:   "logs [id]",
 	Short: "Show current intent run states, or follow live with -f",
 	Args:  cobra.MaximumNArgs(1),
 	Long: `Show a snapshot of current active intent runs and exit.
 
 With -f/--follow the command instead streams live run events continuously
 until interrupted (Ctrl-C).`,
-	RunE:         runIntentWatch,
+	RunE:         runIntentLogs,
 	SilenceUsage: true,
 }
 
@@ -93,10 +93,10 @@ var intentResumeCmd = &cobra.Command{
 }
 
 func init() {
-	intentWatchCmd.Flags().
-		BoolVarP(&intentWatchVerbose, "verbose", "v", false, "show full tool args/results")
-	intentWatchCmd.Flags().
-		BoolVarP(&intentWatchFollow, "follow", "f", false, "stream live events until interrupted")
+	intentLogsCmd.Flags().
+		BoolVarP(&intentLogsVerbose, "verbose", "v", false, "show full tool args/results")
+	intentLogsCmd.Flags().
+		BoolVarP(&intentLogsFollow, "follow", "f", false, "stream live events until interrupted")
 	intentRunCmd.Flags().
 		BoolVarP(&intentRunVerbose, "verbose", "v", false, "show full tool args/results")
 	intentStartCmd.Flags().
@@ -111,7 +111,7 @@ func init() {
 		intentResumeCmd,
 		intentStartCmd,
 		intentStopCmd,
-		intentWatchCmd,
+		intentLogsCmd,
 	)
 }
 
@@ -215,7 +215,7 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 	fmt.Println(resp.Message)
 
 	if intentStartFollow {
-		return followIntentEvents(cmd.Context(), intentID, intentWatchVerbose)
+		return followIntentEvents(cmd.Context(), intentID, intentLogsVerbose)
 	}
 	return nil
 }
@@ -323,7 +323,7 @@ func runIntentResume(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runIntentWatch(cmd *cobra.Command, args []string) error {
+func runIntentLogs(cmd *cobra.Command, args []string) error {
 	intentID := ""
 	if len(args) == 1 {
 		intentID = args[0]
@@ -339,13 +339,13 @@ func runIntentWatch(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	printer := newIntentWatchPrinter(tui.DetectTheme(), intentWatchVerbose, intentID == "")
+	printer := newIntentWatchPrinter(tui.DetectTheme(), intentLogsVerbose, intentID == "")
 	if err := printer.printCurrentStates(ctx, db, intentID); err != nil {
 		return err
 	}
 
 	// Without -f, print the snapshot and exit.
-	if !intentWatchFollow {
+	if !intentLogsFollow {
 		return nil
 	}
 

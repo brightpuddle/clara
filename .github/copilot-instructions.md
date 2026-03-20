@@ -46,10 +46,11 @@ github.com/brightpuddle/clara/
 │   ├── registry/        # MCP client management + unified tool registry
 │   ├── interpreter/     # State machine Execute loop (expr-lang/expr conditions)
 │   ├── supervisor/      # .star file watcher + runtime mode/lifecycle management
-│   ├── mcpserver/       # Built-in MCP servers
-│   │   ├── fs/          # Filesystem MCP server (clara mcp fs)
-│   │   ├── db/          # SQLite MCP server (clara mcp db)
-│   │   └── ollamaembeddings/ # Ollama embeddings MCP server (clara mcp ollama-embeddings)
+ │   ├── mcpserver/       # Built-in MCP servers
+ │   │   ├── fs/          # Filesystem MCP server (clara mcp fs)
+ │   │   ├── db/          # SQLite MCP server (clara mcp db)
+ │   │   ├── zk/          # Zettelkasten vault MCP server (clara mcp zk)
+ │   │   └── ollamaembeddings/ # Ollama embeddings MCP server (clara mcp ollama-embeddings)
 │   └── store/           # Internal daemon persistence only (intent_runs, metadata)
 ├── swift/               # Standalone Swift MCP server for native macOS capabilities
 │   ├── Package.swift
@@ -280,7 +281,7 @@ representation. `.star` is the authored source of truth.
 | `clara intent start <id> [task]` | Start an intent task — fires a run for on-demand tasks, activates the persistent loop for schedule/worker/event |
 | `clara intent start <id> --input '<json>'` | Deliver JSON input to the latest waiting run |
 | `clara intent stop <id> [task]` | Stop a managed `schedule`, `worker`, or `event` task |
-| `clara intent watch [id]` | Watch intent execution |
+| `clara intent logs [id]` | Stream intent run events |
 | `clara intent resume <run-id>` | Resume a paused Starlark run directly |
 | `clara intent run <task-file>` | One-off execution of a `.star` intent file |
 | `clara tool list` | List all registered tools with signatures |
@@ -291,6 +292,7 @@ representation. `.star` is the authored source of truth.
 | `clara mcp db [path]` | Start the built-in SQLite MCP server on stdio |
 | `clara mcp ollama-embeddings` | Start the built-in Ollama embeddings MCP server on stdio |
 | `clara mcp taskwarrior` | Start the built-in Taskwarrior MCP server on stdio |
+| `clara mcp zk <vault-path>` | Start the built-in Zettelkasten vault MCP server on stdio |
 
 CLI is implemented with `github.com/spf13/cobra`. All commands live in `cmd/clara/` as a single unified binary — there is no separate `clarad` daemon binary.
 

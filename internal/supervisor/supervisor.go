@@ -4,6 +4,7 @@ package supervisor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -81,10 +82,14 @@ func New(
 		// (e.g. "clara/reminders_changed" → "reminders_changed") so that
 		// intent triggers of the form "bridge.reminders_changed" match.
 		method = strings.TrimPrefix(method, "clara/")
+		// Normalize params to map[string]any via JSON round-trip so that
+		// opaque MCP SDK structs (e.g. mcp.NotificationParams) are safely
+		// converted to plain Go values for the Starlark interpreter.
+		normalized := normalizeNotificationParams(params)
 		sup.bus.Publish(Event{
 			Server: serverName,
 			Method: method,
-			Params: params,
+			Params: normalized,
 		})
 	})
 	return sup
@@ -287,16 +292,23 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Carry over the runSeq counter from any existing entry so that goroutines
+	// from the previous deployment (which captured the old runSeq) cannot
+	// accidentally match the new entry's runSeq when they eventually call
+	// markIntentInactive.
+	var prevRunSeq int64
 	if existing, ok := s.intents[intent.ID]; ok {
 		s.log.Info().Str("intent_id", intent.ID).Msg("stopping previous intent instance")
 		for _, cancel := range existing.cancels {
 			cancel()
 		}
+		prevRunSeq = existing.runSeq
 	}
 
 	s.intents[intent.ID] = &managedIntent{
 		intent: intent,
 		path:   filepath.Clean(path),
+		runSeq: prevRunSeq, // startIntentLocked will increment before use
 	}
 	if !shouldAutoStart(intent) {
 		return nil
@@ -644,4 +656,25 @@ func (e *ValidationError) Error() string {
 		"intent %q state %q references unregistered tool %q",
 		e.IntentID, e.StateName, e.Action,
 	)
+}
+
+// normalizeNotificationParams converts opaque MCP SDK param structs
+// (e.g. mcp.NotificationParams) to a plain map[string]any via JSON
+// round-trip so that the Starlark interpreter can consume them safely.
+func normalizeNotificationParams(params any) map[string]any {
+	if params == nil {
+		return nil
+	}
+	if m, ok := params.(map[string]any); ok {
+		return m
+	}
+	data, err := json.Marshal(params)
+	if err != nil {
+		return nil
+	}
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil
+	}
+	return result
 }
