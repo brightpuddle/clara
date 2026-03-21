@@ -60,9 +60,12 @@ func New(vaultRoot string) (*server.MCPServer, error) {
 					"A relative subdirectory may be included, e.g. \"projects/my-idea\".",
 			),
 		),
-		mcp.WithString("content",
+		mcp.WithString(
+			"content",
 			mcp.Required(),
-			mcp.Description("Full Markdown content for the note, including optional YAML frontmatter."),
+			mcp.Description(
+				"Full Markdown content for the note, including optional YAML frontmatter.",
+			),
 		),
 	), h.handleNoteCreate)
 

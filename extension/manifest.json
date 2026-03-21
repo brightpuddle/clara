@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Clara Browser Bridge",
+  "version": "0.1.0",
+  "description": "Connects Chrome to the Clara automation daemon for intent-driven browser control.",
+
+  "permissions": [
+    "tabs",
+    "scripting",
+    "debugger",
+    "bookmarks",
+    "history",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

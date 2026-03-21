@@ -40,15 +40,25 @@ func runGateway(cmd *cobra.Command, args []string) error {
 
 	reg := registry.New(logger)
 	for _, srv := range cfg.MCPServers {
-		mcpSrv := registry.NewMCPServer(
-			srv.Name,
-			srv.Description,
-			srv.Command,
-			srv.Args,
-			srv.ResolvedEnv(),
-			cfg.MCPCommandSearchPathList(),
-			logger,
-		)
+		var mcpSrv *registry.MCPServer
+		if srv.IsHTTPServer() {
+			mcpSrv = registry.NewHTTPMCPServer(
+				srv.Name,
+				srv.Description,
+				srv.URL,
+				logger,
+			)
+		} else {
+			mcpSrv = registry.NewMCPServer(
+				srv.Name,
+				srv.Description,
+				srv.Command,
+				srv.Args,
+				srv.ResolvedEnv(),
+				cfg.MCPCommandSearchPathList(),
+				logger,
+			)
+		}
 		if err := reg.AddServer(mcpSrv); err != nil {
 			return errors.Wrapf(err, "register MCP server %q", srv.Name)
 		}

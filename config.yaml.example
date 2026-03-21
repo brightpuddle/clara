@@ -75,3 +75,27 @@ mcp_servers:
     env:
       NOMIC_API_KEY: ${NOMIC_API_KEY}
     description: "Nomic text embedding server"
+
+   # Chrome browser automation via the built-in clara mcp chrome server.
+  #
+  # The chrome MCP server bridges browser tool calls to the Clara Chrome
+  # extension over a local WebSocket on port 48765. No native messaging
+  # registration is required.
+  #
+  # One-time setup:
+  #   1. make install          — installs the clara binary
+  #   2. Load the extension:
+  #        chrome://extensions/ → enable Developer mode → Load unpacked →
+  #        select the extension/ directory in the Clara repo (or install dir)
+  #
+  # After that, start Clara — the chrome server starts automatically as a
+  # subprocess, and the extension connects to it when Chrome is running.
+  # If the extension connects before Clara starts, it reconnects automatically.
+  #
+  # - name: chrome
+  #   command: clara
+  #   args: [mcp, chrome]
+  #   description: >
+  #     Chrome browser automation (navigate, click, fill, upload files,
+  #     screenshot, read page content). Used by Facebook Marketplace,
+  #     Messenger, and other web automation intents.

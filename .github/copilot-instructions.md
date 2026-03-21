@@ -38,7 +38,7 @@ github.com/brightpuddle/clara/
 │       ├── intent.go    # clara intent {list,run}
 │       ├── run.go       # clara run <task-file>
 │       ├── tool.go      # clara tool {list,show,call}
-│       ├── mcp.go       # clara mcp {fs,db,...}
+│       ├── mcp.go       # clara mcp {fs,db,chrome,...}
 │       └── gateway.go   # clara gateway (aggregated MCP server)
 ├── internal/
 │   ├── config/          # Config loader (config.yaml + os.ExpandEnv)
@@ -46,12 +46,14 @@ github.com/brightpuddle/clara/
 │   ├── registry/        # MCP client management + unified tool registry
 │   ├── interpreter/     # State machine Execute loop (expr-lang/expr conditions)
 │   ├── supervisor/      # .star file watcher + runtime mode/lifecycle management
- │   ├── mcpserver/       # Built-in MCP servers
- │   │   ├── fs/          # Filesystem MCP server (clara mcp fs)
- │   │   ├── db/          # SQLite MCP server (clara mcp db)
- │   │   ├── zk/          # Zettelkasten vault MCP server (clara mcp zk)
- │   │   └── ollamaembeddings/ # Ollama embeddings MCP server (clara mcp ollama-embeddings)
+│   ├── mcpserver/       # Built-in MCP servers
+│   │   ├── chrome/      # Chrome browser automation (clara mcp chrome)
+│   │   ├── fs/          # Filesystem MCP server (clara mcp fs)
+│   │   ├── db/          # SQLite MCP server (clara mcp db)
+│   │   ├── zk/          # Zettelkasten vault MCP server (clara mcp zk)
+│   │   └── ollama/      # Ollama MCP server (clara mcp ollama)
 │   └── store/           # Internal daemon persistence only (intent_runs, metadata)
+├── extension/           # Clara Chrome extension (load unpacked in Chrome)
 ├── swift/               # Standalone Swift MCP server for native macOS capabilities
 │   ├── Package.swift
 │   └── Sources/ClaraBridge/
@@ -76,6 +78,7 @@ Note: during migrations, legacy bridge/proto artifacts may still exist in the re
 | Starlark intent authoring/runtime | `go.starlark.net` |
 | CLI | `github.com/spf13/cobra` |
 | MCP client/server | `github.com/mark3labs/mcp-go` |
+| WebSocket (chrome bridge) | `github.com/gorilla/websocket` |
 | Structured concurrency | `github.com/sourcegraph/conc` |
 | YAML config parsing | `gopkg.in/yaml.v3` |
 

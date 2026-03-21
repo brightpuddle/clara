@@ -175,6 +175,42 @@ mcp_command_search_paths:
 	}
 }
 
+func TestLoad_HTTPServerConfig(t *testing.T) {
+	yaml := `
+mcp_servers:
+  - name: chrome
+    url: "http://127.0.0.1:12306/mcp"
+    description: "Chrome browser automation"
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem"]
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(cfg.MCPServers) != 2 {
+		t.Fatalf("expected 2 MCP servers, got %d", len(cfg.MCPServers))
+	}
+
+	chrome := cfg.MCPServers[0]
+	if chrome.Name != "chrome" {
+		t.Errorf("name: got %q want %q", chrome.Name, "chrome")
+	}
+	if chrome.URL != "http://127.0.0.1:12306/mcp" {
+		t.Errorf("url: got %q want %q", chrome.URL, "http://127.0.0.1:12306/mcp")
+	}
+	if !chrome.IsHTTPServer() {
+		t.Error("IsHTTPServer should be true when URL is set")
+	}
+
+	fs := cfg.MCPServers[1]
+	if fs.IsHTTPServer() {
+		t.Error("IsHTTPServer should be false when only command is set")
+	}
+}
+
 func writeTempFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()

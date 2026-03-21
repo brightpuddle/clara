@@ -263,13 +263,14 @@ as the user-facing SQLite MCP server.
 
 ### Built-in MCP servers
 
-| Command                    | Description                                        |
-| -------------------------- | -------------------------------------------------- |
-| `clara mcp fs`             | Filesystem MCP server, including `wait_for_change` |
-| `clara mcp db [path]`      | SQLite MCP server                                  |
-| `clara mcp ollama`         | Ollama MCP server                                  |
-| `clara mcp taskwarrior`    | Taskwarrior MCP server                             |
-| `clara mcp zk <vault-path>` | Zettelkasten Markdown vault MCP server            |
+| Command                     | Description                                        |
+| --------------------------- | -------------------------------------------------- |
+| `clara mcp fs`              | Filesystem MCP server, including `wait_for_change` |
+| `clara mcp db [path]`       | SQLite MCP server                                  |
+| `clara mcp ollama`          | Ollama MCP server                                  |
+| `clara mcp taskwarrior`     | Taskwarrior MCP server                             |
+| `clara mcp zk <vault-path>` | Zettelkasten Markdown vault MCP server             |
+| `clara mcp chrome`          | Chrome browser automation MCP server               |
 
 `clara mcp ollama-embeddings` accepts `--model` and `--url` flags and defaults
 to `nomic-embed-text` and `http://localhost:11434`.
@@ -298,6 +299,41 @@ mcp_servers:
     command: clara
     args: [mcp, zk, ~/notes]
     description: "Zettelkasten vault"
+```
+
+`clara mcp chrome` requires a one-time setup to load the companion extension.
+It bridges browser tool calls to the Clara Chrome extension over a local
+WebSocket (`localhost:48765`). When Clara starts, `clara mcp chrome` is
+launched as a subprocess and listens for the extension to connect.
+
+Setup:
+
+1. `make install` — build and install the `clara` binary
+2. Open Chrome → `chrome://extensions/` → enable **Developer mode** →
+   **Load unpacked** → select the `extension/` directory in the Clara repo
+
+Tools exposed by `clara mcp chrome`:
+
+| Tool                    | Description                                              |
+| ----------------------- | -------------------------------------------------------- |
+| `browser_navigate`      | Open a URL in a new background tab or an existing tab    |
+| `browser_click`         | Click an element by CSS selector                         |
+| `browser_fill`          | Fill a text input (React-compatible)                     |
+| `browser_upload_file`   | Set a file on `<input type="file">` via CDP              |
+| `browser_screenshot`    | Capture visible tab area as a PNG data URL               |
+| `browser_read_page`     | Return page title, URL, and visible text                 |
+| `browser_get_tabs`      | List open tabs, optionally filtered by URL pattern       |
+| `browser_close_tab`     | Close a tab by ID                                        |
+| `browser_wait_for_load` | Wait until a tab's document status is `complete`         |
+
+Enable in `config.yaml`:
+
+```yaml
+mcp_servers:
+  - name: chrome
+    command: clara
+    args: [mcp, chrome]
+    description: "Chrome browser automation"
 ```
 
 ### Typical workflow
@@ -768,10 +804,17 @@ github.com/brightpuddle/clara/
 ├── internal/interpreter/       # State machine + Starlark execution
 ├── internal/ipc/               # Control socket protocol
 ├── internal/mcpserver/         # Built-in MCP servers
+│   ├── chrome/                 # Chrome browser automation (navigate, click, fill, upload)
+│   ├── db/                     # SQLite MCP server
+│   ├── fs/                     # Filesystem MCP server
+│   ├── ollama/                 # Ollama embeddings/generation MCP server
+│   ├── taskwarrior/            # Taskwarrior MCP server
+│   └── zk/                     # Zettelkasten vault MCP server
 ├── internal/orchestrator/      # Compiled intent model + .star loading
 ├── internal/registry/          # MCP server connections and tool registry
 ├── internal/store/             # Internal SQLite persistence
 ├── internal/supervisor/        # Tasks directory watcher and runtime mode lifecycle
+├── extension/                  # Clara Chrome extension (load unpacked in Chrome)
 ├── swift/                      # Native macOS bridge MCP server
 ├── config.yaml.example         # Example daemon configuration
 └── README.md                   # This manual

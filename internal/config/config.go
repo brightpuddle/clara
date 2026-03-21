@@ -40,11 +40,17 @@ type Config struct {
 	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
 }
 
-// MCPServerConfig describes a single stdio-based MCP server subprocess.
+// MCPServerConfig describes a single MCP server managed by the Clara daemon.
+// Either URL (streamable HTTP) or Command (stdio subprocess) must be provided;
+// they are mutually exclusive.
 type MCPServerConfig struct {
 	// Name is the registry alias for this server (used in mcp://name/tool URIs).
 	Name string `yaml:"name"`
-	// Command is the executable to run.
+	// URL is the base URL of a streamable HTTP MCP server (e.g.
+	// "http://127.0.0.1:12306/mcp"). When set, Command, Args, and Env are
+	// ignored; the server is reached over HTTP instead of as a subprocess.
+	URL string `yaml:"url"`
+	// Command is the executable to run (stdio subprocess servers only).
 	Command string `yaml:"command"`
 	// Args are the command-line arguments passed to the subprocess.
 	Args []string `yaml:"args"`
@@ -53,6 +59,12 @@ type MCPServerConfig struct {
 	Env map[string]string `yaml:"env"`
 	// Description is a human-readable summary of what this server provides.
 	Description string `yaml:"description"`
+}
+
+// IsHTTPServer reports whether this config entry describes a streamable HTTP
+// server (URL set) rather than a stdio subprocess (Command set).
+func (s *MCPServerConfig) IsHTTPServer() bool {
+	return s.URL != ""
 }
 
 // Load reads and parses a config file at the given path.

@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/brightpuddle/clara/internal/config"
+	chromemcp "github.com/brightpuddle/clara/internal/mcpserver/chrome"
 	dbmcp "github.com/brightpuddle/clara/internal/mcpserver/db"
 	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
 	ollamamcp "github.com/brightpuddle/clara/internal/mcpserver/ollama"
@@ -114,6 +115,23 @@ var mcpZKCmd = &cobra.Command{
 	PersistentPreRunE: skipConfigLoad,
 }
 
+var mcpChromePort int
+
+var mcpChromeCmd = &cobra.Command{
+	Use:   "chrome",
+	Short: "Start the built-in Chrome browser automation MCP server",
+	Long: fmt.Sprintf(
+		"Start the Clara built-in Chrome browser automation MCP server on stdio.\n\n%s\n\n"+
+			"This server also listens on ws://localhost:<port> for the Clara Chrome\n"+
+			"extension to connect. Load the extension from the 'extension/' directory\n"+
+			"in Chrome developer mode (chrome://extensions → Load unpacked).",
+		chromemcp.Description,
+	),
+	RunE:              runMCPChrome,
+	SilenceUsage:      true,
+	PersistentPreRunE: skipConfigLoad,
+}
+
 func init() {
 	mcpOllamaCmd.Flags().StringVar(
 		&mcpOllamaEmbedModel,
@@ -134,7 +152,14 @@ func init() {
 		"Base URL for the Ollama API",
 	)
 
-	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaCmd, mcpTaskwarriorCmd, mcpZKCmd)
+	mcpChromeCmd.Flags().IntVar(
+		&mcpChromePort,
+		"port",
+		chromemcp.DefaultPort,
+		"localhost port for the Chrome extension WebSocket connection",
+	)
+
+	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaCmd, mcpTaskwarriorCmd, mcpZKCmd, mcpChromeCmd)
 }
 
 func runMCPFs(cmd *cobra.Command, args []string) error {
@@ -187,6 +212,14 @@ func runMCPZK(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return serveMCP(ctx, srv)
+}
+
+func runMCPChrome(cmd *cobra.Command, _ []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	log := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
+	return chromemcp.New(log).Run(ctx, mcpChromePort)
 }
 
 func serveMCP(ctx context.Context, srv *server.MCPServer) error {

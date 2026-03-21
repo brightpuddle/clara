@@ -84,15 +84,25 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	reg := registry.New(logger)
 
 	for _, srv := range cfg.MCPServers {
-		mcpSrv := registry.NewMCPServer(
-			srv.Name,
-			srv.Description,
-			srv.Command,
-			srv.Args,
-			srv.ResolvedEnv(),
-			cfg.MCPCommandSearchPathList(),
-			logger,
-		)
+		var mcpSrv *registry.MCPServer
+		if srv.IsHTTPServer() {
+			mcpSrv = registry.NewHTTPMCPServer(
+				srv.Name,
+				srv.Description,
+				srv.URL,
+				logger,
+			)
+		} else {
+			mcpSrv = registry.NewMCPServer(
+				srv.Name,
+				srv.Description,
+				srv.Command,
+				srv.Args,
+				srv.ResolvedEnv(),
+				cfg.MCPCommandSearchPathList(),
+				logger,
+			)
+		}
 		if err := reg.AddServer(mcpSrv); err != nil {
 			return err
 		}

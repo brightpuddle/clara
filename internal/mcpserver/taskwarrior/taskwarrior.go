@@ -63,7 +63,9 @@ func (s *Service) NewServer() *server.MCPServer {
 		),
 		mcp.WithString(
 			"reminder_id",
-			mcp.Description("Optional Reminders/EventKit identifier to associate with this task (UDA)."),
+			mcp.Description(
+				"Optional Reminders/EventKit identifier to associate with this task (UDA).",
+			),
 		),
 	), s.handleTaskAdd)
 

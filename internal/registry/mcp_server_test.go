@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
@@ -71,6 +72,36 @@ func TestBuildServerEnvPrependsSearchPathsToPATH(t *testing.T) {
 	}
 	if !strings.HasPrefix(pathValue, "/custom/bin:/usr/local/bin:/usr/bin:/bin") {
 		t.Fatalf("unexpected PATH value: %q", pathValue)
+	}
+}
+
+func TestHTTPMCPServer_DoesNotFailStartupWhenUnreachable(t *testing.T) {
+	// An HTTP MCP server pointing at a port nobody is listening on should not
+	// cause StartServers to fail — it should start the background reconnect
+	// goroutine and return nil so the daemon boots normally.
+	reg := New(zerolog.Nop())
+
+	srv := NewHTTPMCPServer("chrome", "", "http://127.0.0.1:19991/mcp", zerolog.Nop())
+	if err := reg.AddServer(srv); err != nil {
+		t.Fatalf("AddServer: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := reg.StartServers(ctx); err != nil {
+		t.Fatalf(
+			"StartServers should not return an error for unreachable HTTP servers, got: %v",
+			err,
+		)
+	}
+
+	// The server must NOT be registered in the tool list yet (no connection).
+	if len(reg.Tools()) != 0 {
+		t.Fatalf(
+			"expected 0 tools registered for unreachable HTTP server, got %d",
+			len(reg.Tools()),
+		)
 	}
 }
 
