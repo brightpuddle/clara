@@ -61,6 +61,10 @@ func (s *Service) NewServer() *server.MCPServer {
 			"wait",
 			mcp.Description("Optional wait/until timestamp in Taskwarrior or ISO-8601 format."),
 		),
+		mcp.WithString(
+			"reminder_id",
+			mcp.Description("Optional Reminders/EventKit identifier to associate with this task (UDA)."),
+		),
 	), s.handleTaskAdd)
 
 	mcpServer.AddTool(mcp.NewTool("task_get",
@@ -94,6 +98,12 @@ func (s *Service) NewServer() *server.MCPServer {
 			"wait",
 			mcp.Description("Updated wait timestamp. Use an empty string to clear wait."),
 		),
+		mcp.WithString(
+			"reminder_id",
+			mcp.Description(
+				"Updated Reminders/EventKit identifier. Use an empty string to clear.",
+			),
+		),
 	), s.handleTaskUpdate)
 
 	mcpServer.AddTool(mcp.NewTool("task_delete",
@@ -110,6 +120,12 @@ func (s *Service) NewServer() *server.MCPServer {
 			"updated_after",
 			mcp.Description(
 				"Optional lower-bound modified timestamp. Only tasks updated on or after this time are returned.",
+			),
+		),
+		mcp.WithString(
+			"reminder_id",
+			mcp.Description(
+				"Optional Reminders/EventKit identifier filter. Returns only the task with this reminder_id UDA.",
 			),
 		),
 	), s.handleListTasks)
@@ -405,6 +421,9 @@ func writeFieldArgs(args map[string]any, current taskRecord) []string {
 	if wait, ok := stringArg(args, "wait"); ok {
 		fields = append(fields, fmt.Sprintf("wait:%s", wait))
 	}
+	if reminderID, ok := stringArg(args, "reminder_id"); ok {
+		fields = append(fields, fmt.Sprintf("reminder_id:%s", reminderID))
+	}
 	if status, ok := stringArg(args, "status"); ok && status != "completed" {
 		fields = append(fields, fmt.Sprintf("status:%s", status))
 	}
@@ -435,6 +454,9 @@ func readFilters(args map[string]any) []string {
 	}
 	if status, ok := stringArg(args, "status"); ok && status != "" {
 		filters = append(filters, fmt.Sprintf("status:%s", status))
+	}
+	if reminderID, ok := stringArg(args, "reminder_id"); ok && reminderID != "" {
+		filters = append(filters, fmt.Sprintf("reminder_id:%s", reminderID))
 	}
 	return filters
 }
