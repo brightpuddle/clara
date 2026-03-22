@@ -1,379 +1,396 @@
 /**
  * Clara Browser Bridge — background service worker
- *
- * Connects to the clara mcp chrome WebSocket bridge on localhost and executes
- * browser automation commands dispatched from Clara intents.
- *
- * Protocol:
- *   Clara → extension:  { id: string, tool: string, params: object }
- *   Extension → Clara:  { id: string, result?: any, error?: string }
- *
- * The WebSocket connection keeps this service worker alive for as long as
- * Clara is running. On disconnect, exponential backoff reconnection is used.
  */
 
 const BRIDGE_URL = 'ws://localhost:48765';
 const MIN_RECONNECT_MS = 1000;
 const MAX_RECONNECT_MS = 30000;
+const MIN_HUMAN_DELAY_MS = 5000;
+const MAX_HUMAN_DELAY_MS = 10000;
 
-let ws = null;
+let socket = null;
 let reconnectDelay = MIN_RECONNECT_MS;
-let reconnectTimer = null;
-
-// ── Connection management ────────────────────────────────────────────────────
 
 function connect() {
-  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
-    return;
-  }
+  console.log(`[Clara] Connecting to ${BRIDGE_URL}...`);
+  socket = new WebSocket(BRIDGE_URL);
 
-  console.log('[clara] Connecting to', BRIDGE_URL);
-  ws = new WebSocket(BRIDGE_URL);
-
-  ws.onopen = () => {
-    console.log('[clara] Connected to Clara bridge');
+  socket.onopen = () => {
+    console.log('[Clara] Connected');
     reconnectDelay = MIN_RECONNECT_MS;
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
   };
 
-  ws.onmessage = async (event) => {
-    let cmd;
-    try {
-      cmd = JSON.parse(event.data);
-    } catch (e) {
-      console.error('[clara] Failed to parse message:', e);
+  socket.onmessage = async (event) => {
+    const request = JSON.parse(event.data);
+    const { id, tool, params, type } = request;
+
+    // Handle heartbeat ping
+    if (type === 'ping') {
+      socket.send(JSON.stringify({ type: 'pong' }));
       return;
     }
-    if (!cmd.id || !cmd.tool) {
-      return; // malformed or keep-alive ping
-    }
 
-    const response = { id: cmd.id };
+    // Ignore messages that are not tool calls
+    if (!tool) return;
+
     try {
-      response.result = await dispatch(cmd.tool, cmd.params || {});
-    } catch (e) {
-      response.error = e.message || String(e);
-    }
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(response));
+      const result = await executeTool(tool, params);
+      socket.send(JSON.stringify({ id, result }));
+    } catch (error) {
+      console.error(`[Clara] Error executing ${tool}:`, error);
+      socket.send(JSON.stringify({ id, error: error.message }));
     }
   };
 
-  ws.onclose = () => {
-    console.log(`[clara] Disconnected. Reconnecting in ${reconnectDelay}ms`);
-    scheduleReconnect();
-  };
-
-  ws.onerror = () => {
-    // onerror is always followed by onclose; handle reconnect there.
-  };
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer !== null) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
+  socket.onclose = () => {
+    console.log(`[Clara] Disconnected. Reconnecting in ${reconnectDelay}ms...`);
+    setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_MS);
-    connect();
-  }, reconnectDelay);
+  };
+
+  socket.onerror = (error) => {
+    console.error('[Clara] WebSocket error:', error);
+  };
 }
 
-// ── Command dispatcher ───────────────────────────────────────────────────────
-
-async function dispatch(tool, params) {
+async function executeTool(tool, params) {
   switch (tool) {
-    case 'navigate':      return handleNavigate(params);
-    case 'click':         return handleClick(params);
-    case 'fill':          return handleFill(params);
-    case 'read_page':     return handleReadPage(params);
-    case 'screenshot':    return handleScreenshot(params);
-    case 'upload_file':   return handleUploadFile(params);
-    case 'get_tabs':      return handleGetTabs(params);
-    case 'close_tab':     return handleCloseTab(params);
-    case 'wait_for_load': return handleWaitForLoad(params);
-    default:
-      throw new Error(`Unknown tool: ${tool}`);
+    case 'get_tabs':          return handleGetTabs(params);
+    case 'navigate':          return handleNavigate(params);
+    case 'click':             return handleClick(params);
+    case 'click_by_label':    return handleClickByLabel(params);
+    case 'fill':              return handleFill(params);
+    case 'fill_by_label':     return handleFillByLabel(params);
+    case 'read_page':         return handleReadPage(params);
+    case 'screenshot':        return handleScreenshot(params);
+    case 'upload_file':       return handleUploadFile(params);
+    case 'eval':              return handleEval(params);
+    case 'close_tab':         return handleCloseTab(params);
+    case 'cleanup_tabs':      return handleCleanupTabs(params);
+    case 'wait_for_load':     return handleWaitForLoad(params);
+    case 'wait_for_selector': return handleWaitForSelector(params);
+    case 'type':              return handleType(params);
+    case 'query_elements':    return handleQueryElements(params);
+    case 'debugger_command':  return handleDebuggerCommand(params);
+    case 'type_by_selector':  return handleTypeBySelector(params);
+    default: throw new Error(`Unknown tool: ${tool}`);
   }
 }
 
-// ── Tool handlers ────────────────────────────────────────────────────────────
+async function handleGetTabs({ url_filter } = {}) {
+  const tabs = await chrome.tabs.query(url_filter ? { url: url_filter } : {});
+  return tabs.map(t => ({ id: t.id, url: t.url, title: t.title }));
+}
 
-/**
- * navigate — open or update a tab
- * params: { url, tab_id?, background? }
- */
 async function handleNavigate({ url, tab_id, background = true }) {
   if (!url) throw new Error('url is required');
-
+  await maybeApplyHumanDelay(arguments[0]);
   if (tab_id != null) {
     const tab = await chrome.tabs.update(tab_id, { url });
-    return { tab_id: tab.id, url: tab.pendingUrl || tab.url };
+    return { tab_id: tab.id, url: tab.url };
   }
-
   const tab = await chrome.tabs.create({ url, active: !background });
+  const { ownedTabIds = [] } = await chrome.storage.local.get('ownedTabIds');
+  ownedTabIds.push(tab.id);
+  await chrome.storage.local.set({ ownedTabIds });
   return { tab_id: tab.id, url: tab.pendingUrl || tab.url };
 }
 
-/**
- * click — click an element by CSS selector
- * params: { tab_id, selector, wait_after_ms? }
- */
 async function handleClick({ tab_id, selector, wait_after_ms = 500 }) {
-  requireArgs({ tab_id, selector });
-
+  await maybeApplyHumanDelay(arguments[0]);
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab_id },
     func: (sel) => {
       const el = document.querySelector(sel);
-      if (!el) return { ok: false, error: `Element not found: ${sel}` };
+      if (!el) return { error: `Not found: ${sel}` };
       el.scrollIntoView({ behavior: 'instant', block: 'center' });
-      el.focus();
-      el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true }));
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      el.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true }));
       el.click();
       return { ok: true };
     },
-    args: [selector],
+    args: [selector]
   });
-
   if (result?.error) throw new Error(result.error);
-
-  if (wait_after_ms > 0) {
-    await sleep(wait_after_ms);
-  }
-
-  return { ok: true, selector };
-}
-
-/**
- * fill — set a text input value using the React-compatible native setter
- * params: { tab_id, selector, value, clear_first? }
- */
-async function handleFill({ tab_id, selector, value, clear_first = true }) {
-  requireArgs({ tab_id, selector });
-  if (value === undefined || value === null) throw new Error('value is required');
-
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId: tab_id },
-    func: (sel, val, clearFirst) => {
-      const el = document.querySelector(sel);
-      if (!el) return { ok: false, error: `Element not found: ${sel}` };
-
-      el.focus();
-
-      if (clearFirst && el.select) {
-        el.select();
-      }
-
-      // Use the native value setter so React's synthetic events fire correctly.
-      const proto = el instanceof HTMLTextAreaElement
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-      const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-
-      if (nativeSetter) {
-        nativeSetter.call(el, val);
-      } else {
-        el.value = val;
-      }
-
-      el.dispatchEvent(new InputEvent('input',  { bubbles: true, cancelable: true }));
-      el.dispatchEvent(new Event('change',       { bubbles: true, cancelable: true }));
-
-      return { ok: true };
-    },
-    args: [selector, String(value), clear_first],
-  });
-
-  if (result?.error) throw new Error(result.error);
-  return { ok: true, selector, value };
-}
-
-/**
- * read_page — return visible text, title, and URL from a tab
- * params: { tab_id }
- */
-async function handleReadPage({ tab_id }) {
-  if (!tab_id) throw new Error('tab_id is required');
-
-  const [{ result }] = await chrome.scripting.executeScript({
-    target: { tabId: tab_id },
-    func: () => ({
-      title: document.title,
-      url:   window.location.href,
-      text:  document.body?.innerText ?? '',
-    }),
-  });
-
+  if (wait_after_ms) await sleep(wait_after_ms);
   return result;
 }
 
-/**
- * screenshot — capture visible tab area as a PNG data URL
- * params: { tab_id? }
- */
+async function handleFill({ tab_id, selector, value, clear_first = true }) {
+  await maybeApplyHumanDelay(arguments[0]);
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab_id },
+    func: (sel, val, clear) => {
+      const el = document.querySelector(sel);
+      if (!el) return { error: `Not found: ${sel}` };
+      if (clear && el.select) el.select();
+      const setter = Object.getOwnPropertyDescriptor(el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(el, val); else el.value = val;
+      el.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, data: val }));
+      el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true }));
+      el.dispatchEvent(new InputEvent('input', { bubbles: true, data: val }));
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return { ok: true };
+    },
+    args: [selector, String(value), clear_first]
+  });
+  if (result?.error) throw new Error(result.error);
+  return result;
+}
+
+async function handleFillByLabel({ tab_id, label, value, tag = 'input' }) {
+  await maybeApplyHumanDelay(arguments[0]);
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab_id },
+    func: (labelText, val, tagName) => {
+      const search = labelText.toLowerCase();
+      const elements = Array.from(document.querySelectorAll('span, label, div, p, [aria-label]'));
+      let labelEl = elements.find(el => {
+        const text = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '')).trim().toLowerCase();
+        return text === search || text.includes(search);
+      });
+      if (!labelEl) return { error: `Label not found: ${labelText}` };
+      let current = labelEl;
+      let input = null;
+      for (let i = 0; i < 5; i++) {
+        input = current.tagName === tagName.toUpperCase() ? current : current.querySelector(tagName);
+        if (!input) {
+          let sib = current.nextElementSibling;
+          while (sib) {
+            input = sib.tagName === tagName.toUpperCase() ? sib : sib.querySelector(tagName);
+            if (input) break;
+            sib = sib.nextElementSibling;
+          }
+        }
+        if (input) break;
+        current = current.parentElement;
+        if (!current) break;
+      }
+      if (!input) return { error: `Input not found for: ${labelText}` };
+      input.scrollIntoView({ behavior: 'instant', block: 'center' });
+      input.focus();
+      const setter = Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(input, val); else input.value = val;
+      input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, data: val }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true }));
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, data: val }));
+      input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return { ok: true };
+    },
+    args: [label, String(value), tag]
+  });
+  if (result?.error) throw new Error(result.error);
+  return result;
+}
+
+async function handleClickByLabel({ tab_id, label }) {
+  await maybeApplyHumanDelay(arguments[0]);
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab_id },
+    func: (labelText) => {
+      const search = labelText.toLowerCase();
+      const candidates = Array.from(document.querySelectorAll('div, span, button, a, [role="button"], [role="option"], li'));
+      const found = candidates.find(el => {
+        const text = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '')).trim().toLowerCase();
+        return text === search || (text.length > 0 && text.includes(search));
+      });
+      if (!found) return { error: `Not found: ${labelText}` };
+      found.scrollIntoView({ behavior: 'instant', block: 'center' });
+      found.click();
+      return { ok: true };
+    },
+    args: [label]
+  });
+  if (result?.error) throw new Error(result.error);
+  return result;
+}
+
+async function handleReadPage({ tab_id }) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab_id },
+    func: () => ({ title: document.title, url: window.location.href, text: document.body?.innerText || '' })
+  });
+  return result;
+}
+
 async function handleScreenshot({ tab_id } = {}) {
   let windowId;
-
-  if (tab_id != null) {
-    const tab = await chrome.tabs.get(tab_id);
-    windowId = tab.windowId;
-    // captureVisibleTab only works on the active tab in a window.
-    // Temporarily activate the target tab, capture, then optionally restore.
-    await chrome.tabs.update(tab_id, { active: true });
-  }
-
+  if (tab_id != null) { const tab = await chrome.tabs.get(tab_id); windowId = tab.windowId; await chrome.tabs.update(tab_id, { active: true }); }
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId ?? null, { format: 'png' });
   return { data_url: dataUrl };
 }
 
-/**
- * upload_file — set a local file on an <input type="file"> via CDP
- * params: { tab_id, selector, file_path }
- *
- * Uses chrome.debugger + DOM.setFileInputFiles — the same approach used by
- * Playwright and Puppeteer. Requires the "debugger" manifest permission.
- * Chrome will show a "Clara Browser Bridge is debugging this browser" banner
- * while the debugger is attached; it is detached immediately after the upload.
- */
-async function handleUploadFile({ tab_id, selector, file_path }) {
-  requireArgs({ tab_id, selector, file_path });
-
+async function handleUploadFile({ tab_id, selector, file_path, file_paths }) {
+  const files = Array.isArray(file_paths) ? file_paths : (file_path ? [file_path] : []);
+  if (!files.length) throw new Error('files required');
+  await maybeApplyHumanDelay(arguments[0]);
   const target = { tabId: tab_id };
-
   await debuggerAttach(target, '1.3');
   try {
     await sendDebugCmd(target, 'DOM.enable', {});
-    await sendDebugCmd(target, 'Runtime.enable', {});
+    const { root } = await sendDebugCmd(target, 'DOM.getDocument', { depth: -1, pierce: true });
+    const { nodeId } = await sendDebugCmd(target, 'DOM.querySelector', { nodeId: root.nodeId, selector });
+    if (!nodeId) throw new Error(`Not found: ${selector}`);
+    await sendDebugCmd(target, 'DOM.setFileInputFiles', { nodeId, files });
+  } finally { await debuggerDetach(target); }
+  return { ok: true };
+}
 
-    const { root } = await sendDebugCmd(target, 'DOM.getDocument', {
-      depth: -1,
-      pierce: true,
+async function handleEval({ tab_id, script, args = {} }) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab_id },
+    world: 'MAIN',
+    func: async (src, a) => {
+      try {
+        const fn = new Function('args', `return (async () => { ${src}\n })();`);
+        return { ok: true, value: await fn(a) };
+      } catch (e) { return { error: e.message }; }
+    },
+    args: [script, args]
+  });
+  if (result?.error) throw new Error(result.error);
+  return result?.value;
+}
+
+async function handleCleanupTabs() {
+  const { ownedTabIds = [] } = await chrome.storage.local.get('ownedTabIds');
+  for (const id of ownedTabIds) { try { await chrome.tabs.remove(id); } catch(e) {} }
+  await chrome.storage.local.set({ ownedTabIds: [] });
+  return { ok: true };
+}
+
+async function handleCloseTab({ tab_id }) {
+  await chrome.tabs.remove(tab_id);
+  return { ok: true };
+}
+
+async function handleWaitForLoad({ tab_id, timeout_seconds = 30 }) {
+  const deadline = Date.now() + (timeout_seconds * 1000);
+  while (Date.now() < deadline) {
+    const tab = await chrome.tabs.get(tab_id);
+    if (tab.status === 'complete') return { status: 'complete' };
+    await sleep(250);
+  }
+  return { status: 'timeout' };
+}
+
+async function handleWaitForSelector({ tab_id, selector, timeout_seconds = 30 }) {
+  const deadline = Date.now() + (timeout_seconds * 1000);
+  while (Date.now() < deadline) {
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab_id },
+      func: (s) => !!document.querySelector(s),
+      args: [selector]
     });
+    if (result) return { status: 'found' };
+    await sleep(500);
+  }
+  throw new Error(`Timeout: ${selector}`);
+}
 
-    const { nodeId } = await sendDebugCmd(target, 'DOM.querySelector', {
-      nodeId: root.nodeId,
-      selector,
-    });
-
-    if (!nodeId) throw new Error(`Element not found: ${selector}`);
-
-    await sendDebugCmd(target, 'DOM.setFileInputFiles', {
-      nodeId,
-      files: [file_path],
-    });
-
-    // Trigger change event so the page reacts to the new file selection.
-    await sendDebugCmd(target, 'Runtime.evaluate', {
-      expression: `(function(){
-        const el = document.querySelector(${JSON.stringify(selector)});
-        if (el) el.dispatchEvent(new Event('change', { bubbles: true }));
-      })()`,
-    });
+async function handleType({ tab_id, text, delay_between_keys_ms = 10 }) {
+  if (tab_id == null) throw new Error('tab_id required');
+  if (text == null) throw new Error('text required');
+  const str = String(text);
+  const target = { tabId: tab_id };
+  await debuggerAttach(target, '1.3');
+  try {
+    for (const char of str) {
+      await sendDebugCmd(target, 'Input.dispatchKeyEvent', {
+        type: 'char',
+        text: char,
+        unmodifiedText: char,
+      });
+      if (delay_between_keys_ms > 0) await sleep(delay_between_keys_ms);
+    }
   } finally {
     await debuggerDetach(target);
   }
-
-  return { ok: true, selector, file_path };
+  return { ok: true };
 }
 
-/**
- * get_tabs — list open tabs, optionally filtered by URL pattern
- * params: { url_filter? }
- */
-async function handleGetTabs({ url_filter } = {}) {
-  const query = url_filter ? { url: url_filter } : {};
-  const tabs = await chrome.tabs.query(query);
-  return tabs.map(t => ({
-    id:        t.id,
-    url:       t.url,
-    title:     t.title,
-    active:    t.active,
-    window_id: t.windowId,
-    status:    t.status,
-  }));
+async function handleQueryElements({ tab_id, selector }) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab_id },
+    func: (sel) => {
+      const elements = Array.from(document.querySelectorAll(sel));
+      return elements.map(el => {
+        const details = {
+          tag: el.tagName,
+          id: el.id,
+          className: el.className,
+          innerText: el.innerText,
+          value: el.value,
+          ariaLabel: el.getAttribute('aria-label'),
+          placeholder: el.placeholder,
+          type: el.type,
+          role: el.getAttribute('role'),
+          parent: null
+        };
+        if (el.parentElement) {
+          details.parent = {
+            tag: el.parentElement.tagName,
+            id: el.parentElement.id,
+            className: el.parentElement.className
+          };
+        }
+        return details;
+      });
+    },
+    args: [selector]
+  });
+  return result;
 }
 
-/**
- * close_tab — close a tab by ID
- * params: { tab_id }
- */
-async function handleCloseTab({ tab_id }) {
-  if (!tab_id) throw new Error('tab_id is required');
-  await chrome.tabs.remove(tab_id);
-  return { ok: true, tab_id };
+async function handleDebuggerCommand({ tab_id, method, params = {} }) {
+  const target = { tabId: tab_id };
+  await debuggerAttach(target, '1.3');
+  try {
+    return await sendDebugCmd(target, method, params);
+  } finally {
+    await debuggerDetach(target);
+  }
 }
 
-/**
- * wait_for_load — poll until tab status is 'complete'
- * params: { tab_id, timeout_seconds? }
- */
-async function handleWaitForLoad({ tab_id, timeout_seconds = 30 }) {
-  if (!tab_id) throw new Error('tab_id is required');
-
-  const deadline = Date.now() + timeout_seconds * 1000;
-
-  while (Date.now() < deadline) {
-    const tab = await chrome.tabs.get(tab_id);
-    if (tab.status === 'complete') {
-      return { status: 'complete', tab_id, url: tab.url, title: tab.title };
+async function handleTypeBySelector({ tab_id, selector, text, delay_between_keys_ms = 10 }) {
+  if (tab_id == null) throw new Error('tab_id required');
+  if (text == null) throw new Error('text required');
+  const str = String(text);
+  const target = { tabId: tab_id };
+  await debuggerAttach(target, '1.3');
+  try {
+    await sendDebugCmd(target, 'DOM.enable', {});
+    const { root } = await sendDebugCmd(target, 'DOM.getDocument', {});
+    const { nodeId } = await sendDebugCmd(target, 'DOM.querySelector', { nodeId: root.nodeId, selector });
+    if (!nodeId) throw new Error(`Node not found for selector: ${selector}`);
+    await sendDebugCmd(target, 'DOM.focus', { nodeId });
+    for (const char of str) {
+      await sendDebugCmd(target, 'Input.dispatchKeyEvent', {
+        type: 'char',
+        text: char,
+        unmodifiedText: char,
+      });
+      if (delay_between_keys_ms > 0) await sleep(delay_between_keys_ms);
     }
-    await sleep(250);
+  } finally {
+    await debuggerDetach(target);
   }
-
-  const tab = await chrome.tabs.get(tab_id);
-  return { status: 'timeout', tab_id, url: tab.url };
+  return { ok: true };
 }
 
-// ── CDP helpers ──────────────────────────────────────────────────────────────
+function debuggerAttach(t, v) { return new Promise((res, rej) => chrome.debugger.attach(t, v, () => chrome.runtime.lastError ? rej(new Error(chrome.runtime.lastError.message)) : res())); }
+function debuggerDetach(t) { return new Promise(res => chrome.debugger.detach(t, res)); }
+function sendDebugCmd(t, m, p) { return new Promise((res, rej) => chrome.debugger.sendCommand(t, m, p, (r) => chrome.runtime.lastError ? rej(new Error(chrome.runtime.lastError.message)) : res(r))); }
+function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
-function debuggerAttach(target, version) {
-  return new Promise((resolve, reject) => {
-    chrome.debugger.attach(target, version, () => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve();
-      }
-    });
-  });
+async function maybeApplyHumanDelay(params = {}) {
+  if (params.delay_before_ms != null) { await sleep(Number(params.delay_before_ms)); return; }
+  if (params.human_delay === false) return;
+  const min = params.human_delay_min_ms ?? MIN_HUMAN_DELAY_MS;
+  const max = params.human_delay_max_ms ?? MAX_HUMAN_DELAY_MS;
+  await sleep(min + Math.floor(Math.random() * (max - min + 1)));
 }
-
-function debuggerDetach(target) {
-  return new Promise((resolve) => {
-    chrome.debugger.detach(target, () => { resolve(); });
-  });
-}
-
-function sendDebugCmd(target, method, params) {
-  return new Promise((resolve, reject) => {
-    chrome.debugger.sendCommand(target, method, params, (result) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(result);
-      }
-    });
-  });
-}
-
-// ── Utility helpers ──────────────────────────────────────────────────────────
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function requireArgs(obj) {
-  for (const [k, v] of Object.entries(obj)) {
-    if (v == null) throw new Error(`${k} is required`);
-  }
-}
-
-// ── Startup ──────────────────────────────────────────────────────────────────
 
 connect();

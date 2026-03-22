@@ -12,6 +12,7 @@ import (
 	chromemcp "github.com/brightpuddle/clara/internal/mcpserver/chrome"
 	dbmcp "github.com/brightpuddle/clara/internal/mcpserver/db"
 	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
+	llmmcp "github.com/brightpuddle/clara/internal/mcpserver/llm"
 	ollamamcp "github.com/brightpuddle/clara/internal/mcpserver/ollama"
 	taskwmcp "github.com/brightpuddle/clara/internal/mcpserver/taskwarrior"
 	zkmcp "github.com/brightpuddle/clara/internal/mcpserver/zk"
@@ -42,6 +43,7 @@ external MCP servers in config.yaml. For example:
 Available servers:
   fs    filesystem operations (read, write, list, search, move, delete)
   db    SQLite query, exec, and vector-search tools
+  llm   LLM text and vision generation tools
   ollama    local Ollama-powered generation and embeddings
   taskwarrior    Taskwarrior CRUD, filtering, and due-task helpers
   zk    Zettelkasten Markdown vault (Obsidian, Zettlr, zk)`,
@@ -115,6 +117,25 @@ var mcpZKCmd = &cobra.Command{
 	PersistentPreRunE: skipConfigLoad,
 }
 
+var (
+	mcpLLMDefaultProvider string
+	mcpLLMGeminiAPIKey    string
+	mcpLLMGeminiModel     string
+	mcpLLMGeminiBaseURL   string
+)
+
+var mcpLLMCmd = &cobra.Command{
+	Use:   "llm",
+	Short: "Start the built-in LLM MCP server",
+	Long: fmt.Sprintf(
+		"Start the Clara built-in LLM MCP server on stdio.\n\n%s",
+		llmmcp.Description,
+	),
+	RunE:              runMCPLLM,
+	SilenceUsage:      true,
+	PersistentPreRunE: skipConfigLoad,
+}
+
 var mcpChromePort int
 
 var mcpChromeCmd = &cobra.Command{
@@ -158,8 +179,32 @@ func init() {
 		chromemcp.DefaultPort,
 		"localhost port for the Chrome extension WebSocket connection",
 	)
+	mcpLLMCmd.Flags().StringVar(
+		&mcpLLMDefaultProvider,
+		"default-provider",
+		llmmcp.DefaultProvider,
+		"Default LLM provider to route requests to",
+	)
+	mcpLLMCmd.Flags().StringVar(
+		&mcpLLMGeminiAPIKey,
+		"gemini-api-key",
+		os.Getenv("GEMINI_API_KEY"),
+		"Gemini API key (defaults to GEMINI_API_KEY env var)",
+	)
+	mcpLLMCmd.Flags().StringVar(
+		&mcpLLMGeminiModel,
+		"gemini-model",
+		llmmcp.DefaultGeminiModel,
+		"Default Gemini model for text and vision generation",
+	)
+	mcpLLMCmd.Flags().StringVar(
+		&mcpLLMGeminiBaseURL,
+		"gemini-base-url",
+		llmmcp.DefaultGeminiBaseURL,
+		"Base URL for the Gemini Generative Language API",
+	)
 
-	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpOllamaCmd, mcpTaskwarriorCmd, mcpZKCmd, mcpChromeCmd)
+	mcpCmd.AddCommand(mcpFsCmd, mcpDBCmd, mcpLLMCmd, mcpOllamaCmd, mcpTaskwarriorCmd, mcpZKCmd, mcpChromeCmd)
 }
 
 func runMCPFs(cmd *cobra.Command, args []string) error {
@@ -214,11 +259,28 @@ func runMCPZK(cmd *cobra.Command, args []string) error {
 	return serveMCP(ctx, srv)
 }
 
+func runMCPLLM(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	return serveMCP(
+		ctx,
+		llmmcp.New(llmmcp.Options{
+			DefaultProvider: mcpLLMDefaultProvider,
+			GeminiAPIKey:    mcpLLMGeminiAPIKey,
+			GeminiModel:     mcpLLMGeminiModel,
+			GeminiBaseURL:   mcpLLMGeminiBaseURL,
+		}).NewServer(),
+	)
+}
+
 func runMCPChrome(cmd *cobra.Command, _ []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	log := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
+	log := zerolog.New(zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
+		w.Out = os.Stderr
+	})).With().Timestamp().Logger()
 	return chromemcp.New(log).Run(ctx, mcpChromePort)
 }
 

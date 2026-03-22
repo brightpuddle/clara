@@ -267,13 +267,20 @@ as the user-facing SQLite MCP server.
 | --------------------------- | -------------------------------------------------- |
 | `clara mcp fs`              | Filesystem MCP server, including `wait_for_change` |
 | `clara mcp db [path]`       | SQLite MCP server                                  |
+| `clara mcp llm`             | Gemini-backed LLM MCP server                       |
 | `clara mcp ollama`          | Ollama MCP server                                  |
 | `clara mcp taskwarrior`     | Taskwarrior MCP server                             |
 | `clara mcp zk <vault-path>` | Zettelkasten Markdown vault MCP server             |
 | `clara mcp chrome`          | Chrome browser automation MCP server               |
 
-`clara mcp ollama-embeddings` accepts `--model` and `--url` flags and defaults
-to `nomic-embed-text` and `http://localhost:11434`.
+`clara mcp llm` currently routes to Gemini and exposes `generate`,
+`generate_vision`, and `providers`. Configure it with `GEMINI_API_KEY` and use
+`--gemini-model` to override the default `gemini-2.5-flash` model.
+
+The macOS bridge also exposes Photos album tools for listing assets, exporting
+them to disk, and removing them from an album.
+
+`clara mcp ollama` accepts `--embed-model`, `--gen-model`, and `--url` flags.
 
 The `zk` server indexes an Obsidian-style Markdown vault at startup (following
 symlinks up to 5 levels), and exposes tools for note CRUD, wikilink resolution,
@@ -319,12 +326,16 @@ Tools exposed by `clara mcp chrome`:
 | `browser_navigate`      | Open a URL in a new background tab or an existing tab    |
 | `browser_click`         | Click an element by CSS selector                         |
 | `browser_fill`          | Fill a text input (React-compatible)                     |
-| `browser_upload_file`   | Set a file on `<input type="file">` via CDP              |
+| `browser_upload_file`   | Set one or more files on `<input type="file">` via CDP   |
+| `browser_eval`          | Run async JavaScript in the page context                 |
 | `browser_screenshot`    | Capture visible tab area as a PNG data URL               |
 | `browser_read_page`     | Return page title, URL, and visible text                 |
 | `browser_get_tabs`      | List open tabs, optionally filtered by URL pattern       |
 | `browser_close_tab`     | Close a tab by ID                                        |
 | `browser_wait_for_load` | Wait until a tab's document status is `complete`         |
+
+Live Chrome actions also accept optional delay controls so intents can enforce
+slower, more human-like pacing against sensitive sites like Facebook.
 
 Enable in `config.yaml`:
 
@@ -415,8 +426,15 @@ mcp_servers:
 
   - name: ollama
     command: clara
-    args: [mcp, ollama-embeddings, --model, nomic-embed-text, --url, http://localhost:11434]
-    description: "Built-in Ollama embeddings server"
+    args: [mcp, ollama, --url, http://localhost:11434]
+    description: "Built-in Ollama generation and embeddings server"
+
+  - name: llm
+    command: clara
+    args: [mcp, llm, --gemini-model, gemini-2.5-flash]
+    env:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    description: "Built-in Gemini-backed LLM server"
 
   - name: bridge
     command: /usr/local/bin/ClaraBridge

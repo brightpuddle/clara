@@ -5,6 +5,8 @@
 
 @preconcurrency import EventKit
 import Foundation
+import AppKit
+@preconcurrency import Photos
 @preconcurrency import UserNotifications
 
 @main
@@ -176,7 +178,7 @@ final class MCPStdioServer {
         return data.dropLast()
     }
 
-    private func logError(_ message: String) {
+    func logError(_ message: String) {
         guard let data = (message + "\n").data(using: .utf8) else { return }
         errorOutput.write(data)
     }
@@ -189,6 +191,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     private let eventStore = EKEventStore()
     private var remindersAuthorized = false
     private var eventsAuthorized = false
+    private var photosAuthorized = false
     private var notificationsAuthorized = false
     private var eventStoreObserver: NSObjectProtocol?
     private var pendingInteractiveNotifications: [String: PendingInteractiveNotification] = [:]
@@ -365,6 +368,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                     stringProperty("title", "Notification title."),
                     stringProperty("body", "Notification body."),
                     stringProperty("subtitle", "Optional subtitle."),
+                    stringProperty("url", "Optional URL to open when the notification is clicked."),
                 ],
                 required: ["title", "body"]
             ),
@@ -375,12 +379,49 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                     stringProperty("title", "Notification title."),
                     stringProperty("body", "Notification body."),
                     stringProperty("subtitle", "Optional subtitle."),
+                    stringProperty("url", "Optional URL to open when the notification (default action) is clicked."),
                     actionsProperty(),
                     boolProperty("wait_for_response", "When true, block until the user responds or the timeout elapses."),
                     numberProperty("timeout_seconds", "Timeout in seconds for wait_for_response mode. Defaults to 60."),
                     stringProperty("notification_id", "Optional stable notification identifier. Defaults to a generated UUID."),
                 ],
                 required: ["title", "body", "actions"]
+            ),
+            tool(
+                name: "photos_album_assets",
+                description: "List photo assets in a Photos album by album name.",
+                properties: [
+                    stringProperty("album_name", "Photos album name."),
+                    numberProperty("limit", "Optional maximum number of assets to return, newest first."),
+                ],
+                required: ["album_name"]
+            ),
+            tool(
+                name: "photos_export_assets",
+                description: "Export one or more Photos assets to a local directory and return the written paths.",
+                properties: [
+                    stringArrayProperty("asset_ids", "Array of Photos asset local identifiers."),
+                    stringProperty("destination_dir", "Local destination directory for exported files."),
+                ],
+                required: ["asset_ids", "destination_dir"]
+            ),
+            tool(
+                name: "photos_album_remove_assets",
+                description: "Remove one or more assets from a Photos album without deleting them from the library.",
+                properties: [
+                    stringProperty("album_name", "Photos album name."),
+                    stringArrayProperty("asset_ids", "Array of Photos asset local identifiers to remove from the album."),
+                ],
+                required: ["album_name", "asset_ids"]
+            ),
+            tool(
+                name: "photos_album_add_assets",
+                description: "Add one or more assets to a Photos album.",
+                properties: [
+                    stringProperty("album_name", "Photos album name."),
+                    stringArrayProperty("asset_ids", "Array of Photos asset local identifiers to add to the album."),
+                ],
+                required: ["album_name", "asset_ids"]
             ),
         ]
     }
@@ -418,6 +459,14 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             return try toolResult(try await sendNotification(arguments))
         case "notify_send_interactive":
             return try toolResult(try await sendInteractiveNotification(arguments))
+        case "photos_album_assets":
+            return try toolResult(try await listPhotoAlbumAssets(arguments))
+        case "photos_export_assets":
+            return try toolResult(try await exportPhotoAssets(arguments))
+        case "photos_album_remove_assets":
+            return try toolResult(try await removePhotoAlbumAssets(arguments))
+        case "photos_album_add_assets":
+            return try toolResult(try await addPhotoAlbumAssets(arguments))
         default:
             throw MCPProtocolError.methodNotFound("unknown tool: \(name)")
         }
@@ -520,6 +569,11 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
 
         if let pending = pendingInteractiveNotifications.removeValue(forKey: notificationID) {
             pending.timeoutTask?.cancel()
+
+            if actionID == "default", let urlString = pending.url, let url = URL(string: urlString) {
+                NSWorkspace.shared.open(url)
+            }
+
             if let continuation = pending.continuation {
                 continuation.resume(returning: payload)
                 return
@@ -651,6 +705,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     private func sendNotification(_ args: [String: Any]) async throws -> [String: Any] {
         try await ensureNotificationsAccess()
         let identifier = optionalString(args, "notification_id") ?? UUID().uuidString
+        let url = optionalString(args, "url")
         let content = UNMutableNotificationContent()
         content.title = try requiredString(args, "title")
         content.body = try requiredString(args, "body")
@@ -660,12 +715,22 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         content.sound = .default
 
         try await scheduleNotification(identifier: identifier, content: content)
+
+        if let url = url {
+            pendingInteractiveNotifications[identifier] = PendingInteractiveNotification(
+                continuation: nil,
+                timeoutTask: nil,
+                url: url
+            )
+        }
+
         return ["notification_id": identifier, "status": "sent"]
     }
 
     private func sendInteractiveNotification(_ args: [String: Any]) async throws -> [String: Any] {
         try await ensureNotificationsAccess()
         let identifier = optionalString(args, "notification_id") ?? UUID().uuidString
+        let url = optionalString(args, "url")
         let waitForResponse = optionalBool(args, "wait_for_response") ?? false
         let timeoutSeconds = optionalDouble(args, "timeout_seconds") ?? 60
         let actionSpecs = try parseInteractiveActions(args)
@@ -684,7 +749,11 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
 
         if !waitForResponse {
             try await scheduleNotification(identifier: identifier, content: content)
-            pendingInteractiveNotifications[identifier] = PendingInteractiveNotification(continuation: nil, timeoutTask: nil)
+            pendingInteractiveNotifications[identifier] = PendingInteractiveNotification(
+                continuation: nil,
+                timeoutTask: nil,
+                url: url
+            )
             return ["notification_id": identifier, "status": "sent"]
         }
 
@@ -704,9 +773,85 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             }
             pendingInteractiveNotifications[identifier] = PendingInteractiveNotification(
                 continuation: continuation,
-                timeoutTask: timeoutTask
+                timeoutTask: timeoutTask,
+                url: url
             )
         }
+    }
+
+    private func listPhotoAlbumAssets(_ args: [String: Any]) async throws -> [[String: Any]] {
+        try await ensurePhotosAccess()
+        let albumName = try requiredString(args, "album_name")
+        let limit = optionalInt(args, "limit")
+        let album = try photoAlbum(named: albumName)
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let result = PHAsset.fetchAssets(in: album, options: options)
+
+        var assets: [[String: Any]] = []
+        result.enumerateObjects { asset, _, stop in
+            assets.append(self.serializePhotoAsset(asset))
+            if let limit, assets.count >= limit {
+                stop.pointee = true
+            }
+        }
+        return assets
+    }
+
+    private func exportPhotoAssets(_ args: [String: Any]) async throws -> [[String: Any]] {
+        try await ensurePhotosAccess()
+        let assetIDs = try requiredStringArray(args, "asset_ids")
+        let destinationDir = expandPath(try requiredString(args, "destination_dir"))
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: destinationDir),
+            withIntermediateDirectories: true
+        )
+
+        var exported: [[String: Any]] = []
+        for assetID in assetIDs {
+            let asset = try photoAsset(identifier: assetID)
+            let item = try await exportPhotoAsset(asset, destinationDir: destinationDir)
+            exported.append(item)
+        }
+        return exported
+    }
+
+    private func removePhotoAlbumAssets(_ args: [String: Any]) async throws -> [String: Any] {
+        try await ensurePhotosAccess()
+        let albumName = try requiredString(args, "album_name")
+        let assetIDs = try requiredStringArray(args, "asset_ids")
+        let album = try photoAlbum(named: albumName)
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
+
+        try await performPhotoLibraryChanges {
+            if let changeRequest = PHAssetCollectionChangeRequest(for: album) {
+                changeRequest.removeAssets(fetchResult)
+            }
+        }
+
+        return [
+            "album_name": albumName,
+            "removed": assetIDs.count,
+        ]
+    }
+
+    private func addPhotoAlbumAssets(_ args: [String: Any]) async throws -> [String: Any] {
+        try await ensurePhotosAccess()
+        let albumName = try requiredString(args, "album_name")
+        let assetIDs = try requiredStringArray(args, "asset_ids")
+        let album = try photoAlbum(named: albumName)
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
+
+        try await performPhotoLibraryChanges {
+            if let changeRequest = PHAssetCollectionChangeRequest(for: album) {
+                changeRequest.addAssets(fetchResult)
+            }
+        }
+
+        return [
+            "album_name": albumName,
+            "added": assetIDs.count,
+        ]
     }
 
     private func defaultReminderList() async throws -> [String: Any] {
@@ -1010,6 +1155,20 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         eventsAuthorized = true
     }
 
+    private func ensurePhotosAccess() async throws {
+        if photosAuthorized {
+            return
+        }
+
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        switch status {
+        case .authorized, .limited:
+            photosAuthorized = true
+        default:
+            throw MCPToolError("access denied to Photos")
+        }
+    }
+
     private func ensureNotificationsAccess() async throws {
         if notificationsAuthorized {
             return
@@ -1087,6 +1246,24 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             throw MCPToolError("default event calendar is unavailable")
         }
         return calendar
+    }
+
+    private func photoAlbum(named albumName: String) throws -> PHAssetCollection {
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "title == %@", albumName)
+        let albums = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: options)
+        guard let album = albums.firstObject else {
+            throw MCPToolError("photo album \(albumName) not found")
+        }
+        return album
+    }
+
+    private func photoAsset(identifier: String) throws -> PHAsset {
+        let result = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil)
+        guard let asset = result.firstObject else {
+            throw MCPToolError("photo asset \(identifier) not found")
+        }
+        return asset
     }
 
     private func applyReminderFields(_ reminder: EKReminder, args: [String: Any], requireTitle: Bool) throws {
@@ -1277,6 +1454,102 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return result
     }
 
+    private func serializePhotoAsset(_ asset: PHAsset) -> [String: Any] {
+        var result: [String: Any] = [
+            "identifier": asset.localIdentifier,
+            "media_type": assetMediaTypeName(asset.mediaType),
+            "pixel_width": asset.pixelWidth,
+            "pixel_height": asset.pixelHeight,
+            "favorite": asset.isFavorite,
+            "hidden": asset.isHidden,
+        ]
+        if let created = asset.creationDate {
+            result["created_at"] = ISO8601.dateString(from: created)
+        }
+        if let updated = asset.modificationDate {
+            result["updated_at"] = ISO8601.dateString(from: updated)
+        }
+        return result
+    }
+
+    private func exportPhotoAsset(_ asset: PHAsset, destinationDir: String) async throws -> [String: Any] {
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let resource = resources.first else {
+            throw MCPToolError("photo asset \(asset.localIdentifier) has no exportable resource")
+        }
+
+        let baseName = resource.originalFilename.isEmpty ? asset.localIdentifier.replacingOccurrences(of: "/", with: "-") : resource.originalFilename
+        let destinationURL = uniqueFileURL(in: URL(fileURLWithPath: destinationDir), preferredName: baseName)
+
+        try await writePhotoResource(resource, toFile: destinationURL)
+
+        return [
+            "identifier": asset.localIdentifier,
+            "path": destinationURL.path,
+        ]
+    }
+
+    nonisolated private func performPhotoLibraryChanges(
+        _ changes: @escaping @Sendable () -> Void
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHPhotoLibrary.shared().performChanges(changes) { success, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                if success {
+                    continuation.resume(returning: ())
+                } else {
+                    continuation.resume(throwing: PhotoToolError("failed to apply Photos library change"))
+                }
+            }
+        }
+    }
+
+    nonisolated private func writePhotoResource(_ resource: PHAssetResource, toFile destinationURL: URL) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            PHAssetResourceManager.default().writeData(for: resource, toFile: destinationURL, options: nil) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    private func uniqueFileURL(in directory: URL, preferredName: String) -> URL {
+        let candidate = directory.appendingPathComponent(preferredName)
+        if !FileManager.default.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+
+        let stem = candidate.deletingPathExtension().lastPathComponent
+        let ext = candidate.pathExtension
+        for index in 1...999 {
+            let fileName = ext.isEmpty ? "\(stem)-\(index)" : "\(stem)-\(index).\(ext)"
+            let next = directory.appendingPathComponent(fileName)
+            if !FileManager.default.fileExists(atPath: next.path) {
+                return next
+            }
+        }
+        return directory.appendingPathComponent(UUID().uuidString + "-" + preferredName)
+    }
+
+    func assetMediaTypeName(_ mediaType: PHAssetMediaType) -> String {
+        switch mediaType {
+        case .image:
+            return "image"
+        case .video:
+            return "video"
+        case .audio:
+            return "audio"
+        default:
+            return "unknown"
+        }
+    }
+
     private func serializeAlarm(_ alarm: EKAlarm) -> [String: Any] {
         if let absoluteDate = alarm.absoluteDate {
             return ["absolute_date": ISO8601.dateString(from: absoluteDate)]
@@ -1380,6 +1653,13 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return value
     }
 
+    private func requiredStringArray(_ args: [String: Any], _ key: String) throws -> [String] {
+        guard let values = optionalStringArray(args, key), !values.isEmpty else {
+            throw MCPToolError("\(key) is required")
+        }
+        return values
+    }
+
     private func optionalString(_ args: [String: Any], _ key: String) -> String? {
         args[key] as? String
     }
@@ -1426,6 +1706,13 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             return Int(value)
         }
         return nil
+    }
+
+    func expandPath(_ raw: String) -> String {
+        let expandedEnv = NSString(string: raw).expandingTildeInPath
+        return ProcessInfo.processInfo.environment.reduce(expandedEnv) { partial, item in
+            partial.replacingOccurrences(of: "${\(item.key)}", with: item.value)
+        }
     }
 
     private func dateValue(_ args: [String: Any], key: String, required: Bool) throws -> Date {
@@ -1526,9 +1813,20 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
+private struct PhotoToolError: LocalizedError {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+
+    var errorDescription: String? { message }
+}
+
 private struct PendingInteractiveNotification {
     let continuation: CheckedContinuation<[String: Any], Never>?
     let timeoutTask: Task<Void, Never>?
+    let url: String?
 }
 
 private struct PendingStoreWait {

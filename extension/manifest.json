@@ -10,7 +10,8 @@
     "debugger",
     "bookmarks",
     "history",
-    "storage"
+    "storage",
+    "alarms"
   ],
 
   "host_permissions": [

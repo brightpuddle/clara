@@ -23,6 +23,7 @@ const (
 	launchAgentFileName   = launchAgentLabel + ".plist"
 	agentLifecycleTimeout = 10 * time.Second
 	agentPollInterval     = 100 * time.Millisecond
+	agentRetryDelay       = 500 * time.Millisecond
 	defaultLogTailLines   = 100
 	watchLogTailLines     = 10
 )
@@ -106,7 +107,7 @@ func runDaemonize(ctx context.Context) error {
 		return err
 	}
 	if loaded {
-		if err := launchAgentKickstart(ctx); err != nil {
+		if err := launchAgentKickstartWithRetry(ctx); err != nil {
 			return err
 		}
 	} else {
@@ -155,6 +156,8 @@ func runAgentStop(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
+
+	cleanupOrphanedClaraMCPProcesses(ctx)
 
 	if err := waitForAgentState(ctx, cfg.ControlSocketPath(), false); err != nil {
 		return err
@@ -251,6 +254,24 @@ func launchAgentKickstart(ctx context.Context) error {
 	return runLaunchctlCommand(ctx, "kickstart", "-k", launchAgentTarget())
 }
 
+func launchAgentKickstartWithRetry(ctx context.Context) error {
+	if err := launchAgentKickstart(ctx); err == nil {
+		return nil
+	} else if ctx.Err() != nil {
+		return err
+	}
+
+	timer := time.NewTimer(agentRetryDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "waiting to retry launchctl kickstart")
+	case <-timer.C:
+	}
+
+	return launchAgentKickstart(ctx)
+}
+
 func launchAgentBootout(ctx context.Context) error {
 	return runLaunchctlCommand(ctx, "bootout", launchAgentTarget())
 }
@@ -265,6 +286,28 @@ func runLaunchctlCommand(ctx context.Context, args ...string) error {
 		return errors.Wrapf(err, "launchctl %s: %s", strings.Join(args, " "), message)
 	}
 	return errors.Wrapf(err, "launchctl %s", strings.Join(args, " "))
+}
+
+func cleanupOrphanedClaraMCPProcesses(ctx context.Context) {
+	pattern := "(^|/)clara$"
+	output, err := exec.CommandContext(ctx, "pgrep", "-f", pattern+".* mcp ").CombinedOutput()
+	if err != nil {
+		return
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		pid, err := strconv.Atoi(line)
+		if err != nil || pid <= 0 || pid == os.Getpid() {
+			continue
+		}
+		if process, findErr := os.FindProcess(pid); findErr == nil {
+			_ = process.Kill()
+		}
+	}
 }
 
 func waitForAgentState(ctx context.Context, socketPath string, wantRunning bool) error {

@@ -7,7 +7,7 @@
 
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/local/bin/clara</string>
+		<string>/Users/nathan/src/github.com/brightpuddle/clara/clara</string>
 		<string>serve</string>
 	</array>
 

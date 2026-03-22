@@ -41,12 +41,21 @@ mcp_servers:
     command: clara
     args:
       - mcp
-      - ollama-embeddings
-      - --model
-      - nomic-embed-text
+      - ollama
       - --url
       - http://localhost:11434
-    description: "Built-in Ollama embeddings server"
+    description: "Built-in Ollama generation and embeddings server"
+
+  - name: llm
+    command: clara
+    args:
+      - mcp
+      - llm
+      - --gemini-model
+      - gemini-2.5-flash
+    env:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    description: "Built-in Gemini-backed LLM server for text and vision generation"
 
   - name: bridge
     command: /usr/local/bin/ClaraBridge

@@ -111,6 +111,15 @@ func New() *server.MCPServer {
 	), handleGetFileInfo)
 
 	s.AddTool(mcp.NewTool(
+		"path_exists",
+		mcp.WithDescription("Return whether a file or directory exists at the given path."),
+		mcp.WithString("path",
+			mcp.Required(),
+			mcp.Description("Path to check."),
+		),
+	), handlePathExists)
+
+	s.AddTool(mcp.NewTool(
 		"wait_for_change",
 		mcp.WithDescription(
 			"Block until a matching create, change, or delete happens under a directory.",
@@ -157,6 +166,7 @@ func handleReadFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	path = resolvePath(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("read_file: %v", err)), nil
@@ -173,6 +183,7 @@ func handleWriteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	path = resolvePath(path)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("write_file mkdir: %v", err)), nil
 	}
@@ -187,6 +198,7 @@ func handleListDirectory(_ context.Context, req mcp.CallToolRequest) (*mcp.CallT
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	path = resolvePath(path)
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("list_directory: %v", err)), nil
@@ -214,6 +226,7 @@ func handleSearchFiles(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	root = resolvePath(root)
 	pattern, err := stringArg(req, "pattern")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -242,10 +255,12 @@ func handleMoveFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	src = resolvePath(src)
 	dst, err := stringArg(req, "destination")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	dst = resolvePath(dst)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("move_file mkdir: %v", err)), nil
 	}
@@ -260,6 +275,7 @@ func handleDeleteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	path = resolvePath(path)
 	if err := os.Remove(path); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("delete_file: %v", err)), nil
 	}
@@ -274,6 +290,7 @@ func handleCreateDirectory(
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	path = resolvePath(path)
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("create_directory: %v", err)), nil
 	}
@@ -285,6 +302,7 @@ func handleGetFileInfo(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	path = resolvePath(path)
 	info, err := os.Stat(path)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("get_file_info: %v", err)), nil
@@ -307,6 +325,22 @@ func handleGetFileInfo(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToo
 	return mcp.NewToolResultText(string(data)), nil
 }
 
+func handlePathExists(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	path, err := stringArg(req, "path")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	path = resolvePath(path)
+	_, err = os.Stat(path)
+	if err == nil {
+		return mcp.NewToolResultStructuredOnly(map[string]any{"exists": true, "path": path}), nil
+	}
+	if os.IsNotExist(err) {
+		return mcp.NewToolResultStructuredOnly(map[string]any{"exists": false, "path": path}), nil
+	}
+	return mcp.NewToolResultError(fmt.Sprintf("path_exists: %v", err)), nil
+}
+
 func handleWaitForChange(
 	ctx context.Context,
 	req mcp.CallToolRequest,
@@ -315,6 +349,7 @@ func handleWaitForChange(
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	root = resolvePath(root)
 	info, err := os.Stat(root)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("wait_for_change: %v", err)), nil
@@ -342,6 +377,22 @@ func handleWaitForChange(
 		"recursive": result.Recursive,
 		"timestamp": result.Timestamp,
 	}), nil
+}
+
+func resolvePath(path string) string {
+	path = os.ExpandEnv(strings.TrimSpace(path))
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return path
+	}
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 func waitForChange(

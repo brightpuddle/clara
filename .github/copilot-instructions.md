@@ -163,7 +163,13 @@ mcp_servers:
 
   - name: ollama
     command: clara
-    args: [mcp, ollama-embeddings, --model, nomic-embed-text, --url, http://localhost:11434]
+    args: [mcp, ollama, --url, http://localhost:11434]
+
+  - name: llm
+    command: clara
+    args: [mcp, llm, --gemini-model, gemini-2.5-flash]
+    env:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
 
   - name: bridge
     command: /usr/local/bin/ClaraBridge
@@ -203,6 +209,9 @@ Startup should be best-effort across configured MCP servers: one failing server 
 - Use Go's standard `testing` package. Prefer table-driven tests.
 - Use `testify` (`github.com/stretchr/testify`) only if it meaningfully reduces boilerplate; the standard library is preferred.
 - Tests must not require network access or external services. Use interfaces and test doubles for MCP clients.
+- The filesystem MCP server includes `path_exists` for safe existence checks in intents.
+- The Chrome MCP server includes `browser_eval` for page-context DOM automation and supports multi-file uploads.
+- The macOS bridge includes Photos album tools for listing, exporting, and removing album assets.
 
 ---
 
@@ -293,7 +302,8 @@ representation. `.star` is the authored source of truth.
 | `clara gateway` | Start an MCP server that exposes the aggregated Clara tool registry on stdio |
 | `clara mcp fs` | Start the built-in filesystem MCP server on stdio |
 | `clara mcp db [path]` | Start the built-in SQLite MCP server on stdio |
-| `clara mcp ollama-embeddings` | Start the built-in Ollama embeddings MCP server on stdio |
+| `clara mcp llm` | Start the built-in Gemini-backed LLM MCP server on stdio |
+| `clara mcp ollama` | Start the built-in Ollama MCP server on stdio |
 | `clara mcp taskwarrior` | Start the built-in Taskwarrior MCP server on stdio |
 | `clara mcp zk <vault-path>` | Start the built-in Zettelkasten vault MCP server on stdio |
 

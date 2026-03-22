@@ -14,6 +14,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
@@ -173,10 +174,8 @@ func (s *MCPServer) startStdio(ctx context.Context, r *Registry) error {
 		return err
 	}
 
-	c, err := client.NewStdioMCPClient(command, s.env, s.args...)
-	if err != nil {
-		return errors.Wrap(err, "create stdio MCP client")
-	}
+	stdioTransport := transport.NewStdio(command, s.env, s.args...)
+	c := client.NewClient(stdioTransport)
 	s.mcpClient = c
 
 	if err := c.Start(ctx); err != nil {
@@ -185,10 +184,12 @@ func (s *MCPServer) startStdio(ctx context.Context, r *Registry) error {
 
 	caps, err := initializeConnectedClient(ctx, s.name, c)
 	if err != nil {
+		_ = c.Close()
 		return err
 	}
 	caps.Description = preferredServiceDescription(s.description, caps.Description)
 	if err := r.RegisterConnectedClient(s.name, c, caps, nil); err != nil {
+		_ = c.Close()
 		return err
 	}
 

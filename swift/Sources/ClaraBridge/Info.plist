@@ -18,7 +18,11 @@
     <string>ClaraBridge needs Reminders access to read and manage reminder items through MCP tools.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>ClaraBridge needs Calendar access to read and manage events through MCP tools.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>ClaraBridge may automate local macOS capabilities requested through MCP tools.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>ClaraBridge may automate local macOS capabilities requested through MCP tools.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ClaraBridge needs Photos access to read album contents and export photos through MCP tools.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>ClaraBridge may export or organize Photos assets for automation workflows.</string>
 </dict>
 </plist>

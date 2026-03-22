@@ -140,12 +140,54 @@ func registerTools(s *server.MCPServer, b *Bridge) {
 		return invoke(ctx, b, "fill", req.GetArguments())
 	})
 
+	// browser_fill_by_label
+	s.AddTool(mcp.NewTool("browser_fill_by_label",
+		mcp.WithDescription(
+			"Find a text input or textarea by its label text and fill it. "+
+				"Searches for an element containing the label text and looks for the nearest input/textarea.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab that contains the element."),
+		),
+		mcp.WithString("label",
+			mcp.Required(),
+			mcp.Description("Label text to search for."),
+		),
+		mcp.WithString("value",
+			mcp.Required(),
+			mcp.Description("Text value to set."),
+		),
+		mcp.WithString("tag",
+			mcp.Description("HTML tag of the input element: 'input' (default) or 'textarea'."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "fill_by_label", req.GetArguments())
+	})
+
+	// browser_click_by_label
+	s.AddTool(mcp.NewTool("browser_click_by_label",
+		mcp.WithDescription(
+			"Find a button, link, or clickable element by its text and click it.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab that contains the element."),
+		),
+		mcp.WithString("label",
+			mcp.Required(),
+			mcp.Description("Text or aria-label to search for."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "click_by_label", req.GetArguments())
+	})
+
 	// browser_upload_file
 	s.AddTool(mcp.NewTool("browser_upload_file",
 		mcp.WithDescription(
-			"Set a local file on a <input type=\"file\"> element using the Chrome "+
-				"DevTools Protocol. The file_path must be an absolute path accessible "+
-				"on the local machine.",
+			"Set one or more local files on a <input type=\"file\"> element using "+
+				"the Chrome DevTools Protocol. Paths must be absolute and accessible on "+
+				"the local machine.",
 		),
 		mcp.WithNumber("tab_id",
 			mcp.Required(),
@@ -156,11 +198,35 @@ func registerTools(s *server.MCPServer, b *Bridge) {
 			mcp.Description("CSS selector for the <input type=\"file\"> element."),
 		),
 		mcp.WithString("file_path",
-			mcp.Required(),
-			mcp.Description("Absolute path to the local file to upload."),
+			mcp.Description("Absolute path to one local file to upload."),
+		),
+		mcp.WithArray(
+			"file_paths",
+			mcp.Description("Optional array of absolute paths to upload in one selection."),
 		),
 	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return invoke(ctx, b, "upload_file", req.GetArguments())
+	})
+
+	// browser_eval
+	s.AddTool(mcp.NewTool("browser_eval",
+		mcp.WithDescription(
+			"Execute an async JavaScript snippet in the page context and return its JSON-serializable result.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab where the script should run."),
+		),
+		mcp.WithString("script",
+			mcp.Required(),
+			mcp.Description("JavaScript function body executed as async code with `args` in scope."),
+		),
+		mcp.WithObject(
+			"args",
+			mcp.Description("Optional JSON-serializable argument object passed into the script."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "eval", req.GetArguments())
 	})
 
 	// browser_screenshot
@@ -216,6 +282,33 @@ func registerTools(s *server.MCPServer, b *Bridge) {
 		return invoke(ctx, b, "close_tab", req.GetArguments())
 	})
 
+	// browser_cleanup_tabs
+	s.AddTool(mcp.NewTool("browser_cleanup_tabs",
+		mcp.WithDescription("Close all browser tabs that were opened by Clara automation."),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "cleanup_tabs", req.GetArguments())
+	})
+
+	// browser_wait_for_selector
+	s.AddTool(mcp.NewTool("browser_wait_for_selector",
+		mcp.WithDescription(
+			"Wait until an element matching a CSS selector is present in the DOM.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab to search in."),
+		),
+		mcp.WithString("selector",
+			mcp.Required(),
+			mcp.Description("CSS selector to wait for."),
+		),
+		mcp.WithNumber("timeout_seconds",
+			mcp.Description("Maximum seconds to wait (default 30)."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "wait_for_selector", req.GetArguments())
+	})
+
 	// browser_wait_for_load
 	s.AddTool(mcp.NewTool("browser_wait_for_load",
 		mcp.WithDescription(
@@ -232,6 +325,91 @@ func registerTools(s *server.MCPServer, b *Bridge) {
 		),
 	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return invoke(ctx, b, "wait_for_load", req.GetArguments())
+	})
+
+	// browser_query_elements
+	s.AddTool(mcp.NewTool("browser_query_elements",
+		mcp.WithDescription(
+			"Query multiple elements by CSS selector and return their attributes (tag, id, class, text, value, etc). "+
+				"Bypasses CSP restrictions that block browser_eval.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab to search in."),
+		),
+		mcp.WithString("selector",
+			mcp.Required(),
+			mcp.Description("CSS selector to query."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "query_elements", req.GetArguments())
+	})
+
+	// browser_type
+	s.AddTool(mcp.NewTool("browser_type",
+		mcp.WithDescription(
+			"Simulate character-by-character typing into the currently focused element using the Chrome Debugger Protocol. "+
+				"Ensures React and other framework state is correctly updated. Use browser_click first to focus the desired input.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab to type in."),
+		),
+		mcp.WithString("text",
+			mcp.Required(),
+			mcp.Description("Text to type."),
+		),
+		mcp.WithNumber("delay_between_keys_ms",
+			mcp.Description("Optional delay between keystrokes (default 10ms)."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "type", req.GetArguments())
+	})
+
+	// browser_debugger_command
+	s.AddTool(mcp.NewTool("browser_debugger_command",
+		mcp.WithDescription(
+			"Directly execute a Chrome DevTools Protocol (CDP) command on a tab. "+
+				"Advanced usage only.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab to target."),
+		),
+		mcp.WithString("method",
+			mcp.Required(),
+			mcp.Description("CDP method name (e.g. 'Input.dispatchKeyEvent')."),
+		),
+		mcp.WithObject("params",
+			mcp.Description("Optional CDP parameters object."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "debugger_command", req.GetArguments())
+	})
+
+	// browser_type_by_selector
+	s.AddTool(mcp.NewTool("browser_type_by_selector",
+		mcp.WithDescription(
+			"Type text into an element identified by CSS selector using native CDP commands. "+
+				"Handles focus and character dispatch in a single session for maximum reliability with React.",
+		),
+		mcp.WithNumber("tab_id",
+			mcp.Required(),
+			mcp.Description("ID of the tab to target."),
+		),
+		mcp.WithString("selector",
+			mcp.Required(),
+			mcp.Description("CSS selector of the element to type into."),
+		),
+		mcp.WithString("text",
+			mcp.Required(),
+			mcp.Description("Text to type."),
+		),
+		mcp.WithNumber("delay_between_keys_ms",
+			mcp.Description("Optional delay between keystrokes (default 10ms)."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return invoke(ctx, b, "type_by_selector", req.GetArguments())
 	})
 }
 

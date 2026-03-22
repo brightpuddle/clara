@@ -18,8 +18,12 @@ import (
 )
 
 // commandTimeout is the maximum time to wait for the extension to respond to a
-// single tool call. File uploads and page loads may be slow, so this is generous.
-const commandTimeout = 60 * time.Second
+// single tool call. Real browser automation against complex pages like Facebook
+// can legitimately take a while, especially with intentional human delays.
+const commandTimeout = 5 * time.Minute
+
+// heartbeatInterval is how often to send a ping to the extension.
+const heartbeatInterval = 15 * time.Second
 
 // commandResult carries the raw JSON result or an error string from the extension.
 type commandResult struct {
@@ -30,6 +34,7 @@ type commandResult struct {
 // wsResponse is the JSON shape of messages arriving from the extension.
 type wsResponse struct {
 	ID     string          `json:"id"`
+	Type   string          `json:"type"`
 	Result json.RawMessage `json:"result"`
 	Error  string          `json:"error"`
 }
@@ -183,8 +188,24 @@ func (b *Bridge) dispatch(msg []byte) {
 		b.log.Error().Err(err).Msg("Failed to parse message from extension")
 		return
 	}
+
+	// Handle heartbeat/system messages
+	if resp.Type == "pong" {
+		b.log.Trace().Msg("Received pong from extension")
+		return
+	}
+	if resp.Type == "ping" {
+		b.log.Trace().Msg("Received ping from extension; sending pong")
+		b.mu.Lock()
+		if b.conn != nil {
+			_ = b.conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
+		}
+		b.mu.Unlock()
+		return
+	}
+
 	if resp.ID == "" {
-		return // unsolicited message (e.g. keep-alive ping) — ignore
+		return // unsolicited message — ignore
 	}
 
 	b.mu.Lock()
@@ -221,13 +242,27 @@ func (b *Bridge) Serve(ctx context.Context, addr string) error {
 		}
 	}()
 
-	select {
-	case <-ctx.Done():
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutCtx)
-		return nil
-	case err := <-errCh:
-		return err
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(shutCtx)
+			return nil
+		case <-ticker.C:
+			b.mu.Lock()
+			if b.conn != nil {
+				err := b.conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"ping"}`))
+				if err != nil {
+					b.log.Debug().Err(err).Msg("Failed to send ping to extension")
+				}
+			}
+			b.mu.Unlock()
+		case err := <-errCh:
+			return err
+		}
 	}
 }

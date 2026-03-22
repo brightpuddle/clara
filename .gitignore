@@ -28,5 +28,3 @@ config.yaml
 *.log
 .aider*
 
-# Other
-/TASKS
