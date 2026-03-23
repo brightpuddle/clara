@@ -32,15 +32,15 @@ fmt:
 
 ## bridge: build the Swift ClaraBridge binary
 bridge:
-	cd swift && swift build -c release
-	rm -rf "$(BRIDGE_APP_DIR)"
-	mkdir -p "$(BRIDGE_APP_DIR)/Contents/MacOS"
-	cp swift/.build/release/ClaraBridge "$(BRIDGE_APP_EXE)"
-	cp swift/Sources/ClaraBridge/Info.plist "$(BRIDGE_APP_DIR)/Contents/Info.plist"
-	codesign --force --deep --sign - "$(BRIDGE_APP_DIR)"
-	cp "$(BRIDGE_APP_EXE)" ./ClaraBridge
-	printf '#!/bin/sh\nexec \"%s\" \"$@\"\n' "$(BRIDGE_APP_EXE)" > "$(BRIDGE_WRAPPER)"
-	chmod +x "$(BRIDGE_WRAPPER)"
+	@./scripts/build_bridge.sh
+
+## release: run goreleaser to build artifacts locally (without publishing)
+release:
+	goreleaser release --snapshot --clean
+
+## release-check: check if goreleaser is installed
+release-check:
+	@command -v goreleaser >/dev/null 2>&1 || { echo >&2 "goreleaser is not installed. Visit https://goreleaser.com/install/"; exit 1; }
 
 ## install: install clara and restart or start the LaunchAgent
 install: build
@@ -59,4 +59,4 @@ uninstall:
 ## clean: remove build artifacts
 clean:
 	rm -f clara ClaraBridge
-	rm -rf swift/.build
+	rm -rf swift/.build dist build

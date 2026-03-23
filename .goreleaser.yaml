@@ -1,0 +1,84 @@
+# .goreleaser.yaml
+# GoReleaser configuration for Clara (unified Go binary + Swift macOS bridge + Chrome extension)
+
+version: 2
+
+# Before builds, we must prepare the Swift component
+before:
+  hooks:
+    - ./scripts/build_bridge.sh
+
+builds:
+  - id: clara
+    main: ./cmd/clara
+    binary: clara
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: build/ClaraBridge.app/
+        dst: ClaraBridge.app
+      - src: extension/
+        dst: extension
+      - README.md
+      - config.yaml.example
+      - com.brightpuddle.clara.agent.plist
+
+brews:
+  - name: clara
+    repository:
+      owner: brightpuddle
+      name: homebrew-tap
+    homepage: "https://github.com/brightpuddle/clara"
+    description: "Clara: Unified agent for personal automation (Go + Swift + Chrome)"
+    directory: Formula
+    install: |
+      bin.install "clara"
+      libexec.install "ClaraBridge.app"
+      # Create a symlink for ClaraBridge to libexec so it's in the PATH but inside the .app bundle
+      # This ensures UserNotifications work correctly.
+      (bin/"ClaraBridge").write_env_script "#{libexec}/ClaraBridge.app/Contents/MacOS/ClaraBridge", {}
+      
+      # Provide the Chrome extension in the cellar so the user can load it
+      prefix.install "extension"
+      
+      # Install the launch agent and config examples
+      prefix.install "com.brightpuddle.clara.agent.plist"
+      prefix.install "config.yaml.example"
+    
+    caveats: |
+      To use the Chrome extension:
+      1. Open Chrome -> chrome://extensions/
+      2. Enable "Developer mode"
+      3. Click "Load unpacked"
+      4. Select: #{opt_prefix}/extension
+
+      To start the Clara agent:
+      1. Copy the launch agent to your user directory:
+         cp #{opt_prefix}/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
+      2. Start it:
+         launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist
+    
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

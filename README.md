@@ -41,49 +41,60 @@ Clara can also act as an MCP gateway:
 ### Requirements
 
 - macOS
-- Go 1.26+
-- Swift 6.0+ if you want to build the native macOS bridge
-- Any external MCP servers or local tools you reference in your config
+- [Homebrew](https://brew.sh)
 
-### Build Clara
+### Installation
 
-```bash
-go build ./cmd/clara
-```
-
-This produces the `clara` binary for local use.
-
-### Create your config
-
-Copy the example config into the default config location:
+For a streamlined installation on macOS, run this one-line command:
 
 ```bash
-mkdir -p ~/.config/clara
-cp config.yaml.example ~/.config/clara/config.yaml
-```
-
-Edit `~/.config/clara/config.yaml` so `mcp_servers` contains the MCP services
-you want Clara to manage.
-
-If Clara runs under launchd and your MCP server commands live outside the
-default system path, set `mcp_command_search_paths` to include those binary
-directories (for example `${HOME}/go/bin`). Clara prepends those paths when
-resolving bare MCP commands and when constructing the subprocess `PATH`.
-
-### Install Clara as a LaunchAgent
-
-For local development on macOS, the easiest way to install or update Clara is:
-
-```bash
-make install
+curl -s https://raw.githubusercontent.com/brightpuddle/clara/main/scripts/install.sh | bash
 ```
 
 This will:
+- Add the `brightpuddle/homebrew-tap`
+- Install the `clara` Go binary
+- Install the `ClaraBridge` Swift macOS bridge
+- Provide the companion Chrome extension
 
-- build `clara`
-- copy the binary to `/usr/local/bin/clara`
-- install `com.brightpuddle.clara.agent.plist` to `~/Library/LaunchAgents`
-- restart the agent if it is already running, or start it if it is not
+### Post-Installation Setup
+
+1. **Configure Clara**:
+   Copy the example config to the default location:
+   ```bash
+   mkdir -p ~/.config/clara
+   cp $(brew --prefix clara)/config.yaml.example ~/.config/clara/config.yaml
+   ```
+   Edit `~/.config/clara/config.yaml` to include your API keys and MCP servers.
+
+2. **Load Chrome Extension**:
+   - Open Chrome -> `chrome://extensions/`
+   - Enable **Developer mode**
+   - Click **Load unpacked**
+   - Select the extension folder: `$(clara paths | grep Extension | awk '{print $2}')`
+
+3. **Start the background agent**:
+   ```bash
+   cp $(brew --prefix clara)/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
+   launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist
+   ```
+
+### Development / Local Build
+
+If you want to build from source:
+
+- Go 1.26+
+- Swift 6.0+
+
+```bash
+make build
+make bridge
+```
+
+To create a local release package using GoReleaser:
+```bash
+make release
+```
 
 After that, you can manage the daemon with:
 

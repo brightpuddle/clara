@@ -58,7 +58,9 @@ mcp_servers:
     description: "Built-in Gemini-backed LLM server for text and vision generation"
 
   - name: bridge
-    command: /usr/local/bin/ClaraBridge
+    # Path to the Swift ClaraBridge binary.
+    # If installed via Homebrew, this will be in your PATH.
+    command: ClaraBridge
     args: []
     description: "Native macOS MCP server (EventKit, notifications, reminder/event wait tools, and other local capabilities); the wrapper should exec the app-bundled bridge binary"
 
