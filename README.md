@@ -63,7 +63,7 @@ This will:
    Copy the example config to the default location:
    ```bash
    mkdir -p ~/.config/clara
-   cp $(brew --prefix clara)/config.yaml.example ~/.config/clara/config.yaml
+   cp $(brew --prefix --cask clara)/config.yaml.example ~/.config/clara/config.yaml
    ```
    Edit `~/.config/clara/config.yaml` to include your API keys and MCP servers.
 
@@ -75,7 +75,7 @@ This will:
 
 3. **Start the background agent**:
    ```bash
-   cp $(brew --prefix clara)/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
+   cp $(brew --prefix --cask clara)/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
    launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist
    ```
 

@@ -24,9 +24,9 @@ var pathsCmd = &cobra.Command{
 		exe, err := os.Executable()
 		if err == nil {
 			exe, _ = filepath.EvalSymlinks(exe)
-			// If we are in /opt/homebrew/Cellar/clara/VERSION/bin/clara
-			// then the extension is at /opt/homebrew/Cellar/clara/VERSION/extension
-			base := filepath.Dir(filepath.Dir(exe))
+			// For Cask, exe is /usr/local/Caskroom/clara/VERSION/clara
+			// Extension is at /usr/local/Caskroom/clara/VERSION/extension
+			base := filepath.Dir(exe)
 			extPath := filepath.Join(base, "extension")
 			if _, err := os.Stat(extPath); err == nil {
 				fmt.Printf("Extension:    %s\n", extPath)

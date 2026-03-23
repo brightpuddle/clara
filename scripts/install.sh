@@ -2,7 +2,7 @@
 set -e
 
 # Clara Installer
-# This script installs Clara on macOS using Homebrew.
+# This script installs Clara on macOS using Homebrew Cask.
 
 echo "Clara Installer"
 echo "==============="
@@ -25,8 +25,8 @@ brew update
 echo "Adding brightpuddle tap..."
 brew tap brightpuddle/homebrew-tap || true
 
-echo "Installing Clara..."
-brew install clara
+echo "Installing Clara (Cask)..."
+brew install --cask clara
 
 echo ""
 echo "Clara has been installed successfully!"
@@ -35,12 +35,11 @@ echo "Next steps:"
 echo "1. Run 'clara paths' to see important file locations."
 echo "2. Copy the example config to the default location:"
 echo "   mkdir -p ~/.config/clara"
-echo "   cp $(brew --prefix clara)/config.yaml.example ~/.config/clara/config.yaml"
+echo "   cp $(brew --prefix --cask clara)/config.yaml.example ~/.config/clara/config.yaml"
 echo "3. Load the Chrome extension from:"
 echo "   $(clara paths | grep Extension | awk '{print $2}')"
-echo "   (Or look at 'clara paths' output)"
 echo "4. Start the Clara agent:"
-echo "   cp $(brew --prefix clara)/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/"
+echo "   cp $(brew --prefix --cask clara)/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/"
 echo "   launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist"
 echo ""
 echo "Run 'clara --help' to get started."

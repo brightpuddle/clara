@@ -6,7 +6,6 @@
 # Build artifacts
 tmp/
 dist/
-/build
 *.test
 
 # IDE

@@ -35,41 +35,39 @@ archives:
       - config.yaml.example
       - com.brightpuddle.clara.agent.plist
 
-brews:
+# Use homebrew_casks for pre-built macOS binaries (v2 recommendation)
+homebrew_casks:
   - name: clara
     repository:
       owner: brightpuddle
       name: homebrew-tap
+      # Use your custom token environment variable
+      token: "{{ .Env.BRIGHTPUDDLE_GITHUB_TOKEN }}"
     homepage: "https://github.com/brightpuddle/clara"
     description: "Clara: Unified agent for personal automation (Go + Swift + Chrome)"
-    directory: Formula
-    install: |
-      bin.install "clara"
-      libexec.install "ClaraBridge.app"
-      # Create a symlink for ClaraBridge to libexec so it's in the PATH but inside the .app bundle
-      # This ensures UserNotifications work correctly.
-      (bin/"ClaraBridge").write_env_script "#{libexec}/ClaraBridge.app/Contents/MacOS/ClaraBridge", {}
-      
-      # Provide the Chrome extension in the cellar so the user can load it
-      prefix.install "extension"
-      
-      # Install the launch agent and config examples
-      prefix.install "com.brightpuddle.clara.agent.plist"
-      prefix.install "config.yaml.example"
     
+    # In a Cask, we specify how to install the contents of the archive
+    # binary: installs the CLI tool to the PATH
+    # app: installs the .app bundle to /Applications (or keeps it in Caskroom)
+    binary: clara
+    app: ClaraBridge.app
+
     caveats: |
       To use the Chrome extension:
       1. Open Chrome -> chrome://extensions/
       2. Enable "Developer mode"
       3. Click "Load unpacked"
-      4. Select: #{opt_prefix}/extension
+      4. Select: #{caskroom_path}/#{version}/extension
 
       To start the Clara agent:
       1. Copy the launch agent to your user directory:
-         cp #{opt_prefix}/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
+         cp #{caskroom_path}/#{version}/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
       2. Start it:
          launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist
-    
+
+      An example configuration is available at:
+      #{caskroom_path}/#{version}/config.yaml.example
+
 checksum:
   name_template: 'checksums.txt'
 
