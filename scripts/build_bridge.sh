@@ -22,4 +22,15 @@ cp Sources/ClaraBridge/Info.plist "../$PLIST_DIR/Info.plist"
 # Ad-hoc sign for local use/testing (proper signing requires a Dev ID in a real CI)
 codesign --force --deep --sign - "../build/ClaraBridge.app"
 
+# Create a self-contained wrapper script that knows where the .app is.
+# This avoids needing complex Homebrew Ruby blocks.
+cat <<EOF > "../build/ClaraBridge"
+#!/bin/bash
+# ClaraBridge wrapper for Homebrew
+DIR="\$( cd "\$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
+# If installed via Cask, the .app is in the same directory as the binary
+exec "\$DIR/ClaraBridge.app/Contents/MacOS/ClaraBridge" "\$@"
+EOF
+chmod +x "../build/ClaraBridge"
+
 echo "ClaraBridge built and packaged in build/ClaraBridge.app"
