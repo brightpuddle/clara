@@ -45,12 +45,13 @@ homebrew_casks:
       token: "{{ .Env.BRIGHTPUDDLE_GITHUB_TOKEN }}"
     homepage: "https://github.com/brightpuddle/clara"
     description: "Clara: Unified agent for personal automation (Go + Swift + Chrome)"
-    
+
     # In a Cask, we specify how to install the contents of the archive
     # binary: installs the CLI tool to the PATH
     # app: installs the .app bundle to /Applications (or keeps it in Caskroom)
-    binary: clara
-    app: ClaraBridge.app
+    binaries:
+      - clara
+      - ClaraBridge
 
     caveats: |
       To use the Chrome extension:
@@ -69,7 +70,7 @@ homebrew_casks:
       #{caskroom_path}/#{version}/config.yaml.example
 
 checksum:
-  name_template: 'checksums.txt'
+  name_template: "checksums.txt"
 
 snapshot:
   name_template: "{{ .Version }}-next"
@@ -78,5 +79,5 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
+      - "^docs:"
+      - "^test:"
