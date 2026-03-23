@@ -24,7 +24,8 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - src: build/ClaraBridge.app/
@@ -51,7 +52,8 @@ homebrew_casks:
     # app: installs the .app bundle to /Applications (or keeps it in Caskroom)
     binaries:
       - clara
-      - ClaraBridge
+    # app: refers to a bundle .app inside the tarball
+    app: ClaraBridge.app
 
     caveats: |
       To use the Chrome extension:
@@ -73,7 +75,7 @@ checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ .Version }}-next"
+  version_template: "{{ .Version }}-next"
 
 changelog:
   sort: asc
