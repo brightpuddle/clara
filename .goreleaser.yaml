@@ -75,8 +75,8 @@ homebrew_casks:
     caveats: |
       To use the Chrome extension:
       1. Open Chrome -> chrome://extensions/
-      2. Enable "Developer mode"
-      3. Click "Load unpacked"
+      2. Enable 'Developer mode'
+      3. Click 'Load unpacked'
       4. Select: #{staged_path}/extension
 
       To start the Clara agent:
