@@ -28,9 +28,9 @@ archives:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      - src: build/ClaraBridge.app/
+      - src: build/ClaraBridge.app/**/*
         dst: ClaraBridge.app
-      - src: extension/
+      - src: extension/**/*
         dst: extension
       - README.md
       - config.yaml.example
@@ -47,29 +47,46 @@ homebrew_casks:
     homepage: "https://github.com/brightpuddle/clara"
     description: "Clara: Unified agent for personal automation (Go + Swift + Chrome)"
 
-    # In a Cask, we specify how to install the contents of the archive
-    # binary: installs the CLI tool to the PATH
-    # app: installs the .app bundle to /Applications (or keeps it in Caskroom)
+    # In a Cask, binaries are symlinked into /usr/local/bin (or equivalent)
     binaries:
       - clara
-    # app: refers to a bundle .app inside the tarball
-    app: ClaraBridge.app
+
+    # Custom Ruby block to handle the .app bundle and other files without using Pro 'app' field
+    custom_block: |
+      # Install ClaraBridge.app to the Caskroom so it can be executed
+      # but not necessarily in /Applications
+      artifact "ClaraBridge.app", target: "#{staged_path}/ClaraBridge.app"
+      
+      # Create a wrapper script for ClaraBridge to ensure it runs from the .app bundle
+      # which is required for macOS UserNotifications.
+      preflight do
+        wrapper = "#{HOMEBREW_PREFIX}/bin/ClaraBridge"
+        File.write(wrapper, <<~SH)
+          #!/bin/bash
+          exec "#{staged_path}/ClaraBridge.app/Contents/MacOS/ClaraBridge" "$@"
+        SH
+        FileUtils.chmod(0755, wrapper)
+      end
+
+      uninstall_preflight do
+        FileUtils.rm_f "#{HOMEBREW_PREFIX}/bin/ClaraBridge"
+      end
 
     caveats: |
       To use the Chrome extension:
       1. Open Chrome -> chrome://extensions/
       2. Enable "Developer mode"
       3. Click "Load unpacked"
-      4. Select: #{caskroom_path}/#{version}/extension
+      4. Select: #{staged_path}/extension
 
       To start the Clara agent:
       1. Copy the launch agent to your user directory:
-         cp #{caskroom_path}/#{version}/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
+         cp #{staged_path}/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
       2. Start it:
          launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist
 
       An example configuration is available at:
-      #{caskroom_path}/#{version}/config.yaml.example
+      #{staged_path}/config.yaml.example
 
 checksum:
   name_template: "checksums.txt"
