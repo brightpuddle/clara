@@ -71,11 +71,11 @@ Create a file in `~/.local/share/clara/tasks/hello.star`:
 
 ```python
 # hello.star
-describe("A simple directory listing")
+clara.describe("A simple directory listing")
 
 def main():
     # Call any tool from the unified MCP registry
-    files = tool("fs.list_directory", path = ".")
+    files = fs.list_directory(path = ".")
     return {"found": len(files)}
 ```
 
@@ -95,8 +95,9 @@ several execution modes:
 - **Scheduled:** Cron-style execution (e.g., `0 7 * * *` for your morning
   brief).
 - **Worker:** Fixed-interval loops (e.g., `10m` for a file sync).
-- **Event-Driven:** Reactive to MCP notifications (e.g.,
-  `macos.theme_change`).
+- Event-Driven: Reactive to MCP notifications (e.g.,
+  `clara.on(macos.theme_on_change)`).
+
 
 ### The `wait` Pattern
 
@@ -106,7 +107,7 @@ human intervention:
 ```python
 def main():
     # ... do some research ...
-    approval = wait("approval", prompt = "Should I send this email?")
+    approval = clara.wait("approval", prompt = "Should I send this email?")
     if approval.get("approved"):
         # ... proceed ...
 ```
@@ -123,10 +124,14 @@ Clara ships with a variety of built-in and first-party MCP servers:
 - **`fs`:** Local filesystem management and change watching.
 - **`db`:** SQLite tool for persistent intent data.
 - **`llm` / `ollama`:** Multiplexed access to Gemini and local models.
-- **`macos`:** Native macOS access (Photos, Reminders, Calendar, etc).
+- **`macos`:** Native macOS access (Photos, Reminders, Calendar, etc) via `ClaraBridge`.
 - **`zk`:** Specialized Zettelkasten/Obsidian vault tools.
 - **`taskwarrior`:** Integration with the Taskwarrior CLI.
 - **`tmux`:** Integration with the tmux CLI for managing terminal sessions.
+- **`shell`:** Local command execution.
+- **`search`:** Unified search for mail, local files (`mdfind`), etc.
+- **`web`:** Internet search via DuckDuckGo.
+- **`webex`:** Webex messaging and search.
 
 You can use any MCP server with Clara, but I wasn't happy with the state of a
 lot of the MCP projects out there. The built in ones are all written in Go

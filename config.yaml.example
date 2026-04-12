@@ -80,6 +80,10 @@ mcp_servers:
     command: clara mcpserver search
     description: "Built-in unified search server (Mail indexing, mdfind, etc)"
 
+  - name: web
+    command: clara mcpserver web
+    description: "Built-in web search server"
+
 # Stdio MCP Gateway allows exposing tools to other local agents
 # stdio_mcp:
 #   expose_tools: ["fs.*", "db.*"]
