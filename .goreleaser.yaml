@@ -1,0 +1,84 @@
+# .goreleaser.yaml
+# GoReleaser configuration for Clara (unified Go binary + Swift macOS bridge + Chrome extension)
+
+version: 2
+
+# Before builds, we must prepare the Swift component
+before:
+  hooks:
+    - ./scripts/build_bridge.sh
+
+builds:
+  - id: clara
+    main: ./cmd/clara
+    binary: clara
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: build/ClaraBridge.app/
+        dst: ClaraBridge.app
+      - src: build/ClaraBridge
+        dst: ClaraBridge
+      - src: extension/
+        dst: extension
+      - README.md
+      - config.yaml.example
+      - com.brightpuddle.clara.agent.plist
+
+# Use homebrew_casks for pre-built macOS binaries (v2 recommendation)
+homebrew_casks:
+  - name: clara
+    repository:
+      owner: brightpuddle
+      name: homebrew-tap
+      # Use your custom token environment variable
+      token: "{{ .Env.BRIGHTPUDDLE_GITHUB_TOKEN }}"
+    homepage: "https://github.com/brightpuddle/clara"
+    description: "Clara: Unified agent for personal automation (Go + Swift + Chrome)"
+
+    # In a Cask, binaries are symlinked into /usr/local/bin (or equivalent)
+    binaries:
+      - clara
+      - ClaraBridge
+
+    caveats: |
+      To use the Chrome extension:
+      1. Open Chrome -> chrome://extensions/
+      2. Enable 'Developer mode'
+      3. Click 'Load unpacked'
+      4. Select: #{staged_path}/extension
+
+      To start the Clara agent:
+      1. Copy the launch agent to your user directory:
+         cp #{staged_path}/com.brightpuddle.clara.agent.plist ~/Library/LaunchAgents/
+      2. Start it:
+         launchctl load ~/Library/LaunchAgents/com.brightpuddle.clara.agent.plist
+
+      An example configuration is available at:
+      #{staged_path}/config.yaml.example
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

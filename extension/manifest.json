@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Clara Browser Bridge",
+  "version": "0.3.0",
+  "description": "Connects Chrome to the Clara automation daemon via Native Messaging.",
+
+  "permissions": [
+    "tabs",
+    "scripting",
+    "debugger",
+    "bookmarks",
+    "history",
+    "storage",
+    "nativeMessaging",
+    "alarms"
+  ],
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "action": {
+    "default_title": "Clara Browser Bridge"
+  },
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
+}

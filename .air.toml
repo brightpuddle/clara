@@ -1,0 +1,27 @@
+#:schema https://json.schemastore.org/any.json
+
+env_files = []
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  args_bin = []
+  cmd = "go install ./..."
+  delay = 1000
+  entrypoint = ["clara", "serve"]
+  exclude_dir = ["assets", "tmp", "vendor", "testdata"]
+  exclude_regex = ["_test.go"]
+  exclude_unchanged = false
+  follow_symlink = false
+  full_bin = ""
+  ignore_dangerous_root_dir = false
+  include_ext = ["go"]
+  kill_delay = "0s"
+  log = "build-errors.log"
+  rerun = false
+  rerun_delay = 500
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

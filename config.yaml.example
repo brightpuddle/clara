@@ -1,0 +1,86 @@
+# Clara Configuration Example
+#
+# Copy to ~/.config/clara/config.yaml and customize.
+# String values support ${ENV_VAR} expansion.
+
+# Log level: trace, debug, info, warn, error (default: info)
+log_level: info
+
+# LLM configuration defines routing categories and providers for the built-in
+# unified LLM MCP server context ("mcp llm").
+llm:
+  categories:
+    fast:
+      - provider: gemini
+        model: gemini-2.0-flash
+    reasoning:
+      - provider: gemini
+        model: gemini-2.0-flash-thinking-exp-01-21
+    local:
+      - provider: ollama
+        model: qwen2.5-coder:14b
+    vision:
+      - provider: gemini
+        model: gemini-2.0-flash
+    embeddings:
+      - provider: ollama
+        model: nomic-embed-text
+  providers:
+    gemini:
+      api_key: "${GEMINI_API_KEY}"
+    ollama:
+      base_url: "http://localhost:11434"
+
+# MCP services managed by the Clara daemon.
+# Note that description is provided as an example, but most MCP servers provide a description
+mcp_servers:
+  - name: fs
+    command: clara mcpserver fs
+    description: "Built-in filesystem server"
+
+  - name: db
+    command: clara mcpserver db data.db
+    description: "Built-in SQLite tool server"
+
+  - name: llm
+    command: clara mcpserver llm
+    description: "Built-in unified LLM server"
+
+  - name: shell
+    command: clara mcpserver shell
+    description: "Built-in shell execution server"
+
+  - name: zk
+    command: clara mcpserver zk ${HOME}/Documents/Notes"
+    description: "Built-in Zettelkasten/Obsidian vault tools"
+
+  - name: macos
+    command: ClaraBridge
+    description: "Native MacOS capabilities"
+
+  - name: chrome
+    command: clara mcpserver chrome
+    description: "Chrome browser automation via extension"
+
+  - name: webex
+    command: clara mcpserver webex
+    description: "Webex integration"
+    env:
+      WEBEX_ACCESS_TOKEN: ${WEBEX_ACCESS_TOKEN}
+
+  - name: taskwarrior
+    command: clara mcpserver taskwarrior
+    description: "Built-in Taskwarrior integration"
+
+  - name: tmux
+    command: clara mcpserver tmux
+    description: "Built-in tmux session management"
+
+  - name: search
+    command: clara mcpserver search
+    description: "Built-in unified search server (Mail indexing, mdfind, etc)"
+
+# Stdio MCP Gateway allows exposing tools to other local agents
+# stdio_mcp:
+#   expose_tools: ["fs.*", "db.*"]
+#   expose_intents: ["*"]
