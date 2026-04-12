@@ -49,7 +49,7 @@ Steps:
 			return err
 		}
 		wrapperPath := filepath.Join(dataDir, "clara-chrome-native-host")
-		wrapperScript := fmt.Sprintf("#!/bin/sh\nexec %q mcp chrome chrome-native-host\n", exe)
+		wrapperScript := fmt.Sprintf("#!/bin/sh\nexec %q mcpserver chrome chrome-native-host\n", exe)
 		if err := os.WriteFile(wrapperPath, []byte(wrapperScript), 0755); err != nil {
 			return err
 		}
