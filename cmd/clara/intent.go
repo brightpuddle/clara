@@ -570,6 +570,21 @@ func (p *intentWatchPrinter) printCurrentStates(
 
 	p.printRule()
 	if len(states) == 0 {
+		// Fallback to latest run for this intent if specified.
+		if intentID != "" {
+			latest, err := db.LatestRunState(ctx, intentID)
+			if err != nil {
+				return err
+			}
+			if latest != nil {
+				fmt.Printf("%s %s %s\n", p.theme.Dimmed("intent:"), p.paintIntentID(intentID), p.theme.Dimmed("(latest run)"))
+				p.lastState[latest.RunID] = latest.State
+				p.printStateSnapshot(*latest)
+				p.printRule()
+				return nil
+			}
+		}
+
 		if intentID == "" {
 			fmt.Println(p.theme.Dimmed("No active intents. Waiting for events..."))
 		} else {
