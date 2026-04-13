@@ -574,6 +574,51 @@ func (s *Store) ActiveRunStates(ctx context.Context, intentID string) ([]RunStat
 	return states, nil
 }
 
+func (s *Store) LatestRunState(ctx context.Context, intentID string) (*RunState, error) {
+	query := `
+                SELECT id, intent_id, state, status, error, started_at, updated_at, finished_at
+                     , workflow_type, entrypoint, script_source, wait_name, wait_args_json
+                FROM intent_runs
+                WHERE 1=1
+        `
+	args := []any{}
+	if intentID != "" {
+		query += ` AND intent_id = ?`
+		args = append(args, intentID)
+	}
+	query += ` ORDER BY started_at DESC LIMIT 1`
+
+	var (
+		state        RunState
+		waitArgsJSON string
+	)
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(
+		&state.RunID,
+		&state.IntentID,
+		&state.State,
+		&state.Status,
+		&state.Error,
+		&state.StartedAt,
+		&state.UpdatedAt,
+		&state.FinishedAt,
+		&state.WorkflowType,
+		&state.Entrypoint,
+		&state.ScriptSource,
+		&state.WaitName,
+		&waitArgsJSON,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "query latest run state")
+	}
+	if err := json.Unmarshal([]byte(waitArgsJSON), &state.WaitArgs); err != nil {
+		return nil, errors.Wrap(err, "decode wait args")
+	}
+	return &state, nil
+}
+
 func (s *Store) LoadRun(ctx context.Context, runID string) (RunState, map[string]any, error) {
 	var (
 		state        RunState
