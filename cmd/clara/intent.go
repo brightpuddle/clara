@@ -116,7 +116,7 @@ func init() {
 	intentStartCmd.Flags().
 		BoolVarP(&intentStartFollow, "follow", "f", false, "follow run output after starting")
 	intentStartCmd.Flags().
-		BoolVarP(&intentStartVerbose, "verbose", "v", false, "show full tool args/results (implies -f)")
+		BoolVarP(&intentStartVerbose, "verbose", "v", false, "show full tool args/results")
 	intentResumeCmd.Flags().
 		StringVar(&intentResumeInput, "input", "", "JSON value to satisfy the pending wait")
 	intentCmd.AddCommand(
@@ -292,7 +292,7 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(resp.Message)
 
-	if intentStartFollow || intentStartVerbose {
+	if intentStartFollow {
 		return followIntentEvents(cmd.Context(), intentID, intentStartVerbose)
 	}
 	return nil
