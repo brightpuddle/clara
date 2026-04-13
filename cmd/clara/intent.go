@@ -290,14 +290,16 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("start request failed: %w", err)
 	}
-	fmt.Println(resp.Message)
+	writeResp := resp.Message
+	var runID string
+	if data, ok := resp.Data.(map[string]any); ok {
+		runID, _ = data["run_id"].(string)
+	}
 
-	if intentStartFollow {
-		var runID string
-		if data, ok := resp.Data.(map[string]any); ok {
-			runID, _ = data["run_id"].(string)
-		}
-		return followIntentEvents(cmd.Context(), intentID, runID, intentStartVerbose)
+	fmt.Println(writeResp)
+
+	if runID != "" {
+		return followIntentEvents(cmd.Context(), intentID, runID, intentStartFollow, intentStartVerbose)
 	}
 	return nil
 }
@@ -502,8 +504,8 @@ func runIntentLogs(cmd *cobra.Command, args []string) error {
 }
 
 // followIntentEvents opens the DB and streams run events for intentID until
-// interrupted. Used by 'intent start -f'.
-func followIntentEvents(parent context.Context, intentID, runID string, verbose bool) error {
+// interrupted. Used by 'intent start -f' and 'intent start'.
+func followIntentEvents(parent context.Context, intentID, runID string, follow, verbose bool) error {
 	logger := buildLogger()
 	db, err := store.Open(cfg.DBPath(), logger)
 	if err != nil {
@@ -515,9 +517,6 @@ func followIntentEvents(parent context.Context, intentID, runID string, verbose 
 	defer cancel()
 
 	printer := newIntentWatchPrinter(tui.DetectTheme(), verbose, false)
-	if err := printer.printCurrentStates(ctx, db, intentID); err != nil {
-		return err
-	}
 
 	var lastEventID int64
 	if runID != "" {
@@ -525,6 +524,12 @@ func followIntentEvents(parent context.Context, intentID, runID string, verbose 
 		// beginning of that run.
 		lastEventID = 0
 	} else {
+		// No runID: print current active states for the intent (or all) and
+		// then follow from now.
+		if err := printer.printCurrentStates(ctx, db, intentID); err != nil {
+			return err
+		}
+
 		var err error
 		lastEventID, err = db.LatestRunEventID(ctx, intentID)
 		if err != nil {
@@ -532,7 +537,7 @@ func followIntentEvents(parent context.Context, intentID, runID string, verbose 
 		}
 	}
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -553,6 +558,18 @@ func followIntentEvents(parent context.Context, intentID, runID string, verbose 
 			for _, event := range events {
 				printer.printEvent(event)
 				lastEventID = event.ID
+			}
+
+			// If we are not following (-f flag omitted), exit once the run
+			// finishes.
+			if !follow && runID != "" {
+				state, _, err := db.LoadRun(ctx, runID)
+				if err != nil {
+					return errors.Wrap(err, "check run completion")
+				}
+				if state.Status == "completed" || state.Status == "failed" || state.Status == "cancelled" {
+					return nil
+				}
 			}
 		}
 	}
