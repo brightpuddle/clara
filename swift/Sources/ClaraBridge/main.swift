@@ -39,6 +39,7 @@ final class MCPStdioServer {
     private let errorOutput = FileHandle.standardError
     private var buffer = Data()
     private let bridgeTools: BridgeTools
+    private let logger = ClaraLogger()
 
     init() {
         bridgeTools = BridgeTools()
@@ -46,6 +47,7 @@ final class MCPStdioServer {
     }
 
     func start() {
+        logger.log("ClaraBridge starting")
         input.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             Task { @MainActor [weak self] in
@@ -193,8 +195,46 @@ final class MCPStdioServer {
     }
 
     func logError(_ message: String) {
-        guard let data = (message + "\n").data(using: .utf8) else { return }
-        errorOutput.write(data)
+        logger.log(message)
+    }
+}
+
+final class ClaraLogger: Sendable {
+    private let logFile: URL?
+    private let fileHandle: FileHandle?
+
+    init() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let logDir = home.appendingPathComponent(".local/share/clara/logs")
+        let fileURL = logDir.appendingPathComponent("ClaraBridge.log")
+
+        do {
+            try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: fileURL.path) {
+                FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+            }
+            let handle = try FileHandle(forWritingTo: fileURL)
+            handle.seekToEndOfFile()
+            self.logFile = fileURL
+            self.fileHandle = handle
+        } catch {
+            self.logFile = nil
+            self.fileHandle = nil
+        }
+    }
+
+    func log(_ message: String) {
+        let timestamp = ISO8601.dateString(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+
+        // Always log to stderr (to be picked up by clara)
+        FileHandle.standardError.write(data)
+
+        // Also log to file if available
+        if let handle = fileHandle {
+            handle.write(data)
+        }
     }
 }
 

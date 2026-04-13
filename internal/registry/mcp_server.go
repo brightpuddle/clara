@@ -331,6 +331,12 @@ func (s *MCPServer) pipeStderr(r io.Reader) {
 		return
 	}
 	scanner := bufio.NewScanner(r)
+	// Support lines up to 10MB. Large tool calls/results can easily exceed
+	// the default 64KB buffer, causing the scanner to stop and the
+	// subprocess to hang on a full pipe.
+	const maxLogLineSize = 10 * 1024 * 1024
+	scanner.Buffer(make([]byte, 64*1024), maxLogLineSize)
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -359,6 +365,10 @@ func (s *MCPServer) pipeStderr(r io.Reader) {
 			}
 		}
 		s.log.Debug().Str("source", "stderr").Msg(line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		s.log.Error().Err(err).Msg("stderr scanner failed; subprocess may hang if stderr pipe fills")
 	}
 }
 
