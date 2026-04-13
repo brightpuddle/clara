@@ -289,7 +289,10 @@ func buildHandler(
 					return
 				}
 				go resumeIntentByIDInBackground(ctx, intent, input, reg, db, log)
-				writeResp(&ipc.Response{Message: "delivered input to waiting intent " + id})
+				writeResp(&ipc.Response{
+					Message: "delivered input to waiting intent " + id,
+					Data:    map[string]any{"run_id": runState.RunID},
+				})
 				return
 			}
 
@@ -297,14 +300,16 @@ func buildHandler(
 			// (schedule/worker/event) activate the persistent loop.
 			isOnDemand := intentTaskIsOnDemand(intent, taskName)
 			if isOnDemand {
-				go runIntentInBackground(ctx, intent, taskName, reg, db, log)
+				runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
+				go runIntentInBackground(ctx, intent, runID, taskName, reg, db, log)
+				msg := "intent " + id + " started"
 				if taskName != "" {
-					writeResp(
-						&ipc.Response{Message: "intent " + id + " task " + taskName + " started"},
-					)
-				} else {
-					writeResp(&ipc.Response{Message: "intent " + id + " started"})
+					msg = "intent " + id + " task " + taskName + " started"
 				}
+				writeResp(&ipc.Response{
+					Message: msg,
+					Data:    map[string]any{"run_id": runID},
+				})
 				return
 			}
 			if err := sup.StartIntent(id, taskName); err != nil {
@@ -714,12 +719,12 @@ func buildHandler(
 func runIntentInBackground(
 	ctx context.Context,
 	intent *orchestrator.Intent,
+	runID string,
 	entrypoint string,
 	reg *registry.Registry,
 	db *store.Store,
 	log zerolog.Logger,
 ) {
-	runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
 	if err := db.InitRun(
 		context.WithoutCancel(ctx),
 		runID,

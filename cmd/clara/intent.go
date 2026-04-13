@@ -293,7 +293,11 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 	fmt.Println(resp.Message)
 
 	if intentStartFollow {
-		return followIntentEvents(cmd.Context(), intentID, intentStartVerbose)
+		var runID string
+		if data, ok := resp.Data.(map[string]any); ok {
+			runID, _ = data["run_id"].(string)
+		}
+		return followIntentEvents(cmd.Context(), intentID, runID, intentStartVerbose)
 	}
 	return nil
 }
@@ -499,7 +503,7 @@ func runIntentLogs(cmd *cobra.Command, args []string) error {
 
 // followIntentEvents opens the DB and streams run events for intentID until
 // interrupted. Used by 'intent start -f'.
-func followIntentEvents(parent context.Context, intentID string, verbose bool) error {
+func followIntentEvents(parent context.Context, intentID, runID string, verbose bool) error {
 	logger := buildLogger()
 	db, err := store.Open(cfg.DBPath(), logger)
 	if err != nil {
@@ -515,9 +519,17 @@ func followIntentEvents(parent context.Context, intentID string, verbose bool) e
 		return err
 	}
 
-	lastEventID, err := db.LatestRunEventID(ctx, intentID)
-	if err != nil {
-		return errors.Wrap(err, "load latest run event id")
+	var lastEventID int64
+	if runID != "" {
+		// If we are following a specific run we just started, start from the
+		// beginning of that run.
+		lastEventID = 0
+	} else {
+		var err error
+		lastEventID, err = db.LatestRunEventID(ctx, intentID)
+		if err != nil {
+			return errors.Wrap(err, "load latest run event id")
+		}
 	}
 
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -528,7 +540,13 @@ func followIntentEvents(parent context.Context, intentID string, verbose bool) e
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			events, err := db.RunEventsSince(ctx, lastEventID, intentID)
+			var events []store.RunEvent
+			var err error
+			if runID != "" {
+				events, err = db.RunEventsForRunSince(ctx, lastEventID, runID)
+			} else {
+				events, err = db.RunEventsSince(ctx, lastEventID, intentID)
+			}
 			if err != nil {
 				return errors.Wrap(err, "load run events")
 			}
