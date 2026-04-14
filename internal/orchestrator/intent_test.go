@@ -423,3 +423,44 @@ func TestCompileStarlarkIntent_DescribeOnce(t *testing.T) {
 		t.Fatal("expected error for calling describe() twice")
 	}
 }
+
+func TestParseIntent_Parameters(t *testing.T) {
+	data := []byte(`
+{
+	"id": "params-test",
+	"workflow_type": "starlark",
+	"script": "def main(arg1): pass",
+	"tasks": [
+		{
+			"handler": "main",
+			"mode": "on_demand",
+			"parameters": [
+				{"name": "arg1", "required": true},
+				{"name": "arg2", "required": false}
+			]
+		}
+	]
+}
+`)
+	intent, err := orchestrator.ParseIntent(data)
+	if err != nil {
+		t.Fatalf("ParseIntent failed: %v", err)
+	}
+
+	if len(intent.Tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(intent.Tasks))
+	}
+
+	task := intent.Tasks[0]
+	if len(task.Parameters) != 2 {
+		t.Fatalf("expected 2 parameters, got %d", len(task.Parameters))
+	}
+
+	if task.Parameters[0].Name != "arg1" || !task.Parameters[0].Required {
+		t.Errorf("unexpected parameter 0: %+v", task.Parameters[0])
+	}
+
+	if task.Parameters[1].Name != "arg2" || task.Parameters[1].Required {
+		t.Errorf("unexpected parameter 1: %+v", task.Parameters[1])
+	}
+}

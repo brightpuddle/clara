@@ -13,6 +13,11 @@ import (
 // Implementations wrap MCP tool calls, the Swift bridge, or local SQLite queries.
 type Tool func(ctx any, args map[string]any) (any, error)
 
+type Parameter struct {
+	Name     string `json:"name"     yaml:"name"`
+	Required bool   `json:"required" yaml:"required"`
+}
+
 // Intent is the compiled workflow representation that Clara executes.
 // It is the validated runtime form produced from authored intent sources such
 // as `.star` files.
@@ -35,6 +40,7 @@ type Task struct {
 	Schedule    string         `json:"schedule,omitempty"     yaml:"schedule,omitempty"`
 	Trigger     string         `json:"trigger,omitempty"      yaml:"trigger,omitempty"`
 	TriggerArgs map[string]any `json:"trigger_args,omitempty" yaml:"trigger_args,omitempty"`
+	Parameters  []Parameter    `json:"parameters,omitempty"   yaml:"parameters,omitempty"`
 }
 
 // Validate returns an error if the Intent is structurally invalid.
