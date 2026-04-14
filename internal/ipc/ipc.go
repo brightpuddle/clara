@@ -30,6 +30,8 @@ const (
 type Request struct {
 	Method string         `json:"method"`
 	Params map[string]any `json:"params,omitempty"`
+	Args   map[string]any `json:"args,omitempty"` // Added for function arguments
+	Data   any            `json:"data,omitempty"`
 }
 
 // Response is the daemon's reply to a CLI Request.

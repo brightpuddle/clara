@@ -97,6 +97,10 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		entrypoint string,
 		args any,
 	) error {
+		var mem map[string]any
+		if m, ok := args.(map[string]any); ok {
+			mem = m
+		}
 		if err := db.InitRun(
 			context.WithoutCancel(runCtx),
 			runID,
@@ -105,7 +109,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			intent.WorkflowKind(),
 			entrypoint,
 			intent.Script,
-			nil,
+			mem,
 		); err != nil {
 			return errors.Wrap(err, "initialize intent run")
 		}
@@ -301,7 +305,7 @@ func buildHandler(
 			isOnDemand := intentTaskIsOnDemand(intent, taskName)
 			if isOnDemand {
 				runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
-				go runIntentInBackground(ctx, intent, runID, taskName, reg, db, log)
+				go runIntentInBackground(ctx, intent, runID, taskName, req.Args, reg, db, log)
 				msg := "intent " + id + " started"
 				if taskName != "" {
 					msg = "intent " + id + " task " + taskName + " started"
@@ -721,10 +725,15 @@ func runIntentInBackground(
 	intent *orchestrator.Intent,
 	runID string,
 	entrypoint string,
+	args any,
 	reg *registry.Registry,
 	db *store.Store,
 	log zerolog.Logger,
 ) {
+	var mem map[string]any
+	if m, ok := args.(map[string]any); ok {
+		mem = m
+	}
 	if err := db.InitRun(
 		context.WithoutCancel(ctx),
 		runID,
@@ -733,12 +742,12 @@ func runIntentInBackground(
 		intent.WorkflowKind(),
 		entrypoint,
 		intent.Script,
-		nil,
+		mem,
 	); err != nil {
 		log.Warn().Err(err).Str("run_id", runID).Msg("failed to initialize manual run")
 		return
 	}
-	err := executeIntentRun(ctx, intent, runID, entrypoint, nil, reg, db, log)
+	err := executeIntentRun(ctx, intent, runID, entrypoint, args, reg, db, log)
 	if err != nil {
 		var pauseErr *interpreter.PauseError
 		if errors.As(err, &pauseErr) {
