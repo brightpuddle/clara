@@ -53,10 +53,14 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 		if _, ok := mainValue.(starlark.Callable); !ok {
 			return nil, errors.New("starlark intent main must be callable")
 		}
-		loader.intent.Tasks = []Task{{
+		task := Task{
 			Handler: "main",
 			Mode:    IntentModeOnDemand,
-		}}
+		}
+		if fn, ok := mainValue.(*starlark.Function); ok {
+			task.Parameters = extractParameters(fn)
+		}
+		loader.intent.Tasks = []Task{task}
 	}
 
 	// Derive the intent ID from the filename if not set (describe() does not set it).
@@ -66,6 +70,19 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 		return nil, err
 	}
 	return loader.intent, nil
+}
+
+func extractParameters(fn *starlark.Function) []Parameter {
+	numParams := fn.NumParams()
+	params := make([]Parameter, 0, numParams)
+	for i := 0; i < numParams; i++ {
+		name, _ := fn.Param(i)
+		params = append(params, Parameter{
+			Name:     name,
+			Required: fn.ParamDefault(i) == nil,
+		})
+	}
+	return params
 }
 
 type starlarkIntentLoader struct {
@@ -144,14 +161,18 @@ func (l *starlarkIntentLoader) taskBuiltin(
 		mode = IntentModeWorker
 	}
 
-	l.intent.Tasks = append(l.intent.Tasks, Task{
+	task := Task{
 		Handler:     handler.Name(),
 		Mode:        mode,
 		Interval:    interval,
 		Schedule:    schedule,
 		Trigger:     triggerName,
 		TriggerArgs: triggerArgs,
-	})
+	}
+	if fn, ok := handler.(*starlark.Function); ok {
+		task.Parameters = extractParameters(fn)
+	}
+	l.intent.Tasks = append(l.intent.Tasks, task)
 	return starlark.None, nil
 }
 
