@@ -32,6 +32,7 @@ var (
 	intentStartInput   string
 	intentStartFollow  bool
 	intentStartVerbose bool
+	intentStartOutput  string
 )
 
 var intentCmd = &cobra.Command{
@@ -120,6 +121,8 @@ func init() {
 		BoolVarP(&intentStartFollow, "follow", "f", false, "follow run output after starting")
 	intentStartCmd.Flags().
 		BoolVarP(&intentStartVerbose, "verbose", "v", false, "show full tool args/results")
+	intentStartCmd.Flags().
+		StringVarP(&intentStartOutput, "output", "o", "", "output format (json)")
 	intentResumeCmd.Flags().
 		StringVar(&intentResumeInput, "input", "", "JSON value to satisfy the pending wait")
 	intentCmd.AddCommand(
@@ -306,18 +309,66 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("start request failed: %w", err)
 	}
-	writeResp := resp.Message
 	var runID string
 	if data, ok := resp.Data.(map[string]any); ok {
 		runID, _ = data["run_id"].(string)
 	}
 
-	fmt.Println(writeResp)
+	if intentStartOutput == "json" {
+		if runID == "" {
+			prettyPrint(resp.Data)
+			return nil
+		}
+		return waitAndPrintJSON(cmd.Context(), intentID, runID)
+	}
+
+	fmt.Println(resp.Message)
 
 	if runID != "" {
 		return followIntentEvents(cmd.Context(), intentID, runID, intentStartFollow, intentStartVerbose)
 	}
 	return nil
+}
+
+func waitAndPrintJSON(ctx context.Context, intentID, runID string) error {
+	logger := buildLogger()
+	db, err := store.Open(cfg.DBPath(), logger)
+	if err != nil {
+		return errors.Wrap(err, "open database")
+	}
+	defer db.Close()
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			state, mem, err := db.LoadRun(ctx, runID)
+			if err != nil {
+				return errors.Wrap(err, "load run")
+			}
+			if state.Status == "completed" || state.Status == "failed" || state.Status == "cancelled" {
+				summary := map[string]any{
+					"run_id":      state.RunID,
+					"intent_id":   state.IntentID,
+					"status":      state.Status,
+					"state":       state.State,
+					"error":       state.Error,
+					"started_at":  state.StartedAt,
+					"updated_at":  state.UpdatedAt,
+					"finished_at": state.FinishedAt.Int64,
+				}
+				if res, ok := mem["main_result"]; ok {
+					summary["main_result"] = res
+				}
+				prettyPrint(summary)
+				return nil
+			}
+		}
+	}
 }
 
 func runIntentStop(cmd *cobra.Command, args []string) error {
