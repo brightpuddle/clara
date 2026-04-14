@@ -193,16 +193,31 @@ func (it *StarlarkInterpreter) Execute(
 		return errors.New("starlark workflow main must be callable")
 	}
 
-	var args starlark.Tuple
+	var positional starlark.Tuple
+	var kwargs []starlark.Tuple
 	if opts.HandlerArgs != nil {
-		dict, err := orchestrator.GoToStarlark(opts.HandlerArgs)
-		if err != nil {
-			return errors.Wrap(err, "prepare handler arguments")
+		if m, ok := opts.HandlerArgs.(map[string]any); ok {
+			// Pass each key/value as a keyword argument so that Starlark
+			// functions with named parameters (e.g. def main(name="World"))
+			// receive the correct values.
+			for k, v := range m {
+				sv, err := orchestrator.GoToStarlark(v)
+				if err != nil {
+					return errors.Wrapf(err, "prepare handler argument %q", k)
+				}
+				kwargs = append(kwargs, starlark.Tuple{starlark.String(k), sv})
+			}
+		} else {
+			// Not a map — fall back to passing as a single positional argument.
+			sv, err := orchestrator.GoToStarlark(opts.HandlerArgs)
+			if err != nil {
+				return errors.Wrap(err, "prepare handler arguments")
+			}
+			positional = starlark.Tuple{sv}
 		}
-		args = starlark.Tuple{dict}
 	}
 
-	mainResult, err := starlark.Call(thread, mainFn, args, nil)
+	mainResult, err := starlark.Call(thread, mainFn, positional, kwargs)
 	if err != nil {
 		var pauseErr *PauseError
 		if errors.As(err, &pauseErr) {
@@ -381,7 +396,7 @@ func (rt *starlarkRuntime) nextHistory(
 	}
 
 	entry := rt.history[rt.cursor]
-	
+
 	if entry.Kind != kind || entry.Name != name {
 		return ReplayEntry{}, false, errors.Newf(
 			"starlark replay divergence at sequence %d: expected %s %q, got %s %q",
@@ -395,13 +410,13 @@ func (rt *starlarkRuntime) nextHistory(
 		delete(matchArgs, "id")
 		delete(matchArgs, "run_id")
 		delete(matchArgs, "intent_id")
-		
+
 		if entryArgs, ok := entry.Args.(map[string]any); ok {
 			entryMatchArgs := cloneMap(entryArgs)
 			delete(entryMatchArgs, "id")
 			delete(entryMatchArgs, "run_id")
 			delete(entryMatchArgs, "intent_id")
-			
+
 			if reflect.DeepEqual(entryMatchArgs, matchArgs) {
 				rt.cursor++
 				return entry, true, nil
@@ -676,4 +691,3 @@ func (c *claraRuntimeBuiltins) Attr(name string) (starlark.Value, error) {
 func (c *claraRuntimeBuiltins) AttrNames() []string {
 	return []string{"describe", "on", "search", "task", "wait"}
 }
-
