@@ -114,6 +114,52 @@ func stripANSI(s string) string {
 	return re.ReplaceAllString(s, "")
 }
 
+func TestParseArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected map[string]any
+	}{
+		{
+			name: "basic types",
+			args: []string{"name=clara", "count=42", "pi=3.14", "active=true"},
+			expected: map[string]any{
+				"name":   "clara",
+				"count":  int64(42),
+				"pi":     3.14,
+				"active": true,
+			},
+		},
+		{
+			name: "mixed args",
+			args: []string{"invalid", "key=value", "foo=bar=baz"},
+			expected: map[string]any{
+				"key": "value",
+				"foo": "bar=baz",
+			},
+		},
+		{
+			name:     "empty",
+			args:     []string{},
+			expected: map[string]any{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseArgs(tt.args)
+			if len(got) != len(tt.expected) {
+				t.Fatalf("got %d args, want %d", len(got), len(tt.expected))
+			}
+			for k, v := range tt.expected {
+				if got[k] != v {
+					t.Errorf("arg %q: got %v (%T), want %v (%T)", k, got[k], got[k], v, v)
+				}
+			}
+		})
+	}
+}
+
 func testWatchTheme() tui.Theme {
 	return tui.DetectTheme()
 }

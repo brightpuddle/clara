@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -54,16 +55,18 @@ var intentRunCmd = &cobra.Command{
 }
 
 var intentStartCmd = &cobra.Command{
-	Use:   "start <id> [task]",
+	Use:   "start <id> [task] [key=value...]",
 	Short: "Start an intent task (fires a run for on-demand tasks, activates the loop for schedule/worker/event)",
 	Long: `Start an installed intent task.
 
 For on-demand tasks, fires a single run and returns.
 For schedule, worker, or event tasks, activates the persistent loop.
 
+Use [key=value...] to pass arguments to the intent handler (with basic type inference).
+
 Use --input to deliver JSON input to a waiting run instead of starting a new one.
 Use --follow/-f to stream run events after starting.`,
-	Args:         cobra.RangeArgs(1, 2),
+	Args:         cobra.MinimumNArgs(1),
 	RunE:         runIntentStart,
 	SilenceUsage: true,
 }
@@ -273,9 +276,16 @@ func runIntentRun(cmd *cobra.Command, args []string) error {
 func runIntentStart(cmd *cobra.Command, args []string) error {
 	intentID := args[0]
 	params := map[string]any{"id": intentID}
-	if len(args) == 2 {
-		params["task"] = args[1]
+	var trailing []string
+	if len(args) > 1 {
+		if !strings.Contains(args[1], "=") {
+			params["task"] = args[1]
+			trailing = args[2:]
+		} else {
+			trailing = args[1:]
+		}
 	}
+
 	if strings.TrimSpace(intentStartInput) != "" {
 		var input any
 		if err := json.Unmarshal([]byte(intentStartInput), &input); err != nil {
@@ -283,10 +293,16 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 		}
 		params["input"] = input
 	}
-	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+
+	req := ipc.Request{
 		Method: ipc.MethodStart,
 		Params: params,
-	})
+	}
+	if len(trailing) > 0 {
+		req.Args = parseArgs(trailing)
+	}
+
+	resp, err := sendRequest(cfg.ControlSocketPath(), req)
 	if err != nil {
 		return fmt.Errorf("start request failed: %w", err)
 	}
@@ -752,6 +768,28 @@ func runStatusFromResult(result any) string {
 		return ""
 	}
 	return status
+}
+
+func parseArgs(args []string) map[string]any {
+	result := make(map[string]any)
+	for _, arg := range args {
+		if !strings.Contains(arg, "=") {
+			continue
+		}
+		parts := strings.SplitN(arg, "=", 2)
+		key, val := parts[0], parts[1]
+
+		if b, err := strconv.ParseBool(val); err == nil {
+			result[key] = b
+		} else if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+			result[key] = i
+		} else if f, err := strconv.ParseFloat(val, 64); err == nil {
+			result[key] = f
+		} else {
+			result[key] = val
+		}
+	}
+	return result
 }
 
 // formatArgsCompact produces a short inline summary of tool call args so that
