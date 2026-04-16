@@ -202,6 +202,7 @@ final class MCPStdioServer {
 final class ClaraLogger: Sendable {
     private let logFile: URL?
     private let fileHandle: FileHandle?
+    private let queue = DispatchQueue(label: "com.brightpuddle.clara.logger", qos: .background)
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -228,12 +229,15 @@ final class ClaraLogger: Sendable {
         let line = "[\(timestamp)] \(message)\n"
         guard let data = line.data(using: .utf8) else { return }
 
-        // Always log to stderr (to be picked up by clara)
-        FileHandle.standardError.write(data)
+        // Use a serial background queue to ensure logging never blocks the caller (e.g. @MainActor)
+        queue.async { [weak self] in
+            // Always log to stderr (to be picked up by clara)
+            FileHandle.standardError.write(data)
 
-        // Also log to file if available
-        if let handle = fileHandle {
-            handle.write(data)
+            // Also log to file if available
+            if let handle = self?.fileHandle {
+                handle.write(data)
+            }
         }
     }
 }
@@ -251,6 +255,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     private var themeObserver: NSObjectProtocol?
     private var pendingInteractiveNotifications: [String: PendingInteractiveNotification] = [:]
     private var notificationCategories: [String: UNNotificationCategory] = [:]
+    private var eventStoreChangeTask: Task<Void, Never>?
 
     // Proactive push baselines — nil until first successful snapshot.
     private var reminderPushBaseline: [String: StoreSnapshotItem]?
@@ -596,61 +601,86 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                 ],
             ])
         case "reminders_create":
-            return try toolResult(serializeReminder(await createReminder(arguments)))
+            let reminder = try await createReminder(arguments)
+            return serializeReminder(reminder)
         case "reminders_get":
-            return try toolResult(serializeReminder(await reminder(identifier: requiredString(arguments, "identifier"))))
+            let id = try requiredString(arguments, "identifier")
+            let reminder = try await reminder(identifier: id)
+            return serializeReminder(reminder)
         case "reminders_update":
-            return try toolResult(serializeReminder(await updateReminder(arguments)))
+            let reminder = try await updateReminder(arguments)
+            return serializeReminder(reminder)
         case "reminders_delete":
-            return try toolResult(await deleteReminder(arguments))
+            try await deleteReminder(arguments)
+            return ["status": "deleted"]
         case "reminders_list":
-            return try toolResult(await listReminders(arguments))
+            let items = try await listReminders(arguments)
+            return ["items": items]
         case "reminders_default_list":
-            return try toolResult(await defaultReminderList())
+            return try await defaultReminderList()
         case "events_create":
-            return try toolResult(serializeEvent(await createEvent(arguments)))
+            let event = try await createEvent(arguments)
+            return serializeEvent(event)
         case "events_get":
-            return try toolResult(serializeEvent(await event(identifier: requiredString(arguments, "identifier"))))
+            let id = try requiredString(arguments, "identifier")
+            let event = try await event(identifier: id)
+            return serializeEvent(event)
         case "events_update":
-            return try toolResult(serializeEvent(await updateEvent(arguments)))
+            let event = try await updateEvent(arguments)
+            return serializeEvent(event)
         case "events_delete":
-            return try toolResult(await deleteEvent(arguments))
+            try await deleteEvent(arguments)
+            return ["status": "deleted"]
         case "events_list":
-            return try toolResult(await listEvents(arguments).map(serializeEvent))
+            let items = try await listEvents(arguments)
+            return ["items": items.map(serializeEvent)]
         case "notify_send":
-            return try toolResult(await sendNotification(arguments))
+            try await sendNotification(arguments)
+            return ["status": "sent"]
         case "notify_send_interactive":
-            return try toolResult(await sendInteractiveNotification(arguments))
+            try await sendInteractiveNotification(arguments)
+            return ["status": "sent"]
         case "photos_album_assets":
-            return try toolResult(await listPhotoAlbumAssets(arguments))
+            let items = try await listPhotoAlbumAssets(arguments)
+            return ["items": items]
         case "photos_export_assets":
-            return try toolResult(await exportPhotoAssets(arguments))
+            let items = try await exportPhotoAssets(arguments)
+            return ["items": items]
         case "photos_album_remove_assets":
-            return try toolResult(await removePhotoAlbumAssets(arguments))
+            try await removePhotoAlbumAssets(arguments)
+            return ["status": "removed"]
         case "photos_album_add_assets":
-            return try toolResult(await addPhotoAlbumAssets(arguments))
+            try await addPhotoAlbumAssets(arguments)
+            return ["status": "added"]
         case "theme_get":
-            return try toolResult(["theme": getTheme()])
+            return ["theme": getTheme()]
         case "theme_get_appearance": // Backward compatibility
-            return try toolResult(["theme": getTheme()])
+            return ["theme": getTheme()]
         case "mail_list_inbox":
-            return try toolResult(await mailListInbox(arguments))
+            let items = try await mailListInbox(arguments)
+            return ["items": items]
         case "mail_get_message":
-            return try toolResult(await mailGetMessage(arguments))
+            return try await mailGetMessage(arguments)
         case "mail_move":
-            return try toolResult(await mailMove(arguments))
+            try await mailMove(arguments)
+            return ["status": "moved"]
         case "mail_flag":
-            return try toolResult(await mailFlag(arguments))
+            try await mailFlag(arguments)
+            return ["status": "flagged"]
         case "mail_mark_read":
-            return try toolResult(await mailMarkRead(arguments))
+            try await mailMarkRead(arguments)
+            return ["status": "marked"]
         case "mail_create_draft":
-            return try toolResult(await mailCreateDraft(arguments))
+            return try await mailCreateDraft(arguments)
         case "mail_send":
-            return try toolResult(await mailSend(arguments))
+            try await mailSend(arguments)
+            return ["status": "sent"]
         case "mail_delete":
-            return try toolResult(await mailDelete(arguments))
+            try await mailDelete(arguments)
+            return ["status": "deleted"]
         case "mail_get_mailboxes":
-            return try toolResult(await mailGetMailboxes(arguments))
+            let items = try await mailGetMailboxes(arguments)
+            return ["items": items]
         default:
             throw MCPProtocolError.methodNotFound("unknown tool: \(name)")
         }
@@ -675,9 +705,15 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     }
 
     @MainActor
-    private func handleEventStoreChanged() async {
-        await pushReminderNotifications()
-        await pushEventNotifications()
+    private func handleEventStoreChanged() {
+        // Debounce EventKit changes to avoid I/O storms when many items change at once
+        eventStoreChangeTask?.cancel()
+        eventStoreChangeTask = Task {
+            try? await Task.sleep(nanoseconds: 500 * 1_000_000)
+            guard !Task.isCancelled else { return }
+            await pushReminderNotifications()
+            await pushEventNotifications()
+        }
     }
 
     /// Proactively diff the reminder store and emit clara/reminders_changed for
@@ -1689,7 +1725,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func serializeReminder(_ reminder: EKReminder) -> [String: Any] {
+    nonisolated private func serializeReminder(_ reminder: EKReminder) -> [String: Any] {
         var result: [String: Any] = [
             "identifier": reminder.calendarItemIdentifier,
             "title": reminder.title ?? "",
@@ -1721,7 +1757,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return result
     }
 
-    private func serializeEvent(_ event: EKEvent) -> [String: Any] {
+    nonisolated private func serializeEvent(_ event: EKEvent) -> [String: Any] {
         var result: [String: Any] = [
             "identifier": event.calendarItemIdentifier,
             "title": event.title ?? "",
@@ -1742,7 +1778,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return result
     }
 
-    private func serializePhotoAsset(_ asset: PHAsset) -> [String: Any] {
+    nonisolated private func serializePhotoAsset(_ asset: PHAsset) -> [String: Any] {
         var result: [String: Any] = [
             "identifier": asset.localIdentifier,
             "media_type": assetMediaTypeName(asset.mediaType),
@@ -1825,7 +1861,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return directory.appendingPathComponent(UUID().uuidString + "-" + preferredName)
     }
 
-    func assetMediaTypeName(_ mediaType: PHAssetMediaType) -> String {
+    nonisolated func assetMediaTypeName(_ mediaType: PHAssetMediaType) -> String {
         switch mediaType {
         case .image:
             return "image"
@@ -1838,14 +1874,14 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func serializeAlarm(_ alarm: EKAlarm) -> [String: Any] {
+    nonisolated private func serializeAlarm(_ alarm: EKAlarm) -> [String: Any] {
         if let absoluteDate = alarm.absoluteDate {
             return ["absolute_date": ISO8601.dateString(from: absoluteDate)]
         }
         return ["relative_offset": alarm.relativeOffset]
     }
 
-    private func parseAlarms(_ raw: Any?) throws -> [EKAlarm]? {
+    nonisolated private func parseAlarms(_ raw: Any?) throws -> [EKAlarm]? {
         guard let raw else {
             return nil
         }
@@ -1934,39 +1970,39 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         ]
     }
 
-    private func requiredString(_ args: [String: Any], _ key: String) throws -> String {
+    nonisolated private func requiredString(_ args: [String: Any], _ key: String) throws -> String {
         guard let value = args[key] as? String, !value.isEmpty else {
             throw MCPToolError("\(key) is required")
         }
         return value
     }
 
-    private func requiredStringArray(_ args: [String: Any], _ key: String) throws -> [String] {
+    nonisolated private func requiredStringArray(_ args: [String: Any], _ key: String) throws -> [String] {
         guard let values = optionalStringArray(args, key), !values.isEmpty else {
             throw MCPToolError("\(key) is required")
         }
         return values
     }
 
-    private func optionalString(_ args: [String: Any], _ key: String) -> String? {
+    nonisolated private func optionalString(_ args: [String: Any], _ key: String) -> String? {
         args[key] as? String
     }
 
-    private func optionalStringPresence(_ args: [String: Any], _ key: String) -> String? {
+    nonisolated private func optionalStringPresence(_ args: [String: Any], _ key: String) -> String? {
         guard args.keys.contains(key) else {
             return nil
         }
         return args[key] as? String ?? ""
     }
 
-    private func optionalStringArray(_ args: [String: Any], _ key: String) -> [String]? {
+    nonisolated private func optionalStringArray(_ args: [String: Any], _ key: String) -> [String]? {
         guard let raw = args[key] as? [Any] else {
             return nil
         }
         return raw.compactMap { $0 as? String }
     }
 
-    private func optionalBool(_ args: [String: Any], _ key: String) -> Bool? {
+    nonisolated private func optionalBool(_ args: [String: Any], _ key: String) -> Bool? {
         if let value = args[key] as? Bool {
             return value
         }
@@ -1976,7 +2012,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return nil
     }
 
-    private func optionalDouble(_ args: [String: Any], _ key: String) -> Double? {
+    nonisolated private func optionalDouble(_ args: [String: Any], _ key: String) -> Double? {
         if let value = args[key] as? Double {
             return value
         }
@@ -1986,7 +2022,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return nil
     }
 
-    private func optionalInt(_ args: [String: Any], _ key: String) -> Int? {
+    nonisolated private func optionalInt(_ args: [String: Any], _ key: String) -> Int? {
         if let value = args[key] as? Int {
             return value
         }
@@ -1996,7 +2032,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return nil
     }
 
-    func expandPath(_ raw: String) -> String {
+    nonisolated func expandPath(_ raw: String) -> String {
         let expandedEnv = NSString(string: raw).expandingTildeInPath
         return ProcessInfo.processInfo.environment.reduce(expandedEnv) { partial, item in
             partial.replacingOccurrences(of: "${\(item.key)}", with: item.value)
@@ -2023,7 +2059,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         return try parseDate(raw)
     }
 
-    private func parseDate(_ raw: String) throws -> Date {
+    nonisolated private func parseDate(_ raw: String) throws -> Date {
         if let parsed = ISO8601.parse(raw) {
             return parsed
         }
@@ -2185,7 +2221,7 @@ private enum MCPProtocolError: Error {
 }
 
 private enum ISO8601 {
-    static func makeFormatter(withFractionalSeconds: Bool) -> ISO8601DateFormatter {
+    nonisolated static func makeFormatter(withFractionalSeconds: Bool) -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = withFractionalSeconds
             ? [.withInternetDateTime, .withFractionalSeconds]
@@ -2193,11 +2229,11 @@ private enum ISO8601 {
         return formatter
     }
 
-    static func dateString(from date: Date) -> String {
+    nonisolated static func dateString(from date: Date) -> String {
         makeFormatter(withFractionalSeconds: true).string(from: date)
     }
 
-    static func parse(_ raw: String) -> Date? {
+    nonisolated static func parse(_ raw: String) -> Date? {
         makeFormatter(withFractionalSeconds: true).date(from: raw)
             ?? makeFormatter(withFractionalSeconds: false).date(from: raw)
     }

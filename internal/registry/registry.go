@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/client"
@@ -79,6 +80,8 @@ type Registry struct {
 
 	pendingServers map[string]struct{}
 	readyChan      chan struct{}
+
+	watchdogCancel context.CancelFunc
 }
 
 type dynamicServer struct {
@@ -207,6 +210,15 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 	if !ok {
 		return nil, errors.Newf("tool %q not found in registry", name)
 	}
+
+	// Apply a default timeout of 30 seconds if one isn't already set.
+	// This prevents a hanging MCP server from blocking the CLI or a task forever.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
+
 	result, err := tool(ctx, args)
 	if err != nil {
 		return nil, err
@@ -441,7 +453,58 @@ func (r *Registry) StartServers(ctx context.Context) error {
 			r.markServerDone(s.name)
 		}(srv)
 	}
+
+	// Start the watchdog to monitor server health
+	r.mu.Lock()
+	if r.watchdogCancel != nil {
+		r.watchdogCancel()
+	}
+	wCtx, cancel := context.WithCancel(context.Background())
+	r.watchdogCancel = cancel
+	r.mu.Unlock()
+	go r.runWatchdog(wCtx)
+
 	return nil
+}
+
+func (r *Registry) runWatchdog(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.checkServerHealth(ctx)
+		}
+	}
+}
+
+func (r *Registry) checkServerHealth(ctx context.Context) {
+	servers := r.serversSnapshot()
+	for _, s := range servers {
+		if s.Status() != StatusRunning {
+			continue
+		}
+
+		// Ping the server with a short timeout. ListTools is a lightweight way to check if it's alive.
+		pCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := s.mcpClient.ListTools(pCtx, mcp.ListToolsRequest{})
+		cancel()
+
+		if err != nil {
+			r.log.Warn().Err(err).Str("mcp_server", s.name).Msg("MCP server unresponsive; restarting")
+			go func(srv *MCPServer) {
+				// Use a fresh context for restart
+				restartCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer cancel()
+				if err := r.RestartServer(restartCtx, srv.name); err != nil {
+					r.log.Error().Err(err).Str("mcp_server", srv.name).Msg("watchdog failed to restart server")
+				}
+			}(s)
+		}
+	}
 }
 
 // WaitReady blocks until all servers from the initial StartServers call have

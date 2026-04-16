@@ -16,5 +16,10 @@
 
 	<key>KeepAlive</key>
 	<true/>
+
+	<key>StandardOutPath</key>
+	<string>/Users/nathan/.local/share/clara/agent.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/nathan/.local/share/clara/agent.log</string>
 </dict>
 </plist>

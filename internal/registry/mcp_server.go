@@ -337,35 +337,51 @@ func (s *MCPServer) pipeStderr(r io.Reader) {
 	const maxLogLineSize = 10 * 1024 * 1024
 	scanner.Buffer(make([]byte, 64*1024), maxLogLineSize)
 
+	// Use a small buffer to prevent an I/O storm from blocking the scanner,
+	// but process it asynchronously so that slow logging (e.g. to a full disk)
+	// doesn't cause a pipe deadlock in the subprocess.
+	logCh := make(chan string, 100)
+	go func() {
+		for line := range logCh {
+			if strings.HasPrefix(line, "{") {
+				var parsed map[string]any
+				if err := json.Unmarshal([]byte(line), &parsed); err == nil {
+					lvl := zerolog.DebugLevel
+					if lStr, ok := parsed["level"].(string); ok {
+						if parsedLvl, err := zerolog.ParseLevel(lStr); err == nil {
+							lvl = parsedLvl
+						}
+					}
+					msg, _ := parsed["message"].(string)
+					delete(parsed, "level")
+					delete(parsed, "message")
+					delete(parsed, "time")
+
+					event := s.log.WithLevel(lvl).Str("source", "stderr")
+					for k, v := range parsed {
+						event.Interface(k, v)
+					}
+					event.Msg(msg)
+					continue
+				}
+			}
+			s.log.Debug().Str("source", "stderr").Msg(line)
+		}
+	}()
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "{") {
-			var parsed map[string]any
-			if err := json.Unmarshal([]byte(line), &parsed); err == nil {
-				lvl := zerolog.DebugLevel
-				if lStr, ok := parsed["level"].(string); ok {
-					if parsedLvl, err := zerolog.ParseLevel(lStr); err == nil {
-						lvl = parsedLvl
-					}
-				}
-				msg, _ := parsed["message"].(string)
-				delete(parsed, "level")
-				delete(parsed, "message")
-				delete(parsed, "time")
-
-				event := s.log.WithLevel(lvl).Str("source", "stderr")
-				for k, v := range parsed {
-					event.Interface(k, v)
-				}
-				event.Msg(msg)
-				continue
-			}
+		select {
+		case logCh <- line:
+		default:
+			// If log buffer is full, we must continue draining the pipe to prevent
+			// a deadlock. We skip this log line but avoid hanging the subprocess.
 		}
-		s.log.Debug().Str("source", "stderr").Msg(line)
 	}
+	close(logCh)
 
 	if err := scanner.Err(); err != nil {
 		s.log.Error().Err(err).Msg("stderr scanner failed; subprocess may hang if stderr pipe fills")
