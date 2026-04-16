@@ -197,15 +197,54 @@ func (it *StarlarkInterpreter) Execute(
 	var kwargs []starlark.Tuple
 	if opts.HandlerArgs != nil {
 		if m, ok := opts.HandlerArgs.(map[string]any); ok {
-			// Pass each key/value as a keyword argument so that Starlark
-			// functions with named parameters (e.g. def main(name="World"))
-			// receive the correct values.
-			for k, v := range m {
-				sv, err := orchestrator.GoToStarlark(v)
-				if err != nil {
-					return errors.Wrapf(err, "prepare handler argument %q", k)
+			// Decide whether to pass the map as a single positional argument
+			// or as multiple keyword arguments.
+			usePositional := false
+			if fn, ok := mainFn.(*starlark.Function); ok {
+				// If the function takes exactly one parameter and that parameter
+				// name doesn't match any of the keys in our map, we pass the
+				// whole map as that parameter.
+				if fn.NumParams() == 1 && !fn.HasKwargs() {
+					p, _ := fn.Param(0)
+					if _, ok := m[p]; !ok {
+						usePositional = true
+					}
 				}
-				kwargs = append(kwargs, starlark.Tuple{starlark.String(k), sv})
+			}
+
+			if usePositional {
+				sv, err := orchestrator.GoToStarlark(m)
+				if err != nil {
+					return errors.Wrap(err, "prepare handler arguments")
+				}
+				positional = starlark.Tuple{sv}
+			} else {
+				// Pass each key/value as a keyword argument so that Starlark
+				// functions with named parameters (e.g. def main(name="World"))
+				// receive the correct values.
+				for k, v := range m {
+					if fn, ok := mainFn.(*starlark.Function); ok && !fn.HasKwargs() {
+						// Filter unexpected keyword arguments to avoid breakage
+						// from system-added keys like _meta.
+						expected := false
+						for i := 0; i < fn.NumParams(); i++ {
+							p, _ := fn.Param(i)
+							if p == k {
+								expected = true
+								break
+							}
+						}
+						if !expected {
+							continue
+						}
+					}
+
+					sv, err := orchestrator.GoToStarlark(v)
+					if err != nil {
+						return errors.Wrapf(err, "prepare handler argument %q", k)
+					}
+					kwargs = append(kwargs, starlark.Tuple{starlark.String(k), sv})
+				}
 			}
 		} else {
 			// Not a map — fall back to passing as a single positional argument.
