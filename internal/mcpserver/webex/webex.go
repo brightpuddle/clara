@@ -1,16 +1,20 @@
 package webex
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
+	cards "github.com/DanielTitkov/go-adaptive-cards"
+	"github.com/WebexCommunity/webex-go-sdk/v2"
+	"github.com/WebexCommunity/webex-go-sdk/v2/attachmentactions"
+	"github.com/WebexCommunity/webex-go-sdk/v2/memberships"
+	"github.com/WebexCommunity/webex-go-sdk/v2/mercury"
+	"github.com/WebexCommunity/webex-go-sdk/v2/messages"
+	"github.com/WebexCommunity/webex-go-sdk/v2/rooms"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -18,52 +22,124 @@ import (
 )
 
 const (
-	Description = "Built-in Webex MCP server for messaging and space management."
-	BaseURL     = "https://webexapis.com/v1"
+	Description = "Built-in Webex MCP server for messaging and space management with Adaptive Card support."
 )
 
 type Service struct {
-	accessToken      string
-	httpClient       *http.Client
-	log              zerolog.Logger
-	myPersonID       string
-	membershipsCache map[string]map[string]any
-	membershipsMu    sync.Mutex
+	accessToken string
+	client      *webex.WebexClient
+	mc          *mercury.Client
+	log         zerolog.Logger
+
+	mercuryEnabled   bool
+	pendingActions   map[string]chan map[string]any
+	pendingActionsMu sync.Mutex
+
+	stopMercury func()
 }
 
-func (s *Service) getMyPersonID(ctx context.Context) (string, error) {
-	if s.myPersonID != "" {
-		return s.myPersonID, nil
+func New(accessToken string, httpClient *http.Client, log zerolog.Logger) *Service {
+	cfg := &webexsdk.Config{
+		HttpClient: httpClient,
 	}
-	var result map[string]any
-	if err := s.doRequest(ctx, "GET", "/people/me", nil, nil, &result); err != nil {
-		return "", err
-	}
-	id, ok := result["id"].(string)
-	if !ok || id == "" {
-		return "", errors.New("could not find my person id")
-	}
-	s.myPersonID = id
-	return id, nil
-}
-
-func New(accessToken string, log zerolog.Logger) *Service {
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.MaxIdleConns = 100
-	t.MaxConnsPerHost = 4
-	t.MaxIdleConnsPerHost = 4
+	client, _ := webex.NewClient(accessToken, cfg)
 
 	return &Service{
-		accessToken: accessToken,
-		httpClient:  &http.Client{Timeout: 30 * time.Second, Transport: t},
-		log:         log.With().Str("component", "mcp_webex").Logger(),
+		accessToken:    accessToken,
+		client:         client,
+		log:            log.With().Str("component", "mcp_webex").Logger(),
+		pendingActions: make(map[string]chan map[string]any),
+	}
+}
+
+func (s *Service) Start(ctx context.Context) error {
+	s.mc = s.client.Mercury()
+
+	// Handle attachmentActions (Adaptive Cards)
+	s.mc.On("attachmentAction:created", func(event *mercury.Event) {
+		s.log.Debug().Str("event_id", event.ID).Msg("webex attachmentAction created event")
+
+		// Extract action data from mercury event
+		data := event.Data
+		if data == nil {
+			return
+		}
+
+		actionID, _ := data["id"].(string)
+		if actionID == "" {
+			return
+		}
+
+		// Fetch full details
+		action, err := s.client.AttachmentActions().Get(actionID)
+		if err != nil {
+			s.log.Error().Err(err).Str("action_id", actionID).Msg("failed to fetch attachment action details")
+			return
+		}
+
+		s.handleAttachmentAction(action)
+	})
+
+	err := s.mc.Connect()
+	if err != nil {
+		s.log.Warn().Err(err).Msg("failed to connect to Webex Mercury (WebSocket). Real-time features and blocking Adaptive Card waits will be disabled unless webhooks are used.")
+		s.mercuryEnabled = false
+		return nil // Non-fatal
+	}
+
+	s.log.Info().Msg("Webex Mercury listener connected")
+	s.mercuryEnabled = true
+
+	s.stopMercury = func() {
+		_ = s.mc.Disconnect()
+	}
+
+	return nil
+}
+
+func (s *Service) Stop() {
+	if s.stopMercury != nil {
+		s.stopMercury()
+	}
+}
+
+// HandleWebhook allows external servers to push events into Clara.
+// This is the fallback for when Mercury (WebSocket) is unauthorized.
+func (s *Service) HandleWebhook(action *attachmentactions.AttachmentAction) {
+	s.log.Debug().Str("action_id", action.ID).Msg("received attachment action via webhook")
+	s.handleAttachmentAction(action)
+}
+
+func (s *Service) handleAttachmentAction(action *attachmentactions.AttachmentAction) {
+	s.pendingActionsMu.Lock()
+	defer s.pendingActionsMu.Unlock()
+
+	var correlationID string
+	if action.Inputs != nil {
+		if cid, ok := action.Inputs["clara_correlation_id"].(string); ok {
+			correlationID = cid
+		}
+	}
+
+	if correlationID == "" {
+		s.log.Debug().Msg("attachment action received without clara_correlation_id")
+		return
+	}
+
+	if ch, ok := s.pendingActions[correlationID]; ok {
+		ch <- action.Inputs
+		close(ch)
+		delete(s.pendingActions, correlationID)
+		s.log.Debug().Str("correlation_id", correlationID).Msg("routed attachment action to pending waiter")
+	} else {
+		s.log.Debug().Str("correlation_id", correlationID).Msg("received attachment action for unknown/expired correlation id")
 	}
 }
 
 func (s *Service) NewServer() *server.MCPServer {
 	mcpServer := server.NewMCPServer(
 		"clara-webex",
-		"0.1.0",
+		"0.2.1",
 		server.WithToolCapabilities(true),
 		server.WithInstructions(Description),
 	)
@@ -101,97 +177,51 @@ func (s *Service) NewServer() *server.MCPServer {
 		mcp.WithString("room_id", mcp.Required(), mcp.Description("The ID of the space to unhide.")),
 	), s.handleUnhideSpace)
 
-	mcpServer.AddTool(mcp.NewTool("get_direct_messages",
-		mcp.WithDescription("List 1:1 messages with a specific person."),
-		mcp.WithString("person_id", mcp.Description("The ID of the person.")),
-		mcp.WithString("person_email", mcp.Description("The email of the person.")),
-	), s.handleGetDirectMessages)
-
 	mcpServer.AddTool(mcp.NewTool("search_messages",
-		mcp.WithDescription("Search for messages containing a keyword across recent spaces. Since Webex has no global search API, this tool fetches recent messages from the most active spaces and filters them locally."),
+		mcp.WithDescription("Search for messages containing a keyword across recent spaces."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("The keyword to search for.")),
 		mcp.WithNumber("space_limit", mcp.Description("Maximum number of recent spaces to search (default: 10).")),
 		mcp.WithNumber("message_limit", mcp.Description("Maximum number of recent messages to fetch per space (default: 20).")),
 	), s.handleSearchMessages)
 
+	mcpServer.AddTool(mcp.NewTool("send_adaptive_card",
+		mcp.WithDescription("Send an Adaptive Card to a Webex space and wait for a response."),
+		mcp.WithString("room_id", mcp.Required(), mcp.Description("The ID of the space to post to.")),
+		mcp.WithString("task_id", mcp.Required(), mcp.Description("Unique task ID to correlate the response.")),
+		mcp.WithString("title", mcp.Description("The title of the card.")),
+		mcp.WithString("body", mcp.Description("The body text of the card.")),
+		mcp.WithBoolean("wait", mcp.Description("Whether to wait for a response (default: true).")),
+	), s.handleSendAdaptiveCard)
+
 	return mcpServer
 }
 
 func (s *Service) handleListSpaces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	params := make(map[string]string)
+	opts := &rooms.ListOptions{}
 	if max, ok := req.GetArguments()["max"].(float64); ok {
-		params["max"] = fmt.Sprintf("%.0f", max)
+		opts.Max = int(max)
 	}
 	if t, ok := req.GetArguments()["type"].(string); ok {
-		params["type"] = t
+		opts.Type = t
 	}
 	if sortBy, ok := req.GetArguments()["sortBy"].(string); ok {
-		params["sortBy"] = sortBy
+		opts.SortBy = sortBy
 	} else {
-		params["sortBy"] = "lastactivity"
+		opts.SortBy = "lastactivity"
 	}
 
-	var result struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := s.doRequest(ctx, "GET", "/rooms", params, nil, &result); err != nil {
+	roomsPage, err := s.client.Rooms().List(opts)
+	if err != nil {
+		if webexsdk.IsRateLimited(err) {
+			return toolErrorResult("list_spaces", errors.New("Webex API rate limited")), nil
+		}
+		if webexsdk.IsAuthError(err) {
+			return toolErrorResult("list_spaces", errors.New("Webex authentication failed")), nil
+		}
 		return toolErrorResult("list_spaces", err), nil
 	}
 
-	s.log.Debug().Int("total_spaces", len(result.Items)).Msg("fetching room details concurrently")
-
-	// Bulk prefetch memberships to prevent N+1 API rate limits
-	_ = s.prefetchMemberships(ctx)
-
-	type enrichedResult struct {
-		space map[string]any
-		keep  bool
-	}
-	results := make([]enrichedResult, len(result.Items))
-
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4) // mimic browser concurrency limit (matches MaxConnsPerHost)
-
-	for i, space := range result.Items {
-		roomID, _ := space["id"].(string)
-		if roomID == "" {
-			continue
-		}
-
-		wg.Add(1)
-		go func(i int, space map[string]any, roomID string) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			// Unread / Membership fetch
-			membership, err := s.getMembership(ctx, roomID)
-			if err == nil {
-				if hidden, ok := membership["isRoomHidden"].(bool); ok {
-					space["isRoomHidden"] = hidden
-				}
-				if lastSeenId, ok := membership["lastSeenId"].(string); ok {
-					space["lastSeenId"] = lastSeenId
-				}
-			}
-
-			results[i] = enrichedResult{
-				space: space,
-				keep:  true,
-			}
-		}(i, space, roomID)
-	}
-
-	wg.Wait()
-
-	enrichedSpaces := make([]map[string]any, 0) // initialized to empty array, prevents 'null'
-	for _, r := range results {
-		if r.keep && r.space != nil {
-			enrichedSpaces = append(enrichedSpaces, r.space)
-		}
-	}
-
-	return structuredResult(enrichedSpaces)
+	return structuredResult(roomsPage.Items)
 }
 
 func (s *Service) handleGetMessages(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -200,51 +230,45 @@ func (s *Service) handleGetMessages(ctx context.Context, req mcp.CallToolRequest
 		return mcp.NewToolResultError("room_id is required"), nil
 	}
 
-	params := map[string]string{"roomId": roomID}
+	opts := &messages.ListOptions{RoomID: roomID}
 	if max, ok := req.GetArguments()["max"].(float64); ok {
-		params["max"] = fmt.Sprintf("%.0f", max)
+		opts.Max = int(max)
 	}
 	if before, ok := req.GetArguments()["before"].(string); ok {
-		params["before"] = before
+		opts.Before = before
 	}
 
-	var result struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := s.doRequest(ctx, "GET", "/messages", params, nil, &result); err != nil {
+	messagesPage, err := s.client.Messages().List(opts)
+	if err != nil {
 		return toolErrorResult("get_messages", err), nil
 	}
 
-	return structuredResult(result.Items)
+	return structuredResult(messagesPage.Items)
 }
 
 func (s *Service) handleSendMessage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	body := make(map[string]any)
+	msgRequest := &messages.Message{}
 	if roomID, ok := req.GetArguments()["room_id"].(string); ok {
-		body["roomId"] = roomID
+		msgRequest.RoomID = roomID
 	}
 	if email, ok := req.GetArguments()["to_person_email"].(string); ok {
-		body["toPersonEmail"] = email
+		msgRequest.ToPersonEmail = email
 	}
 	if personID, ok := req.GetArguments()["to_person_id"].(string); ok {
-		body["toPersonId"] = personID
+		msgRequest.ToPersonID = personID
 	}
 	if text, ok := req.GetArguments()["text"].(string); ok {
-		body["text"] = text
+		msgRequest.Text = text
 	}
 	if markdown, ok := req.GetArguments()["markdown"].(string); ok {
-		body["markdown"] = markdown
+		msgRequest.Markdown = markdown
 	}
 
-	if len(body) == 0 {
-		return mcp.NewToolResultError("at least one destination and one content field is required"), nil
-	}
-
-	var result map[string]any
-	if err := s.doRequest(ctx, "POST", "/messages", nil, body, &result); err != nil {
+	msg, err := s.client.Messages().Create(msgRequest)
+	if err != nil {
 		return toolErrorResult("send_message", err), nil
 	}
-	return structuredResult(result)
+	return structuredResult(msg)
 }
 
 func (s *Service) handleHideSpace(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -261,45 +285,31 @@ func (s *Service) setRoomHidden(ctx context.Context, req mcp.CallToolRequest, hi
 		return mcp.NewToolResultError("room_id is required"), nil
 	}
 
-	membership, err := s.getMembership(ctx, roomID)
+	// First get the membership ID for "me" in this room
+	membershipsPage, err := s.client.Memberships().List(&memberships.ListOptions{
+		RoomID:   roomID,
+		PersonID: "me",
+	})
 	if err != nil {
-		return toolErrorResult("hide/unhide_space", err), nil
+		return toolErrorResult("setRoomHidden", err), nil
 	}
-	membershipID, _ := membership["id"].(string)
-
-	body := map[string]any{"isRoomHidden": hidden}
-	var result map[string]any
-	if err := s.doRequest(ctx, "PUT", "/memberships/"+membershipID, nil, body, &result); err != nil {
-		return toolErrorResult("hide/unhide_space", err), nil
-	}
-	return structuredResult(result)
-}
-
-func (s *Service) handleGetDirectMessages(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	params := make(map[string]string)
-	if personID, ok := req.GetArguments()["person_id"].(string); ok {
-		params["personId"] = personID
-	}
-	if email, ok := req.GetArguments()["person_email"].(string); ok {
-		params["personEmail"] = email
+	if len(membershipsPage.Items) == 0 {
+		return mcp.NewToolResultError("membership not found for room"), nil
 	}
 
-	if len(params) == 0 {
-		return mcp.NewToolResultError("person_id or person_email is required"), nil
-	}
+	m := membershipsPage.Items[0]
+	m.IsRoomHidden = hidden
 
-	var result struct {
-		Items []map[string]any `json:"items"`
+	updated, err := s.client.Memberships().Update(m.ID, &m)
+	if err != nil {
+		return toolErrorResult("setRoomHidden", err), nil
 	}
-	if err := s.doRequest(ctx, "GET", "/messages/direct", params, nil, &result); err != nil {
-		return toolErrorResult("get_direct_messages", err), nil
-	}
-	return structuredResult(result.Items)
+	return structuredResult(updated)
 }
 
 type searchMatch struct {
-	SpaceName string         `json:"space_name"`
-	Message   map[string]any `json:"message"`
+	SpaceName string           `json:"space_name"`
+	Message   messages.Message `json:"message"`
 }
 
 func (s *Service) handleSearchMessages(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -317,51 +327,35 @@ func (s *Service) handleSearchMessages(ctx context.Context, req mcp.CallToolRequ
 		msgLimit = int(limit)
 	}
 
-	// 1. List recent spaces
-	spacesParams := map[string]string{
-		"max":     fmt.Sprintf("%d", spaceLimit),
-		"sortBy":  "lastactivity",
-	}
-	var spacesResult struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := s.doRequest(ctx, "GET", "/rooms", spacesParams, nil, &spacesResult); err != nil {
-		return toolErrorResult("search_messages: list_spaces", err), nil
+	roomsPage, err := s.client.Rooms().List(&rooms.ListOptions{
+		Max:    spaceLimit,
+		SortBy: "lastactivity",
+	})
+	if err != nil {
+		return toolErrorResult("search_messages", err), nil
 	}
 
-	// 2. Fetch messages from each space and filter
 	var matches []searchMatch
 	var matchesMu sync.Mutex
 	var wg sync.WaitGroup
 
 	queryLower := strings.ToLower(query)
 
-	for _, space := range spacesResult.Items {
-		roomID, _ := space["id"].(string)
-		roomTitle, _ := space["title"].(string)
-		if roomID == "" {
-			continue
-		}
-
+	for _, room := range roomsPage.Items {
 		wg.Add(1)
 		go func(roomID, roomTitle string) {
 			defer wg.Done()
-			params := map[string]string{
-				"roomId": roomID,
-				"max":    fmt.Sprintf("%d", msgLimit),
-			}
-			var result struct {
-				Items []map[string]any `json:"items"`
-			}
-			// Use a separate context with a shorter timeout if needed, but for now just use the base context.
-			if err := s.doRequest(ctx, "GET", "/messages", params, nil, &result); err != nil {
+			messagesPage, err := s.client.Messages().List(&messages.ListOptions{
+				RoomID: roomID,
+				Max:    msgLimit,
+			})
+			if err != nil {
 				s.log.Warn().Err(err).Str("room_id", roomID).Msg("failed to fetch messages for search")
 				return
 			}
 
-			for _, msg := range result.Items {
-				text, _ := msg["text"].(string)
-				if strings.Contains(strings.ToLower(text), queryLower) {
+			for _, msg := range messagesPage.Items {
+				if strings.Contains(strings.ToLower(msg.Text), queryLower) {
 					matchesMu.Lock()
 					matches = append(matches, searchMatch{
 						SpaceName: roomTitle,
@@ -370,7 +364,7 @@ func (s *Service) handleSearchMessages(ctx context.Context, req mcp.CallToolRequ
 					matchesMu.Unlock()
 				}
 			}
-		}(roomID, roomTitle)
+		}(room.ID, room.Title)
 	}
 
 	wg.Wait()
@@ -378,106 +372,86 @@ func (s *Service) handleSearchMessages(ctx context.Context, req mcp.CallToolRequ
 	return structuredResult(matches)
 }
 
-func (s *Service) prefetchMemberships(ctx context.Context) error {
-	s.membershipsMu.Lock()
-	defer s.membershipsMu.Unlock()
-	if s.membershipsCache != nil {
-		return nil
+func (s *Service) handleSendAdaptiveCard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	roomID, _ := req.GetArguments()["room_id"].(string)
+	title, _ := req.GetArguments()["title"].(string)
+	body, _ := req.GetArguments()["body"].(string)
+	taskID, _ := req.GetArguments()["task_id"].(string)
+	wait, ok := req.GetArguments()["wait"].(bool)
+	if !ok {
+		wait = true
 	}
 
-	var result struct {
-		Items []map[string]any `json:"items"`
-	}
-	// Fetch up to 1000 memberships at once
-	params := map[string]string{"max": "1000"}
-	if err := s.doRequest(ctx, "GET", "/memberships", params, nil, &result); err != nil {
-		return err
+	if roomID == "" || taskID == "" {
+		return mcp.NewToolResultError("room_id and task_id are required"), nil
 	}
 
-	s.membershipsCache = make(map[string]map[string]any)
-	for _, m := range result.Items {
-		roomID, _ := m["roomId"].(string)
-		if roomID != "" {
-			s.membershipsCache[roomID] = m
-		}
+	if title == "" {
+		title = "Clara Task Action Required"
 	}
-	return nil
-}
-
-func (s *Service) getMembership(ctx context.Context, roomID string) (map[string]any, error) {
-	s.membershipsMu.Lock()
-	if s.membershipsCache != nil {
-		m, ok := s.membershipsCache[roomID]
-		s.membershipsMu.Unlock()
-		if ok {
-			return m, nil
-		}
-		return nil, errors.New("membership not found in bulk cache")
-	}
-	s.membershipsMu.Unlock()
-
-	params := map[string]string{
-		"roomId":   roomID,
-		"personId": "me",
-	}
-	var result struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := s.doRequest(ctx, "GET", "/memberships", params, nil, &result); err != nil {
-		return nil, err
-	}
-	if len(result.Items) == 0 {
-		return nil, errors.New("membership not found for room")
-	}
-	return result.Items[0], nil
-}
-
-func (s *Service) doRequest(ctx context.Context, method, path string, params map[string]string, body any, result any) error {
-	if s.accessToken == "" {
-		return errors.New("missing Webex access token; set WEBEX_ACCESS_TOKEN or run 'clara auth webex'")
+	if body == "" {
+		body = "Please provide your input for the following task."
 	}
 
-	url := BaseURL + path
-	if len(params) > 0 {
-		var query []string
-		for k, v := range params {
-			query = append(query, fmt.Sprintf("%s=%s", k, v))
-		}
-		url += "?" + strings.Join(query, "&")
+	// Build Adaptive Card using go-adaptive-cards
+	card := cards.New([]cards.Node{
+		&cards.TextBlock{
+			Text:   title,
+			Size:   "Large",
+			Weight: "Bolder",
+		},
+		&cards.TextBlock{
+			Text: body,
+			Wrap: cards.TruePtr(),
+		},
+		&cards.InputText{
+			ID:          "user_input",
+			Placeholder: "Type your response here...",
+		},
+	}, []cards.Node{
+		&cards.ActionSubmit{
+			Title: "Submit",
+			Data: map[string]any{
+				"clara_correlation_id": taskID,
+			},
+		},
+	}).WithVersion(cards.Version12)
+
+	// Post the card as an attachment
+	msgRequest := &messages.Message{
+		RoomID: roomID,
+		Attachments: []messages.Attachment{
+			{
+				ContentType: "application/vnd.microsoft.card.adaptive",
+				Content:     card,
+			},
+		},
 	}
 
-	var bodyReader io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		bodyReader = bytes.NewReader(b)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	_, err := s.client.Messages().Create(msgRequest)
 	if err != nil {
-		return err
+		return toolErrorResult("send_adaptive_card", err), nil
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return errors.Newf("webex API error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	if !wait {
+		return mcp.NewToolResultText("Adaptive card sent"), nil
 	}
 
-	if result != nil {
-		return json.NewDecoder(resp.Body).Decode(result)
+	// Create a channel to wait for the response
+	respChan := make(chan map[string]any, 1)
+	s.pendingActionsMu.Lock()
+	s.pendingActions[taskID] = respChan
+	s.pendingActionsMu.Unlock()
+
+	select {
+	case <-ctx.Done():
+		s.pendingActionsMu.Lock()
+		delete(s.pendingActions, taskID)
+		s.pendingActionsMu.Unlock()
+		return mcp.NewToolResultError("timeout waiting for adaptive card response"), nil
+	case response := <-respChan:
+		return structuredResult(response)
 	}
-	return nil
 }
 
 func structuredResult(value any) (*mcp.CallToolResult, error) {

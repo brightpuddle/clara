@@ -58,11 +58,8 @@ func TestService_SearchMessages(t *testing.T) {
 		},
 	}
 
-	s := &Service{
-		accessToken: "fake-token",
-		httpClient:  &http.Client{Transport: mock},
-		log:         zerolog.Nop(),
-	}
+	httpClient := &http.Client{Transport: mock}
+	s := New("fake-token", httpClient, zerolog.Nop())
 
 	req := mcp.CallToolRequest{}
 	req.Params.Name = "search_messages"
@@ -94,7 +91,7 @@ func TestService_SearchMessages(t *testing.T) {
 		t.Errorf("expected Room One, got %v", m.SpaceName)
 	}
 	msg := m.Message
-	if msg["text"] != "Secret keyword found" {
-		t.Errorf("expected 'Secret keyword found', got %v", msg["text"])
+	if msg.Text != "Secret keyword found" {
+		t.Errorf("expected 'Secret keyword found', got %v", msg.Text)
 	}
 }

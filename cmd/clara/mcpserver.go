@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/WebexCommunity/webex-go-sdk/v2/attachmentactions"
 	"github.com/brightpuddle/clara/internal/auth"
 	"github.com/brightpuddle/clara/internal/config"
 	chromemcp "github.com/brightpuddle/clara/internal/mcpserver/chrome"
@@ -142,6 +145,8 @@ var mcpserverTmuxCmd = &cobra.Command{
 }
 
 var mcpserverWebexAccessToken string
+var mcpserverWebexBotToken string
+var mcpserverWebexWebhookAddr string
 var mcpserverWebexCmd = &cobra.Command{
 	Use:   "webex",
 	Short: "Start the built-in Webex MCP server",
@@ -220,6 +225,18 @@ func init() {
 		"access-token",
 		os.Getenv("WEBEX_ACCESS_TOKEN"),
 		"Webex access token (defaults to WEBEX_ACCESS_TOKEN env var)",
+	)
+	mcpserverWebexCmd.Flags().StringVar(
+		&mcpserverWebexBotToken,
+		"bot-token",
+		os.Getenv("WEBEX_BOT_TOKEN"),
+		"Webex bot token (defaults to WEBEX_BOT_TOKEN env var)",
+	)
+	mcpserverWebexCmd.Flags().StringVar(
+		&mcpserverWebexWebhookAddr,
+		"webhook-addr",
+		"",
+		"Address to listen on for Webex webhooks (e.g. :8080)",
 	)
 	mcpserverZKCmd.Flags().StringVar(
 		&mcpserverZKIndexPath,
@@ -326,7 +343,38 @@ func runMCPWebex(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return serveMCP(ctx, webexmcp.New(token, log).NewServer())
+	svc := webexmcp.New(token, nil, log)
+	if err := svc.Start(ctx); err != nil {
+		return err
+	}
+	defer svc.Stop()
+
+	// Optional Webhook server for external proxying
+	if mcpserverWebexWebhookAddr != "" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/webhook", func(w http.ResponseWriter, r *http.Request) {
+			var action attachmentactions.AttachmentAction
+			if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			svc.HandleWebhook(&action)
+			w.WriteHeader(http.StatusOK)
+		})
+		srv := &http.Server{Addr: mcpserverWebexWebhookAddr, Handler: mux}
+		log.Info().Str("addr", mcpserverWebexWebhookAddr).Msg("starting webex webhook proxy server")
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Error().Err(err).Msg("webhook server failed")
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			srv.Shutdown(context.Background())
+		}()
+	}
+
+	return serveMCP(ctx, svc.NewServer())
 }
 
 func buildMCPLogger(component string) zerolog.Logger {
