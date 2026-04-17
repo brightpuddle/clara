@@ -54,3 +54,13 @@ Implement a comprehensive end-to-end test suite for TUI notifications to ensure 
 - `go test -v ./internal/tui/ -run TestE2E_`
 - `go test -v ./internal/store/`
 - `go test -v ./internal/interpreter/`
+
+---
+
+## Phase 13: Project Identity Reframing [checkpoint: d49c2a9]
+- [x] Update AGENTS.md to reframe Clara as a resource-agnostic orchestrator
+- [x] Update README.md to remove local-first focus and update philosophy
+- [x] Update conductor/product.md with new vision and objectives
+- [x] Update conductor/tech-stack.md to include Linux support
+- [x] Cleanup conductor/workflow.md by removing mobile-specific boilerplate
+
