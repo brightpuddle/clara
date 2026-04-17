@@ -3,27 +3,28 @@
 > "Reliably, consistently, and efficiently automate everything that can be
 > automated."
 
-Clara is a local-first agentic orchestrator for macOS, designed to reduce the
-cognitive and emotional load of modern digital life. It is a personal assistant,
-"Data Janitor" and central HUD—a system built to handle the repetitive, the
-messy, and the mundane so we can focus on what actually matters.
+Clara is an efficient, reliable, and resource-agnostic agentic orchestrator,
+designed to reduce the cognitive and emotional load of modern digital life. It
+is a personal assistant, "Data Janitor" and central HUD—a system built to handle
+the repetitive, the messy, and the mundane so we can focus on what actually
+matters, whether on macOS or Linux.
 
 ## The Vision
 
 Clara is intended to automate all parts of our digital life, to help focus on
 the things that really matter.
 
-## The Clara Philosophy: Determinism Over Magic
+## The Clara Philosophy: Resource-Agnostic, Reliable Orchestration
 
-The current AI ecosystem often defaults to an "AI-first" workflows where a model
+The current AI ecosystem often defaults to an "AI-first" workflow where a model
 is the central engine. Clara takes a different stance:
 
 **AI is a tool, not the interpreter.**
 
-We use AI extensively for research, synthesis, and decision-making, but our core
-workflows are deterministic. Think of Clara like CI/CD for your life: AI might
+We prioritize reliability and efficiency by treating AI as a component within a
+deterministic framework. Think of Clara like CI/CD for your life: AI might
 help write the actions or perform a specific step within them, but the execution
-itself is a reliable, repeatable, and inspectable workflow.
+itself is a reliable, repeatable, and inspectable workflow that runs anywhere.
 
 ### Why Deterministic Intents?
 
@@ -123,7 +124,8 @@ Clara ships with a variety of built-in and first-party MCP servers:
   extension.
 - **`fs`:** Local filesystem management and change watching.
 - **`db`:** SQLite tool for persistent intent data.
-- **`llm` / `ollama`:** Multiplexed access to Gemini and local models.
+- **`llm`:** Multiplexed access to online providers (Gemini, etc.) and local
+  models (via Ollama).
 - **`macos`:** Native macOS access (Photos, Reminders, Calendar, etc) via `ClaraBridge`.
 - **`zk`:** Specialized Zettelkasten/Obsidian vault tools.
 - **`taskwarrior`:** Integration with the Taskwarrior CLI.
