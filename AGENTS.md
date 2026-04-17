@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Clara** (`github.com/brightpuddle/clara`) is a local-first agentic orchestrator for macOS. It is a background daemon written in Go that:
+**Clara** (`github.com/brightpuddle/clara`) is an efficient, reliable agentic orchestrator. It is a background daemon written in Go that:
 
 1. Proxies and aggregates MCP (Model Context Protocol) servers into a unified tool registry.
 2. Executes **Intents** authored as `.star` Starlark workflows at runtime.
@@ -10,9 +10,9 @@
 4. Treats every intent-visible capability as an MCP service.
 5. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, and MCP gateway.
 
-**Architectural rule:** If a capability is available to intents, it must be delivered through MCP.
+**Architectural rule:** If a capability is available to intents, it must be delivered through MCP. Clara prioritizes the most reliable and efficient MCP services available, whether they are local or online.
 
-- **Go 1.24+** for the daemon, CLI, and built-in MCP servers.
+- **Go 1.24+** for the daemon, CLI, and built-in MCP servers (supports macOS and Linux).
 - **Swift 6.0+** for the standalone macOS MCP bridge (`swift/`).
 - Go module: `github.com/brightpuddle/clara`
 
