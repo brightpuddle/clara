@@ -1,13 +1,13 @@
 # Initial Concept
 
-Clara is a local-first agentic orchestrator for macOS designed to automate digital life through deterministic workflows and MCP servers, focusing on reliability, efficiency, and inspectability.
+Clara is an agentic orchestrator designed to automate digital life through deterministic workflows and MCP servers, focusing on reliability, efficiency, and inspectability.
 
 ---
 
 # Product Definition: Clara
 
 ## Vision
-Clara is a local-first agentic orchestrator for macOS, designed to reduce cognitive and emotional load by reliably, consistently, and efficiently automating digital life. It follows the philosophy of **"Determinism Over Magic,"** where AI is a tool for synthesis and decision-making, while execution is handled by reliable, repeatable, and inspectable workflows.
+Clara is an agentic orchestrator designed to reduce cognitive and emotional load by reliably, consistently, and efficiently automating digital life. It follows the philosophy of **"Determinism Over Magic,"** where AI is a tool for synthesis and decision-making, while execution is handled by reliable, repeatable, and inspectable workflows.
 
 ## Target Audience
 - **Power Users:** Individuals looking for high-level automation of their daily digital tasks to reclaim focus.
@@ -26,8 +26,8 @@ Clara is a local-first agentic orchestrator for macOS, designed to reduce cognit
 - **Native macOS & Chrome Integration:** Deep, native integration with macOS services and Chrome browser automation via a companion extension.
 
 ## Ecosystem & Roadmap
-Clara prioritizes high-quality, first-party MCP support for:
+Clara is designed to consume any reliable MCP server, allowing it to act as a universal orchestrator for any resource or service. The roadmap prioritizes seamless integration with the broader MCP ecosystem alongside high-quality support for:
 - **Communication Apps:** Automating email, messaging (e.g., Webex), and developer workflows (e.g., GitHub issue triage).
 - **File Management:** Managing local filesystems and cloud storage with intelligent rules.
 - **Task & Note Management:** Integrating with tools like Taskwarrior, Obsidian (Zettelkasten), and native macOS Reminders/Calendar.
-- **Unified Search:** High-performance, indexed search across files, email, and notes using native macOS and SQLite FTS5 technologies.
+- **Unified Search:** High-performance, indexed search across files, email, and notes using SQLite FTS5 and available platform technologies.
