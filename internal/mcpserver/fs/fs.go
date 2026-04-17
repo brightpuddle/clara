@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brightpuddle/clara/internal/mcpserver/markdown"
 	"github.com/cockroachdb/errors"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -79,7 +80,7 @@ func New(ctx context.Context) *Server {
 			mcp.Description("Absolute or relative path to the file to read."),
 		),
 		mcp.WithString("decode",
-			mcp.Description("Optional decoder: json, yaml. When set, returns parsed data instead of raw text."),
+			mcp.Description("Optional decoder: json, yaml, markdown. When set, returns parsed data instead of raw text."),
 		),
 	), handleReadFile)
 
@@ -409,6 +410,13 @@ func handleReadFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 			if err := yaml.Unmarshal(data, &parsed); err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("read_file yaml decode: %v", err)), nil
 			}
+		case "markdown":
+			stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			doc, err := markdown.Parse(data, stem)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("read_file markdown decode: %v", err)), nil
+			}
+			parsed = doc
 		default:
 			return mcp.NewToolResultError(fmt.Sprintf("read_file: unsupported decode format %q", decode)), nil
 		}
