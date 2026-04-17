@@ -144,7 +144,6 @@ Before marking any task complete, verify:
 - [ ] All public functions/methods are documented (e.g., docstrings, JSDoc, GoDoc)
 - [ ] Type safety is enforced (e.g., type hints, TypeScript types, Go types)
 - [ ] No linting or static analysis errors (using the project's configured tools)
-- [ ] Works correctly on mobile (if applicable)
 - [ ] Documentation updated if needed
 - [ ] No security vulnerabilities introduced
 
@@ -187,13 +186,6 @@ Before marking any task complete, verify:
 - Test authentication and authorization
 - Check form submissions
 
-### Mobile Testing
-- Test on actual iPhone when possible
-- Use Safari developer tools
-- Test touch interactions
-- Verify responsive layouts
-- Check performance on 3G/4G
-
 ## Code Review Process
 
 ### Self-Review Checklist
@@ -226,12 +218,6 @@ Before requesting review:
    - Images optimized
    - Caching implemented where needed
 
-6. **Mobile Experience**
-   - Touch targets adequate (44x44px)
-   - Text readable without zooming
-   - Performance acceptable on mobile
-   - Interactions feel native
-
 ## Commit Guidelines
 
 ### Message Format
@@ -257,7 +243,6 @@ Before requesting review:
 git commit -m "feat(auth): Add remember me functionality"
 git commit -m "fix(posts): Correct excerpt generation for short posts"
 git commit -m "test(comments): Add tests for emoji reaction limits"
-git commit -m "style(mobile): Improve button touch targets"
 ```
 
 ## Definition of Done
@@ -269,10 +254,9 @@ A task is complete when:
 3. Code coverage meets project requirements
 4. Documentation complete (if applicable)
 5. Code passes all configured linting and static analysis checks
-6. Works beautifully on mobile (if applicable)
-7. Implementation notes added to `plan.md`
-8. Changes committed with proper message
-9. Git note with task summary attached to the commit
+6. Implementation notes added to `plan.md`
+7. Changes committed with proper message
+8. Git note with task summary attached to the commit
 
 ## Emergency Procedures
 
@@ -280,7 +264,7 @@ A task is complete when:
 1. Create hotfix branch from main
 2. Write failing test for bug
 3. Implement minimal fix
-4. Test thoroughly including mobile
+4. Test thoroughly
 5. Deploy immediately
 6. Document in plan.md
 
@@ -304,7 +288,6 @@ A task is complete when:
 - [ ] All tests passing
 - [ ] Coverage >80%
 - [ ] No linting errors
-- [ ] Mobile testing complete
 - [ ] Environment variables configured
 - [ ] Database migrations ready
 - [ ] Backup created
