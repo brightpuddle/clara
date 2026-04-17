@@ -602,85 +602,88 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             ])
         case "reminders_create":
             let reminder = try await createReminder(arguments)
-            return serializeReminder(reminder)
+            return try toolResult(serializeReminder(reminder))
         case "reminders_get":
             let id = try requiredString(arguments, "identifier")
             let reminder = try await reminder(identifier: id)
-            return serializeReminder(reminder)
+            return try toolResult(serializeReminder(reminder))
         case "reminders_update":
             let reminder = try await updateReminder(arguments)
-            return serializeReminder(reminder)
+            return try toolResult(serializeReminder(reminder))
         case "reminders_delete":
             try await deleteReminder(arguments)
-            return ["status": "deleted"]
+            return try toolResult(["status": "deleted"])
         case "reminders_list":
             let items = try await listReminders(arguments)
-            return ["items": items]
+            return try toolResult(["items": items])
         case "reminders_default_list":
-            return try await defaultReminderList()
+            let result = try await defaultReminderList()
+            return try toolResult(result)
         case "events_create":
             let event = try await createEvent(arguments)
-            return serializeEvent(event)
+            return try toolResult(serializeEvent(event))
         case "events_get":
             let id = try requiredString(arguments, "identifier")
             let event = try await event(identifier: id)
-            return serializeEvent(event)
+            return try toolResult(serializeEvent(event))
         case "events_update":
             let event = try await updateEvent(arguments)
-            return serializeEvent(event)
+            return try toolResult(serializeEvent(event))
         case "events_delete":
             try await deleteEvent(arguments)
-            return ["status": "deleted"]
+            return try toolResult(["status": "deleted"])
         case "events_list":
             let items = try await listEvents(arguments)
-            return ["items": items.map(serializeEvent)]
+            return try toolResult(["items": items.map(serializeEvent)])
         case "notify_send":
             try await sendNotification(arguments)
-            return ["status": "sent"]
+            return try toolResult(["status": "sent"])
         case "notify_send_interactive":
             try await sendInteractiveNotification(arguments)
-            return ["status": "sent"]
+            return try toolResult(["status": "sent"])
         case "photos_album_assets":
             let items = try await listPhotoAlbumAssets(arguments)
-            return ["items": items]
+            return try toolResult(["items": items])
         case "photos_export_assets":
             let items = try await exportPhotoAssets(arguments)
-            return ["items": items]
+            return try toolResult(["items": items])
         case "photos_album_remove_assets":
             try await removePhotoAlbumAssets(arguments)
-            return ["status": "removed"]
+            return try toolResult(["status": "removed"])
         case "photos_album_add_assets":
             try await addPhotoAlbumAssets(arguments)
-            return ["status": "added"]
+            return try toolResult(["status": "added"])
         case "theme_get":
-            return ["theme": getTheme()]
+            return try toolResult(["theme": getTheme()])
         case "theme_get_appearance": // Backward compatibility
-            return ["theme": getTheme()]
+            return try toolResult(["theme": getTheme()])
         case "mail_list_inbox":
             let items = try await mailListInbox(arguments)
-            return ["items": items]
+            return try toolResult(["items": items])
         case "mail_get_message":
-            return try await mailGetMessage(arguments)
+            let result = try await mailGetMessage(arguments)
+            return try toolResult(result)
         case "mail_move":
             try await mailMove(arguments)
-            return ["status": "moved"]
+            return try toolResult(["status": "moved"])
         case "mail_flag":
             try await mailFlag(arguments)
-            return ["status": "flagged"]
+            return try toolResult(["status": "flagged"])
         case "mail_mark_read":
             try await mailMarkRead(arguments)
-            return ["status": "marked"]
+            return try toolResult(["status": "marked"])
         case "mail_create_draft":
-            return try await mailCreateDraft(arguments)
+            let result = try await mailCreateDraft(arguments)
+            return try toolResult(result)
         case "mail_send":
             try await mailSend(arguments)
-            return ["status": "sent"]
+            return try toolResult(["status": "sent"])
         case "mail_delete":
             try await mailDelete(arguments)
-            return ["status": "deleted"]
+            return try toolResult(["status": "deleted"])
         case "mail_get_mailboxes":
             let items = try await mailGetMailboxes(arguments)
-            return ["items": items]
+            return try toolResult(["items": items])
         default:
             throw MCPProtocolError.methodNotFound("unknown tool: \(name)")
         }
