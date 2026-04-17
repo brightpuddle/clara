@@ -1,7 +1,7 @@
 # Tech Stack: Clara
 
 ## Core Orchestration & Logic
-- **Languages:** Go (1.26.1), Swift (macOS Native Bridge), JavaScript (Chrome Extension).
+- **Languages:** Go (1.26.1 - macOS, Linux), Swift (macOS Native Bridge), JavaScript (Chrome Extension).
 - **Orchestration Logic:** Starlark (via `go.starlark.net`), providing deterministic, Python-like intent scripts.
 - **Tooling Interface:** Model Context Protocol (MCP-Go), used for standardized tool registration and interaction.
 - **Persistent Store:** SQLite (via `go-sqlite3` and `go-sqlite3/embed`), used for intent state persistence, MCP server configurations, and high-performance FTS5 search indexing.
