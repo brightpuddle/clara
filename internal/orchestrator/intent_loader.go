@@ -26,8 +26,9 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 	}
 
 	predeclared := starlark.StringDict{
-		"clara": &claraBuiltins{loader: loader},
-		"tui":   &dummyNamespaceProxy{name: "tui", namespaces: namespaces},
+		"clara":  &claraBuiltins{loader: loader},
+		"tui":    &dummyNamespaceProxy{name: "tui", namespaces: namespaces},
+		"assert": AssertModule,
 	}
 	for _, ns := range namespaces {
 		if ns == "clara" || ns == "tui" {
@@ -40,6 +41,15 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 	globals, err := starlark.ExecFile(thread, path, script, predeclared)
 	if err != nil {
 		return nil, errors.Wrap(err, "compile starlark intent")
+	}
+
+	// Collect tests from globals (names starting with test_)
+	for name, val := range globals {
+		if strings.HasPrefix(name, "test_") {
+			if _, ok := val.(starlark.Callable); ok {
+				loader.intent.Tests = append(loader.intent.Tests, name)
+			}
+		}
 	}
 
 	// Auto-register main() as an on_demand task if no explicit task() calls were made.

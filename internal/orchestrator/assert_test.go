@@ -15,6 +15,7 @@ func TestAssertModule(t *testing.T) {
 		`assert.neq(1, 2)`,
 		`assert.true(1 == 1)`,
 		`assert.false(1 == 2)`,
+		`assert.fails(lambda: fail("expected"))`,
 	}
 	for _, script := range validScripts {
 		if _, err := starlark.ExecFile(thread, "test.star", script, env); err != nil {
@@ -27,6 +28,7 @@ func TestAssertModule(t *testing.T) {
 		`assert.neq(1, 1)`,
 		`assert.true(False)`,
 		`assert.false(True)`,
+		`assert.fails(lambda: 1 + 1)`,
 	}
 	for _, script := range invalidScripts {
 		if _, err := starlark.ExecFile(thread, "test.star", script, env); err == nil {

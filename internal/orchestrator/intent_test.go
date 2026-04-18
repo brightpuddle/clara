@@ -491,3 +491,36 @@ func TestParseIntent_Parameters(t *testing.T) {
 		t.Errorf("unexpected parameter 1: %+v", task.Parameters[1])
 	}
 }
+
+func TestCompileStarlarkIntent_Tests(t *testing.T) {
+	intent, err := orchestrator.CompileStarlarkIntent("/tmp/tests.star", `
+def main():
+    pass
+
+def test_logic():
+    assert.eq(1, 1)
+
+def test_other():
+    assert.true(True)
+
+not_a_test = lambda: None
+`, nil)
+	if err != nil {
+		t.Fatalf("CompileStarlarkIntent failed: %v", err)
+	}
+
+	expectedTests := map[string]bool{
+		"test_logic": true,
+		"test_other": true,
+	}
+
+	if len(intent.Tests) != len(expectedTests) {
+		t.Fatalf("expected %d tests, got %d: %v", len(expectedTests), len(intent.Tests), intent.Tests)
+	}
+
+	for _, name := range intent.Tests {
+		if !expectedTests[name] {
+			t.Errorf("unexpected test extracted: %q", name)
+		}
+	}
+}
