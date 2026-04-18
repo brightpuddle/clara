@@ -25,6 +25,7 @@ type Intent struct {
 	ID           string            `json:"id"                      yaml:"id"`
 	Description  string            `json:"description,omitempty"   yaml:"description,omitempty"`
 	Tasks        []Task            `json:"tasks,omitempty"         yaml:"tasks,omitempty"`
+	Tests        []string          `json:"tests,omitempty"         yaml:"tests,omitempty"`
 	WorkflowType string            `json:"workflow_type,omitempty" yaml:"workflow_type,omitempty"`
 	Script       string            `json:"script,omitempty"        yaml:"script,omitempty"`
 	InitialState string            `json:"initial_state,omitempty" yaml:"initial_state,omitempty"`
