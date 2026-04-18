@@ -90,7 +90,7 @@ clara intent logs hello
 ## Writing Intents
 
 Intents are more than just scripts; they are managed tasks. Clara supports
-several execution modes:
+several execution modes (see the [Starlark API Reference](docs/api/starlark.md) for full details):
 
 - **On-Demand:** Triggered manually via CLI or TUI.
 - **Scheduled:** Cron-style execution (e.g., `0 7 * * *` for your morning
