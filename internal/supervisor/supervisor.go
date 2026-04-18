@@ -299,7 +299,11 @@ func (s *Supervisor) processFile(path string) error {
 }
 
 func isIntentFile(path string) bool {
-	return strings.EqualFold(filepath.Ext(path), ".star") && !strings.HasSuffix(path, "_test.star")
+	if !strings.EqualFold(filepath.Ext(path), ".star") {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(path))
+	return !strings.HasSuffix(base, "_test.star")
 }
 
 // ValidateIntent checks that all referenced tools in an Intent are

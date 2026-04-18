@@ -56,6 +56,10 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 	if len(loader.intent.Tasks) == 0 {
 		mainValue, ok := globals["main"]
 		if !ok {
+			if len(loader.intent.Tests) > 0 {
+				// Valid as a test file even without main()
+				goto skipMain
+			}
 			return nil, errors.New(
 				"starlark intent must define main() or register tasks with task(...)",
 			)
@@ -72,6 +76,8 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 		}
 		loader.intent.Tasks = []Task{task}
 	}
+
+skipMain:
 
 	// Derive the intent ID from the filename if not set (describe() does not set it).
 	loader.intent.ID = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
