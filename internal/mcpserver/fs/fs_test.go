@@ -181,3 +181,75 @@ func newCallRequest(args map[string]any) mcp.CallToolRequest {
 		},
 	}
 }
+func TestWriteFileMarkdown(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "test.md")
+	initialContent := `---
+title: Test Note
+tags: [a, b]
+---
+# Hello
+Body here.
+`
+	if err := os.WriteFile(path, []byte(initialContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Read and decode
+	result, err := handleReadFile(context.Background(), newCallRequest(map[string]any{
+		"path":   path,
+		"decode": "markdown",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("read error: %v", result.Content[0])
+	}
+
+	// In real usage, this would be JSON-ified to a map. 
+	// Since we are calling the handler directly, we get the struct.
+	// We convert it to map to simulate real tool call arguments.
+	jsonData, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		t.Fatal(err)
+	}
+	
+	// 2. Modify
+	data["content"] = "# Modified\nNew body."
+	fm := data["frontmatter"].(map[string]any)
+	fm["title"] = "Modified Title"
+
+	// 3. Write and encode
+	newPath := filepath.Join(root, "modified.md")
+	result, err = handleWriteFile(context.Background(), newCallRequest(map[string]any{
+		"path":   newPath,
+		"data":   data,
+		"encode": "markdown",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("write error: %v", result.Content[0])
+	}
+	// 4. Verify content
+	content, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "title: Modified Title") {
+		t.Errorf("missing title in output:\n%s", s)
+	}
+	if !strings.Contains(s, "# Modified") {
+		t.Errorf("missing content in output:\n%s", s)
+	}
+	if !strings.HasPrefix(s, "---") {
+		t.Errorf("missing frontmatter delimiter:\n%s", s)
+	}
+}
