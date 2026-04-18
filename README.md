@@ -100,6 +100,50 @@ several execution modes:
   `clara.on(macos.theme_on_change)`).
 
 
+### Assertions & Testing
+
+To ensure your intents are reliable, Clara provides a built-in `assert` module for both runtime checks and unit testing.
+
+#### Runtime Assertions
+Use assertions in your production scripts to catch unexpected behavior early. If an assertion fails, the script stops immediately with a clear error.
+
+```python
+def main():
+    # Ensure a tool returned the expected structure
+    result = tmux.list_sessions()
+    assert.true(len(result) > 0)
+    
+    # Verify a precondition
+    assert.eq(clara.context.get("env"), "prod")
+```
+
+#### Unit Testing
+You can write unit tests for your intents by creating files ending in `_test.star`. These files are ignored by the background supervisor but can be run via the CLI.
+
+1.  **Create a test file:** `tasks/sync_test.star`
+2.  **Define test functions:** Any function starting with `test_` is treated as a test case.
+
+```python
+# tasks/sync_test.star
+
+def test_bidirectional_sync():
+    # Assertions in tests provide clear pass/fail output
+    assert.eq(1 + 1, 2)
+    assert.neq(5, 3)
+    
+    # You can also assert that a function fails
+    def fail_me():
+        fail("oops")
+    assert.fails(fail_me)
+```
+
+3.  **Run tests:**
+```bash
+clara test tasks/
+```
+
+Clara runs each test function in an isolated environment with its own in-memory database and registry, ensuring tests are deterministic and side-effect free.
+
 ### The `wait` Pattern
 
 One of Clara's most powerful features is the ability to pause execution for
