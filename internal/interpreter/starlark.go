@@ -148,7 +148,7 @@ func (it *StarlarkInterpreter) Execute(
 	predeclared := starlark.StringDict{
 		"clara":  &claraRuntimeBuiltins{rt: runtime},
 		"tui":    &NamespaceProxy{rt: runtime, name: "tui"},
-		"assert": orchestrator.AssertModule,
+		"must":   orchestrator.MustModule,
 	}
 
 	for _, ns := range it.reg.Namespaces() {

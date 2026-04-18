@@ -28,7 +28,7 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 	predeclared := starlark.StringDict{
 		"clara":  &claraBuiltins{loader: loader},
 		"tui":    &dummyNamespaceProxy{name: "tui", namespaces: namespaces},
-		"assert": AssertModule,
+		"must":   MustModule,
 	}
 	for _, ns := range namespaces {
 		if ns == "clara" || ns == "tui" {

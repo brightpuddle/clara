@@ -253,25 +253,25 @@ def main():
 	}
 }
 
-func TestStarlarkInterpreter_Assert(t *testing.T) {
+func TestStarlarkInterpreter_Must(t *testing.T) {
 	reg := registry.New(zerolog.Nop())
 	it := interpreter.NewStarlark(reg, zerolog.Nop())
 
 	intent := &orchestrator.Intent{
-		ID:           "assert-script",
+		ID:           "must-script",
 		WorkflowType: orchestrator.WorkflowTypeStarlark,
 		Script: `
 def main():
-    assert.eq(1, 1)
-    assert.true(True)
-    assert.false(False)
-    assert.neq(1, 2)
-    assert.fails(lambda: assert.eq(1, 2))
+    must.eq(1, 1)
+    must.true(True)
+    must.false(False)
+    must.neq(1, 2)
+    must.fails(lambda: must.eq(1, 2))
     return "ok"
 `,
 	}
 
-	if err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{RunID: "run-assert"}); err != nil {
+	if err := it.Execute(context.Background(), intent, "", interpreter.RunOptions{RunID: "run-must"}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 }

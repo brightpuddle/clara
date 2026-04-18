@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Provide a Starlark testing harness (`clara test`) and a unified `assert` module for both tests and runtime assertions.
+**Goal:** Provide a Starlark testing harness (`clara test`) and a unified `must` module for both tests and runtime assertions.
 
-**Architecture:** Create an `assert` module providing `eq`, `neq`, `true`, `false`, and `fails` methods. Make this module available globally in Starlark. Collect functions with a `test_` prefix during compilation and execute them with an isolated in-memory DB in a new `clara test` CLI command. Ensure `*_test.star` files are ignored by the standard supervisor.
+**Architecture:** Create a `must` module providing `eq`, `neq`, `true`, `false`, and `fails` methods. Make this module available globally in Starlark. Collect functions with a `test_` prefix during compilation and execute them with an isolated in-memory DB in a new `clara test` CLI command. Ensure `*_test.star` files are ignored by the standard supervisor.
 
 **Tech Stack:** Go, `go.starlark.net`
 
@@ -38,11 +38,11 @@ git add internal/orchestrator/intent.go
 git commit -m "feat: add Tests field to Intent struct"
 ```
 
-### Task 2: Create the `assert` module
+### Task 2: Create the `must` module
 
 **Files:**
-- Create: `internal/orchestrator/assert.go`
-- Create: `internal/orchestrator/assert_test.go`
+- Create: `internal/orchestrator/must.go`
+- Create: `internal/orchestrator/must_test.go`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -55,15 +55,15 @@ import (
 	"github.com/brightpuddle/clara/internal/orchestrator"
 )
 
-func TestAssertModule(t *testing.T) {
+func TestMustModule(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
-	env := starlark.StringDict{"assert": orchestrator.AssertModule}
+	env := starlark.StringDict{"must": orchestrator.MustModule}
 	
 	validScripts := []string{
-		`assert.eq(1, 1)`,
-		`assert.neq(1, 2)`,
-		`assert.true(1 == 1)`,
-		`assert.false(1 == 2)`,
+		`must.eq(1, 1)`,
+		`must.neq(1, 2)`,
+		`must.true(1 == 1)`,
+		`must.false(1 == 2)`,
 	}
 	for _, script := range validScripts {
 		if _, err := starlark.ExecFile(thread, "test.star", script, env); err != nil {
@@ -72,10 +72,10 @@ func TestAssertModule(t *testing.T) {
 	}
 	
 	invalidScripts := []string{
-		`assert.eq(1, 2)`,
-		`assert.neq(1, 1)`,
-		`assert.true(False)`,
-		`assert.false(True)`,
+		`must.eq(1, 2)`,
+		`must.neq(1, 1)`,
+		`must.true(False)`,
+		`must.false(True)`,
 	}
 	for _, script := range invalidScripts {
 		if _, err := starlark.ExecFile(thread, "test.star", script, env); err == nil {
@@ -87,10 +87,10 @@ func TestAssertModule(t *testing.T) {
 
 - [ ] **Step 2: Verify test fails**
 
-Run: `go test ./internal/orchestrator -run TestAssertModule`
+Run: `go test ./internal/orchestrator -run TestMustModule`
 Expected: build error (module not found)
 
-- [ ] **Step 3: Implement the `assert` module**
+- [ ] **Step 3: Implement the `must` module**
 
 ```go
 package orchestrator
@@ -100,15 +100,38 @@ import (
 	"go.starlark.net/starlark"
 )
 
-var AssertModule = starlark.StringDict{
-	"eq":    starlark.NewBuiltin("eq", assertEq),
-	"neq":   starlark.NewBuiltin("neq", assertNeq),
-	"true":  starlark.NewBuiltin("true", assertTrue),
-	"false": starlark.NewBuiltin("false", assertFalse),
-	"fails": starlark.NewBuiltin("fails", assertFails),
+var MustModule = &mustModule{}
+
+type mustModule struct{}
+
+func (m *mustModule) String() string        { return "<module must>" }
+func (m *mustModule) Type() string          { return "module" }
+func (m *mustModule) Freeze()               {}
+func (m *mustModule) Truth() starlark.Bool  { return true }
+func (m *mustModule) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable: %s", m.Type()) }
+
+func (m *mustModule) Attr(name string) (starlark.Value, error) {
+	switch name {
+	case "eq":
+		return starlark.NewBuiltin("eq", mustEq), nil
+	case "neq":
+		return starlark.NewBuiltin("neq", mustNeq), nil
+	case "true":
+		return starlark.NewBuiltin("true", mustTrue), nil
+	case "false":
+		return starlark.NewBuiltin("false", mustFalse), nil
+	case "fails":
+		return starlark.NewBuiltin("fails", mustFails), nil
+	default:
+		return nil, nil
+	}
 }
 
-func assertEq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (m *mustModule) AttrNames() []string {
+	return []string{"eq", "neq", "true", "false", "fails"}
+}
+
+func mustEq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var x, y starlark.Value
 	if err := starlark.UnpackArgs("eq", args, kwargs, "x", &x, "y", &y); err != nil {
 		return nil, err
@@ -116,12 +139,12 @@ func assertEq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 	if ok, err := starlark.Equal(x, y); err != nil {
 		return nil, err
 	} else if !ok {
-		return nil, fmt.Errorf("assert.eq failed: %v != %v", x, y)
+		return nil, fmt.Errorf("must.eq failed: %v != %v", x, y)
 	}
 	return starlark.None, nil
 }
 
-func assertNeq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustNeq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var x, y starlark.Value
 	if err := starlark.UnpackArgs("neq", args, kwargs, "x", &x, "y", &y); err != nil {
 		return nil, err
@@ -129,41 +152,41 @@ func assertNeq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple
 	if ok, err := starlark.Equal(x, y); err != nil {
 		return nil, err
 	} else if ok {
-		return nil, fmt.Errorf("assert.neq failed: %v == %v", x, y)
+		return nil, fmt.Errorf("must.neq failed: %v == %v", x, y)
 	}
 	return starlark.None, nil
 }
 
-func assertTrue(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustTrue(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var cond starlark.Value
 	if err := starlark.UnpackArgs("true", args, kwargs, "cond", &cond); err != nil {
 		return nil, err
 	}
 	if !cond.Truth() {
-		return nil, fmt.Errorf("assert.true failed: expected True, got False")
+		return nil, fmt.Errorf("must.true failed: expected True, got False")
 	}
 	return starlark.None, nil
 }
 
-func assertFalse(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustFalse(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var cond starlark.Value
 	if err := starlark.UnpackArgs("false", args, kwargs, "cond", &cond); err != nil {
 		return nil, err
 	}
 	if cond.Truth() {
-		return nil, fmt.Errorf("assert.false failed: expected False, got True")
+		return nil, fmt.Errorf("must.false failed: expected False, got True")
 	}
 	return starlark.None, nil
 }
 
-func assertFails(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustFails(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var f starlark.Callable
 	if err := starlark.UnpackArgs("fails", args, kwargs, "f", &f); err != nil {
 		return nil, err
 	}
 	_, err := starlark.Call(thread, f, nil, nil)
 	if err == nil {
-		return nil, fmt.Errorf("assert.fails failed: expected function to fail but it succeeded")
+		return nil, fmt.Errorf("must.fails failed: expected function to fail but it succeeded")
 	}
 	return starlark.None, nil
 }
@@ -171,17 +194,17 @@ func assertFails(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tup
 
 - [ ] **Step 4: Verify test passes**
 
-Run: `go test ./internal/orchestrator -run TestAssertModule`
+Run: `go test ./internal/orchestrator -run TestMustModule`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/orchestrator/assert.go internal/orchestrator/assert_test.go
-git commit -m "feat: add starlark assert module for runtime assertions and testing"
+git add internal/orchestrator/must.go internal/orchestrator/must_test.go
+git commit -m "feat: add starlark must module for runtime assertions and testing"
 ```
 
-### Task 3: Expose `assert` globally and extract tests during load
+### Task 3: Expose `must` globally and extract tests during load
 
 **Files:**
 - Modify: `internal/orchestrator/intent_loader.go`
@@ -194,7 +217,7 @@ In `internal/orchestrator/intent_loader.go`, update `CompileStarlarkIntent`:
 	predeclared := starlark.StringDict{
 		"clara":  &claraBuiltins{loader: loader},
 		"tui":    &dummyNamespaceProxy{name: "tui", namespaces: namespaces},
-		"assert": AssertModule,
+		"must":   MustModule,
 	}
 ```
 Further down in `CompileStarlarkIntent`, after `globals, err := starlark.ExecFile(...)`, add extraction for `test_` functions:
@@ -218,7 +241,7 @@ In `internal/interpreter/starlark.go`, update `Execute`:
 	predeclared := starlark.StringDict{
 		"clara":  &claraRuntimeBuiltins{rt: runtime},
 		"tui":    &NamespaceProxy{rt: runtime, name: "tui"},
-		"assert": orchestrator.AssertModule,
+		"must":   orchestrator.MustModule,
 	}
 ```
 
@@ -226,7 +249,7 @@ In `internal/interpreter/starlark.go`, update `Execute`:
 
 ```bash
 git add internal/orchestrator/intent_loader.go internal/interpreter/starlark.go
-git commit -m "feat: expose assert module globally and collect tests on load"
+git commit -m "feat: expose must module globally and collect tests on load"
 ```
 
 ### Task 4: Exclude `*_test.star` from the Supervisor watcher

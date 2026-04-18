@@ -6,16 +6,16 @@ import (
 	"github.com/brightpuddle/clara/internal/orchestrator"
 )
 
-func TestAssertModule(t *testing.T) {
+func TestMustModule(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
-	env := starlark.StringDict{"assert": orchestrator.AssertModule}
+	env := starlark.StringDict{"must": orchestrator.MustModule}
 	
 	validScripts := []string{
-		`assert.eq(1, 1)`,
-		`assert.neq(1, 2)`,
-		`assert.true(1 == 1)`,
-		`assert.false(1 == 2)`,
-		`assert.fails(lambda: fail("expected"))`,
+		`must.eq(1, 1)`,
+		`must.neq(1, 2)`,
+		`must.true(1 == 1)`,
+		`must.false(1 == 2)`,
+		`must.fails(lambda: fail("expected"))`,
 	}
 	for _, script := range validScripts {
 		if _, err := starlark.ExecFile(thread, "test.star", script, env); err != nil {
@@ -24,11 +24,11 @@ func TestAssertModule(t *testing.T) {
 	}
 	
 	invalidScripts := []string{
-		`assert.eq(1, 2)`,
-		`assert.neq(1, 1)`,
-		`assert.true(False)`,
-		`assert.false(True)`,
-		`assert.fails(lambda: 1 + 1)`,
+		`must.eq(1, 2)`,
+		`must.neq(1, 1)`,
+		`must.true(False)`,
+		`must.false(True)`,
+		`must.fails(lambda: 1 + 1)`,
 	}
 	for _, script := range invalidScripts {
 		if _, err := starlark.ExecFile(thread, "test.star", script, env); err == nil {

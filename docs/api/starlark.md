@@ -3,7 +3,7 @@
 This document provides a comprehensive reference for the built-in functions available in Clara's Starlark environment.
 
 ## Table of Contents
-- [Namespace: assert](#namespace-assert)
+- [Namespace: must](#namespace-must)
   - [eq](#eq)
   - [neq](#neq)
   - [true](#true)
@@ -22,11 +22,11 @@ This document provides a comprehensive reference for the built-in functions avai
 
 ---
 
-## Namespace: assert
-The `assert` module is used for runtime assertions in production scripts and for defining checks in unit tests (`*_test.star`).
+## Namespace: must
+The `must` module is used for runtime assertions in production scripts and for defining checks in unit tests (`*_test.star`).
 
 ### eq
-`assert.eq(x, y)`
+`must.eq(x, y)`
 
 Asserts that two values are equal.
 
@@ -37,11 +37,11 @@ Asserts that two values are equal.
 **Example:**
 ```python
 def test_math():
-    assert.eq(1 + 1, 2)
+    must.eq(1 + 1, 2)
 ```
 
 ### neq
-`assert.neq(x, y)`
+`must.neq(x, y)`
 
 Asserts that two values are not equal.
 
@@ -52,11 +52,11 @@ Asserts that two values are not equal.
 **Example:**
 ```python
 def test_inequality():
-    assert.neq(5, 3)
+    must.neq(5, 3)
 ```
 
 ### true
-`assert.true(cond)`
+`must.true(cond)`
 
 Asserts that a condition is truthy.
 
@@ -67,11 +67,11 @@ Asserts that a condition is truthy.
 ```python
 def main():
     files = fs.list_directory(path = ".")
-    assert.true(len(files) > 0)
+    must.true(len(files) > 0)
 ```
 
 ### false
-`assert.false(cond)`
+`must.false(cond)`
 
 Asserts that a condition is falsy.
 
@@ -82,11 +82,11 @@ Asserts that a condition is falsy.
 ```python
 def test_empty():
     items = []
-    assert.false(len(items) > 0)
+    must.false(len(items) > 0)
 ```
 
 ### fails
-`assert.fails(fn)`
+`must.fails(fn)`
 
 Asserts that calling the provided function results in a Starlark error.
 
@@ -98,7 +98,7 @@ Asserts that calling the provided function results in a Starlark error.
 def test_validation():
     def bad_call():
         clara.wait("", prompt="") # Missing name
-    assert.fails(bad_call)
+    must.fails(bad_call)
 ```
 
 ---

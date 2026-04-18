@@ -498,10 +498,10 @@ def main():
     pass
 
 def test_logic():
-    assert.eq(1, 1)
+    must.eq(1, 1)
 
 def test_other():
-    assert.true(True)
+    must.true(True)
 
 not_a_test = lambda: None
 `, nil)
