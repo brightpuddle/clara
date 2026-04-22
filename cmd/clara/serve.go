@@ -270,6 +270,44 @@ func buildHandler(
 			}
 			writeResp(&ipc.Response{Data: list})
 
+		case ipc.MethodRun:
+			taskFile, _ := req.Params["path"].(string)
+			content, _ := req.Data.(string)
+			if taskFile == "" {
+				writeResp(&ipc.Response{Error: "missing path parameter"})
+				return
+			}
+			if content == "" {
+				// Try reading from path if content not provided (might be on the same machine)
+				data, err := os.ReadFile(taskFile)
+				if err != nil {
+					writeResp(&ipc.Response{Error: "failed to read task file: " + err.Error()})
+					return
+				}
+				content = string(data)
+			}
+
+			namespaces := []string{"llm", "search", "clara_tui"}
+			if cfg != nil {
+				for _, srv := range cfg.MCPServers {
+					namespaces = append(namespaces, srv.Name)
+				}
+			}
+
+			intent, err := orchestrator.LoadIntentFile(taskFile, []byte(content), namespaces)
+			if err != nil {
+				writeResp(&ipc.Response{Error: "failed to load intent: " + err.Error()})
+				return
+			}
+
+			runID := fmt.Sprintf("%s-remote-%d", intent.ID, time.Now().UnixNano())
+			go runIntentInBackground(ctx, intent, runID, "", req.Args, reg, db, log)
+
+			writeResp(&ipc.Response{
+				Message: "intent " + intent.ID + " started remotely",
+				Data:    map[string]any{"run_id": runID, "intent_id": intent.ID},
+			})
+
 		case ipc.MethodStart:
 			id, _ := req.Params["id"].(string)
 			if id == "" {

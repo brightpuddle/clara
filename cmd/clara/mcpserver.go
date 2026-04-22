@@ -319,7 +319,12 @@ func runMCPWebex(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	log := buildMCPLogger("webex")
-	token := mcpserverWebexAccessToken
+	
+	// Prioritize: 1. Explicit Bot Token, 2. Explicit Access Token, 3. OAuth/Env
+	token := mcpserverWebexBotToken
+	if token == "" {
+		token = mcpserverWebexAccessToken
+	}
 
 	if token == "" {
 		db, err := store.Open(cfg.DBPath(), zerolog.Nop())

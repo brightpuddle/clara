@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/interpreter"
+	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
@@ -19,6 +20,41 @@ import (
 )
 
 func runOneOff(parent context.Context, taskFile string, verbose bool) error {
+	if isRunning(cfg.ControlSocketPath()) {
+		data, err := os.ReadFile(taskFile)
+		if err != nil {
+			return errors.Wrapf(err, "read task file %q", taskFile)
+		}
+
+		absPath, err := filepath.Abs(taskFile)
+		if err != nil {
+			absPath = taskFile
+		}
+
+		resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+			Method: ipc.MethodRun,
+			Params: map[string]any{"path": absPath},
+			Data:   string(data),
+		})
+		if err != nil {
+			return errors.Wrap(err, "remote run request failed")
+		}
+
+		var runID string
+		var intentID string
+		if data, ok := resp.Data.(map[string]any); ok {
+			runID, _ = data["run_id"].(string)
+			intentID, _ = data["intent_id"].(string)
+		}
+
+		if runID != "" {
+			theme := tui.DetectTheme()
+			fmt.Printf("%s %s %s\n", theme.Dimmed("Running"), taskFile, theme.Dimmed("(via agent)"))
+			return followIntentEvents(parent, intentID, runID, false, verbose)
+		}
+		return nil
+	}
+
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
 		return errors.Wrapf(err, "read task file %q", taskFile)
