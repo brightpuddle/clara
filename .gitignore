@@ -2,6 +2,7 @@
 /clarad
 /clara
 /ClaraBridge
+/bin
 
 # Build artifacts
 tmp/

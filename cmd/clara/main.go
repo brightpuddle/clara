@@ -73,6 +73,9 @@ func init() {
 	rootCmd.AddCommand(mcpserverCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(runCmd)
+
+	// Add the architecture prototype command
+	rootCmd.AddCommand(prototypeCmd)
 }
 
 func main() {
