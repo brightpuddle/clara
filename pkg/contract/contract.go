@@ -13,103 +13,164 @@ var HandshakeConfig = plugin.HandshakeConfig{
 	MagicCookieValue: "hello_clara",
 }
 
-// --- Interfaces ---
+// --- Base Interfaces ---
 
+// Integration is the base interface for all Clara integrations.
 type Integration interface {
 	Configure(config []byte) error
+	Description() (string, error)
 	Tools() ([]byte, error)
 	CallTool(name string, args []byte) ([]byte, error)
 }
 
-type ShellIntegration interface {
-	Integration
-	Run(command string) (string, error)
+// Context provides access to host-side services and integrations for intents.
+type Context interface {
+	Shell() (ShellIntegration, error)
+	FS() (FSIntegration, error)
 }
 
+// Intent is the interface for native Go intents.
 type Intent interface {
-	Execute(name string, shell ShellIntegration) error
+	Execute(name string, ctx Context) error
 }
 
-// --- ShellIntegration RPC Boilerplate ---
+// --- Base RPC Helpers ---
 
 type CallToolArgs struct {
 	Name string
 	Args []byte
 }
 
-type ShellIntegrationRPC struct{ client *rpc.Client }
+// IntegrationRPC implements the Integration interface over RPC.
+// It can be embedded in more specific integration RPC clients.
+type IntegrationRPC struct {
+	Client *rpc.Client
+}
 
-func (g *ShellIntegrationRPC) Configure(config []byte) error {
+func (g *IntegrationRPC) Configure(config []byte) error {
 	var resp error
-	err := g.client.Call("Plugin.Configure", config, &resp)
+	err := g.Client.Call("Plugin.Configure", config, &resp)
 	if err != nil {
 		return err
 	}
 	return resp
 }
 
-func (g *ShellIntegrationRPC) Tools() ([]byte, error) {
-	var resp []byte
-	err := g.client.Call("Plugin.Tools", new(interface{}), &resp)
-	return resp, err
-}
-
-func (g *ShellIntegrationRPC) CallTool(name string, args []byte) ([]byte, error) {
-	var resp []byte
-	err := g.client.Call("Plugin.CallTool", CallToolArgs{Name: name, Args: args}, &resp)
-	return resp, err
-}
-
-func (g *ShellIntegrationRPC) Run(command string) (string, error) {
+func (g *IntegrationRPC) Description() (string, error) {
 	var resp string
-	err := g.client.Call("Plugin.Run", command, &resp)
+	err := g.Client.Call("Plugin.Description", new(interface{}), &resp)
 	return resp, err
 }
 
-type ShellIntegrationRPCServer struct {
-	Impl ShellIntegration
+func (g *IntegrationRPC) Tools() ([]byte, error) {
+	var resp []byte
+	err := g.Client.Call("Plugin.Tools", new(interface{}), &resp)
+	return resp, err
 }
 
-func (s *ShellIntegrationRPCServer) Configure(config []byte, resp *error) error {
+func (g *IntegrationRPC) CallTool(name string, args []byte) ([]byte, error) {
+	var resp []byte
+	err := g.Client.Call("Plugin.CallTool", CallToolArgs{Name: name, Args: args}, &resp)
+	return resp, err
+}
+
+// IntegrationRPCServer handles base Integration RPC calls.
+// It can be embedded in more specific integration RPC servers.
+type IntegrationRPCServer struct {
+	Impl Integration
+}
+
+func (s *IntegrationRPCServer) Configure(config []byte, resp *error) error {
 	*resp = s.Impl.Configure(config)
 	return nil
 }
 
-func (s *ShellIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+func (s *IntegrationRPCServer) Description(args interface{}, resp *string) error {
+	var err error
+	*resp, err = s.Impl.Description()
+	return err
+}
+
+func (s *IntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err
 }
 
-func (s *ShellIntegrationRPCServer) CallTool(args CallToolArgs, resp *[]byte) error {
+func (s *IntegrationRPCServer) CallTool(args CallToolArgs, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.CallTool(args.Name, args.Args)
 	return err
 }
 
-func (s *ShellIntegrationRPCServer) Run(command string, resp *string) error {
-	var err error
-	*resp, err = s.Impl.Run(command)
-	return err
+// --- Context RPC Boilerplate ---
+
+type ContextRPC struct {
+	client *rpc.Client
+	broker *plugin.MuxBroker
 }
 
-type ShellIntegrationPlugin struct {
-	Impl ShellIntegration
+func (g *ContextRPC) Shell() (ShellIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.Shell", new(interface{}), &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &ShellIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
-func (p *ShellIntegrationPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
-	return &ShellIntegrationRPCServer{Impl: p.Impl}, nil
+func (g *ContextRPC) FS() (FSIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.FS", new(interface{}), &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &FSIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
-func (p *ShellIntegrationPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &ShellIntegrationRPC{client: c}, nil
+type ContextRPCServer struct {
+	Impl   Context
+	broker *plugin.MuxBroker
+}
+
+func (s *ContextRPCServer) Shell(args interface{}, resp *uint32) error {
+	impl, err := s.Impl.Shell()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &ShellIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) FS(args interface{}, resp *uint32) error {
+	impl, err := s.Impl.FS()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &FSIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+	})
+	return nil
 }
 
 // --- Intent RPC Boilerplate ---
 
 type ExecuteArgs struct {
-	Name    string
-	ShellID uint32
+	Name      string
+	ContextID uint32
 }
 
 type IntentRPC struct {
@@ -117,14 +178,14 @@ type IntentRPC struct {
 	broker *plugin.MuxBroker
 }
 
-func (g *IntentRPC) Execute(name string, shell ShellIntegration) error {
-	// Register the shell implementation as a server so the plugin can call back
-	shellID := g.broker.NextId()
-	go g.broker.AcceptAndServe(shellID, &ShellIntegrationRPCServer{Impl: shell})
+func (g *IntentRPC) Execute(name string, ctx Context) error {
+	// Register the context implementation as a server so the plugin can call back
+	ctxID := g.broker.NextId()
+	go g.broker.AcceptAndServe(ctxID, &ContextRPCServer{Impl: ctx, broker: g.broker})
 
 	return g.client.Call("Plugin.Execute", ExecuteArgs{
-		Name:    name,
-		ShellID: shellID,
+		Name:      name,
+		ContextID: ctxID,
 	}, &struct{}{})
 }
 
@@ -134,15 +195,15 @@ type IntentRPCServer struct {
 }
 
 func (s *IntentRPCServer) Execute(args ExecuteArgs, resp *struct{}) error {
-	// Dial the host to get the shell client
-	conn, err := s.broker.Dial(args.ShellID)
+	// Dial the host to get the context client
+	conn, err := s.broker.Dial(args.ContextID)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	shell := &ShellIntegrationRPC{client: rpc.NewClient(conn)}
-	return s.Impl.Execute(args.Name, shell)
+	ctx := &ContextRPC{client: rpc.NewClient(conn), broker: s.broker}
+	return s.Impl.Execute(args.Name, ctx)
 }
 
 type IntentPlugin struct {
@@ -155,66 +216,4 @@ func (p *IntentPlugin) Server(b *plugin.MuxBroker) (interface{}, error) {
 
 func (p *IntentPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
 	return &IntentRPC{client: c, broker: b}, nil
-}
-
-// --- FSIntegration RPC Boilerplate ---
-
-type FSIntegration interface {
-	Integration
-}
-
-type FSIntegrationRPC struct{ client *rpc.Client }
-
-func (g *FSIntegrationRPC) Configure(config []byte) error {
-	var resp error
-	err := g.client.Call("Plugin.Configure", config, &resp)
-	if err != nil {
-		return err
-	}
-	return resp
-}
-
-func (g *FSIntegrationRPC) Tools() ([]byte, error) {
-	var resp []byte
-	err := g.client.Call("Plugin.Tools", new(interface{}), &resp)
-	return resp, err
-}
-
-func (g *FSIntegrationRPC) CallTool(name string, args []byte) ([]byte, error) {
-	var resp []byte
-	err := g.client.Call("Plugin.CallTool", CallToolArgs{Name: name, Args: args}, &resp)
-	return resp, err
-}
-
-type FSIntegrationRPCServer struct {
-	Impl FSIntegration
-}
-
-func (s *FSIntegrationRPCServer) Configure(config []byte, resp *error) error {
-	*resp = s.Impl.Configure(config)
-	return nil
-}
-
-func (s *FSIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
-	var err error
-	*resp, err = s.Impl.Tools()
-	return err
-}
-
-func (s *FSIntegrationRPCServer) CallTool(args CallToolArgs, resp *[]byte) error {
-	var err error
-	*resp, err = s.Impl.CallTool(args.Name, args.Args)
-	return err
-}
-
-type FSIntegrationPlugin struct {
-	Impl FSIntegration
-}
-
-func (p *FSIntegrationPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
-	return &FSIntegrationRPCServer{Impl: p.Impl}, nil
-}
-
-func (p *FSIntegrationPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
-	return &FSIntegrationRPC{client: c}, nil
 }

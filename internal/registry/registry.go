@@ -68,6 +68,7 @@ type Registry struct {
 	tools          map[string]Tool
 	defaultTools   map[string]Tool
 	descriptions  map[string]string
+	namespaceDescriptions map[string]string
 	specs         map[string]mcp.Tool
 	examples      map[string][]string
 	servers       []*MCPServer
@@ -97,6 +98,7 @@ func New(log zerolog.Logger) *Registry {
 		tools:          make(map[string]Tool),
 		defaultTools:   make(map[string]Tool),
 		descriptions:   make(map[string]string),
+		namespaceDescriptions: make(map[string]string),
 		specs:          make(map[string]mcp.Tool),
 		examples:       make(map[string][]string),
 		serverNames:    make(map[string]struct{}),
@@ -168,6 +170,13 @@ func (r *Registry) RegisterWithSpecAndExamples(spec mcp.Tool, examples []string,
 		delete(r.examples, spec.Name)
 	}
 	r.log.Debug().Str("tool", spec.Name).Msg("tool registered")
+}
+
+// RegisterNamespaceDescription registers a human-readable summary for a namespace.
+func (r *Registry) RegisterNamespaceDescription(name, description string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.namespaceDescriptions[name] = description
 }
 
 // RegisterDefault adds or replaces a Tool in the default/fallback set.
@@ -789,6 +798,13 @@ func (r *Registry) ActiveServerCount() int {
 
 // NamespaceDescription returns the human-readable summary for a mapped namespace.
 func (r *Registry) NamespaceDescription(name string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if desc, ok := r.namespaceDescriptions[name]; ok {
+		return desc
+	}
+
 	for _, d := range namespaceDefaults {
 		if d.namespace == name {
 			return d.description

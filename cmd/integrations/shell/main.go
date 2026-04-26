@@ -16,6 +16,10 @@ func (s *Shell) Configure(config []byte) error {
 	return nil
 }
 
+func (s *Shell) Description() (string, error) {
+	return "Built-in shell integration: run shell commands.", nil
+}
+
 func (s *Shell) Tools() ([]byte, error) {
 	return json.Marshal([]mcp.Tool{
 		mcp.NewTool(

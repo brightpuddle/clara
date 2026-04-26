@@ -9,7 +9,12 @@ import (
 
 type HelloIntent struct{}
 
-func (i *HelloIntent) Execute(name string, shell contract.ShellIntegration) error {
+func (i *HelloIntent) Execute(name string, ctx contract.Context) error {
+	shell, err := ctx.Shell()
+	if err != nil {
+		return err
+	}
+
 	// a) Call the provided shell
 	output, err := shell.Run("echo Hello " + name + " from shell")
 	if err != nil {

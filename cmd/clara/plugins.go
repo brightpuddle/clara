@@ -135,6 +135,11 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 			continue
 		}
 
+		desc, err := integration.Description()
+		if err == nil && desc != "" {
+			l.reg.RegisterNamespaceDescription(name, desc)
+		}
+
 		toolsBytes, err := integration.Tools()
 		if err != nil {
 			l.log.Error().Err(err).Str("name", name).Msg("failed to retrieve tools from integration")

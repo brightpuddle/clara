@@ -6,20 +6,23 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brightpuddle/clara/internal/mcpserver/fs"
 	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/hashicorp/go-plugin"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type FSPlugin struct {
-	server *fs.Server
+	server *Server
 }
 
 func (p *FSPlugin) Configure(config []byte) error {
 	// Currently no dynamic config needed, just initialize
-	p.server = fs.New(context.Background())
+	p.server = New(context.Background())
 	return nil
+}
+
+func (p *FSPlugin) Description() (string, error) {
+	return Description, nil
 }
 
 func (p *FSPlugin) Tools() ([]byte, error) {

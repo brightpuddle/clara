@@ -68,8 +68,21 @@ func runPrototype() {
 
 	// 3. Execute the Intent
 	fmt.Println("Clara: Executing 'hello' intent...")
-	err = intent.Execute("World", shell)
+	ctx := &prototypeContext{shell: shell}
+	err = intent.Execute("World", ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+type prototypeContext struct {
+	shell contract.ShellIntegration
+}
+
+func (c *prototypeContext) Shell() (contract.ShellIntegration, error) {
+	return c.shell, nil
+}
+
+func (c *prototypeContext) FS() (contract.FSIntegration, error) {
+	return nil, fmt.Errorf("FS not implemented in prototype")
 }

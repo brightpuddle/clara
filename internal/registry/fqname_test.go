@@ -12,8 +12,8 @@ func TestGetFQToolName(t *testing.T) {
 		tool   string
 		want   string
 	}{
-		{"clara-fs", "read_file", "clara-fs.read_file"},
-		{"clara-fs", "fs.search", "fs.search"},
+		{"clara-db", "query", "clara-db.query"},
+		{"clara-db", "db.search", "db.search"},
 		{"macos", "reminders_list", "reminders.list"},
 		{"macos", "mail_search", "mail.search"},
 		{"clara-search", "mail.search", "mail.search"},

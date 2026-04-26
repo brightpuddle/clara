@@ -86,5 +86,5 @@ mcp_servers:
 
 # Stdio MCP Gateway allows exposing tools to other local agents
 # stdio_mcp:
-#   expose_tools: ["fs.*", "db.*"]
+#   expose_tools: ["db.*"]
 #   expose_intents: ["*"]

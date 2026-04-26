@@ -347,17 +347,12 @@ func buildHandler(
 				for _, p := range providers {
 					var desc string
 					// Priority:
-					// 1. Explicit namespace description from config.yaml
+					// 1. Explicit namespace description (from config, built-in defaults, or native plugins)
 					// 2. Server description from MCP capabilities
 					if nsDesc := reg.NamespaceDescription(p.Name); nsDesc != "" {
 						desc = nsDesc
 					} else if caps := reg.GetCapabilities(p.Name); caps != nil && caps.Description != "" {
 						desc = caps.Description
-					}
-
-					// If no description is available, leave a blank space to keep spacing consistent.
-					if desc == "" {
-						desc = " "
 					}
 
 					result = append(result, map[string]any{

@@ -58,7 +58,7 @@ func TestFormatToolList(t *testing.T) {
 }
 
 func TestFilterToolsByPrefix(t *testing.T) {
-	tools := []registry.ToolInfo{{Name: "db.query"}, {Name: "db.exec"}, {Name: "fs.list_directory"}}
+	tools := []registry.ToolInfo{{Name: "db.query"}, {Name: "db.exec"}, {Name: "shell.run"}}
 
 	got := filterTools(tools, "db")
 	if len(got) != 2 {

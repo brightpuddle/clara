@@ -72,10 +72,8 @@ func executeNativeRun(
 
 	nativeIntent := raw.(contract.Intent)
 
-	// 2. Setup a host-side shell integration for the plugin to use
-	// For now, we use a simple wrapper that uses the registry's 'shell.run' tool if available,
-	// or falls back to os/exec for the PoC.
-	shell := &registryShell{
+	// 2. Setup a host-side context for the plugin to use
+	ctxProvider := &registryContext{
 		ctx: ctx,
 		reg: reg,
 		log: log,
@@ -99,7 +97,7 @@ func executeNativeRun(
 		Args:     map[string]any{"name": name},
 	})
 
-	err = nativeIntent.Execute(name, shell)
+	err = nativeIntent.Execute(name, ctxProvider)
 	if err != nil {
 		appendRunEvent(ctx, db, log, interpreter.StepEvent{
 			RunID:    runID,
@@ -122,6 +120,20 @@ func executeNativeRun(
 	return nil
 }
 
+type registryContext struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (c *registryContext) Shell() (contract.ShellIntegration, error) {
+	return &registryShell{ctx: c.ctx, reg: c.reg, log: c.log}, nil
+}
+
+func (c *registryContext) FS() (contract.FSIntegration, error) {
+	return nil, errors.New("FS integration not implemented in registry")
+}
+
 type registryShell struct {
 	ctx context.Context
 	reg *registry.Registry
@@ -129,6 +141,10 @@ type registryShell struct {
 }
 
 func (s *registryShell) Configure(config []byte) error { return nil }
+
+func (s *registryShell) Description() (string, error) {
+	return "Host-side registry shell integration", nil
+}
 
 func (s *registryShell) Tools() ([]byte, error) { return nil, nil }
 

@@ -43,7 +43,7 @@ var toolShowCmd = &cobra.Command{
 	Long: `Show a tool's description and parameter schema in a readable MCP-style format.
 
 Example:
-  clara tool show fs.list_directory`,
+  clara tool show db.query`,
 	Args:         cobra.ExactArgs(1),
 	RunE:         runToolShow,
 	SilenceUsage: true,
@@ -58,7 +58,6 @@ Arguments are passed as key=value pairs. Values are parsed as JSON when
 possible, otherwise they are treated as strings.
 
 Examples:
-  clara tool call fs.list_directory path=.
   clara tool call db.query sql='SELECT 1 as n'
   clara tool call db.query sql='SELECT ? as n' params='[1]'`,
 	Args:         cobra.MinimumNArgs(1),

@@ -1,6 +1,4 @@
-// Package fs provides a built-in MCP filesystem server for Clara.
-// It exposes file system operations as MCP tools over stdio.
-package fs
+package main
 
 import (
 	"context"
@@ -18,39 +16,39 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"gopkg.in/yaml.v3"
 )
 
 // Description is the human-readable summary shown in clara tool list.
 const Description = "Built-in filesystem server: read, write, list, search, move, and delete files."
 
-// Server wraps the MCP server with a runtime watch registry for dynamic subscriptions.
+// ToolHandler represents a tool and its execution handler.
+type ToolHandler struct {
+	Tool    mcp.Tool
+	Handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+}
+
+// Server wraps the filesystem tools and manages watches.
 type Server struct {
-	*server.MCPServer
+	tools   map[string]ToolHandler
 	ctx     context.Context
 	watchMu sync.Mutex
 	watches map[string]context.CancelFunc
 }
 
-// New creates a configured MCP server with all filesystem tools registered.
+// New creates a configured Server with all filesystem tools registered.
 func New(ctx context.Context) *Server {
 	s := &Server{
 		ctx:     ctx,
 		watches: make(map[string]context.CancelFunc),
+		tools:   make(map[string]ToolHandler),
 	}
-	s.MCPServer = server.NewMCPServer(
-		"clara-fs",
-		"0.1.0",
-		server.WithToolCapabilities(true),
-		server.WithInstructions(Description),
-	)
 
-	s.AddTool(mcp.NewTool("clara_list_events",
+	s.addTool(mcp.NewTool("clara_list_events",
 		mcp.WithDescription("List the available event triggers emitted by this server."),
 	), handleListEvents)
 
-	s.AddTool(mcp.NewTool("watch_subscribe",
+	s.addTool(mcp.NewTool("watch_subscribe",
 		mcp.WithDescription(
 			"Start watching a file or directory for changes. "+
 				"Returns a subscription_id that must be passed to watch_unsubscribe to stop watching. "+
@@ -65,7 +63,7 @@ func New(ctx context.Context) *Server {
 		),
 	), s.handleWatchSubscribe)
 
-	s.AddTool(mcp.NewTool("watch_unsubscribe",
+	s.addTool(mcp.NewTool("watch_unsubscribe",
 		mcp.WithDescription("Stop a previously registered file watch."),
 		mcp.WithString("subscription_id",
 			mcp.Required(),
@@ -73,7 +71,7 @@ func New(ctx context.Context) *Server {
 		),
 	), s.handleWatchUnsubscribe)
 
-	s.AddTool(mcp.NewTool("read_file",
+	s.addTool(mcp.NewTool("read_file",
 		mcp.WithDescription("Read the complete contents of a file from the filesystem."),
 		mcp.WithString("path",
 			mcp.Required(),
@@ -84,7 +82,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleReadFile)
 
-	s.AddTool(mcp.NewTool(
+	s.addTool(mcp.NewTool(
 		"write_file",
 		mcp.WithDescription(
 			"Write content to a file, creating it or overwriting it if it already exists.",
@@ -104,7 +102,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleWriteFile)
 
-	s.AddTool(mcp.NewTool("list_directory",
+	s.addTool(mcp.NewTool("list_directory",
 		mcp.WithDescription("List the contents of a directory."),
 		mcp.WithString("path",
 			mcp.Required(),
@@ -115,7 +113,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleListDirectory)
 
-	s.AddTool(mcp.NewTool("search_files",
+	s.addTool(mcp.NewTool("search_files",
 		mcp.WithDescription("Search for files matching a glob pattern under a directory."),
 		mcp.WithString("root",
 			mcp.Required(),
@@ -127,7 +125,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleSearchFiles)
 
-	s.AddTool(mcp.NewTool("move_file",
+	s.addTool(mcp.NewTool("move_file",
 		mcp.WithDescription("Move or rename a file or directory."),
 		mcp.WithString("source",
 			mcp.Required(),
@@ -139,7 +137,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleMoveFile)
 
-	s.AddTool(mcp.NewTool("delete_file",
+	s.addTool(mcp.NewTool("delete_file",
 		mcp.WithDescription("Delete a file or empty directory."),
 		mcp.WithString("path",
 			mcp.Required(),
@@ -147,7 +145,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleDeleteFile)
 
-	s.AddTool(mcp.NewTool("create_directory",
+	s.addTool(mcp.NewTool("create_directory",
 		mcp.WithDescription("Create a directory and all necessary parent directories."),
 		mcp.WithString("path",
 			mcp.Required(),
@@ -155,7 +153,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleCreateDirectory)
 
-	s.AddTool(mcp.NewTool(
+	s.addTool(mcp.NewTool(
 		"get_file_info",
 		mcp.WithDescription(
 			"Get metadata about a file or directory (size, modification time, type).",
@@ -166,7 +164,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handleGetFileInfo)
 
-	s.AddTool(mcp.NewTool(
+	s.addTool(mcp.NewTool(
 		"path_exists",
 		mcp.WithDescription("Return whether a file or directory exists at the given path."),
 		mcp.WithString("path",
@@ -175,7 +173,7 @@ func New(ctx context.Context) *Server {
 		),
 	), handlePathExists)
 
-	s.AddTool(mcp.NewTool("fs.search",
+	s.addTool(mcp.NewTool("fs.search",
 		mcp.WithDescription("Search for files using macOS mdfind (Spotlight)."),
 		mcp.WithString("query",
 			mcp.Required(),
@@ -190,6 +188,20 @@ func New(ctx context.Context) *Server {
 	), s.handleMdfindSearch)
 
 	return s
+}
+
+func (s *Server) addTool(
+	tool mcp.Tool,
+	handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error),
+) {
+	s.tools[tool.Name] = ToolHandler{
+		Tool:    tool,
+		Handler: handler,
+	}
+}
+
+func (s *Server) ListTools() map[string]ToolHandler {
+	return s.tools
 }
 
 func (s *Server) handleMdfindSearch(
@@ -220,17 +232,6 @@ func (s *Server) handleMdfindSearch(
 		return mcp.NewToolResultError(fmt.Sprintf("marshal results: %v", err)), nil
 	}
 	return res, nil
-}
-
-// Serve starts the filesystem MCP server on stdio and blocks until ctx is done.
-// If watchPath is not empty, it registers a file watcher for that path using
-// the watch_subscribe mechanism so it is tracked and cleaned up consistently.
-func Serve(ctx context.Context, watchPath string, recursive bool) error {
-	s := New(ctx)
-	if watchPath != "" {
-		go watchAndNotify(ctx, watchPath, recursive)
-	}
-	return server.ServeStdio(s.MCPServer)
 }
 
 func (s *Server) handleWatchSubscribe(

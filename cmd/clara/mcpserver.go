@@ -76,8 +76,6 @@ func addMCPServers(reg *registry.Registry, logger zerolog.Logger) error {
 
 func fallbackDescription(serverName string) string {
 	switch serverName {
-	case "fs":
-		return "Built-in filesystem server: read, write, list, search, move, and delete files."
 	case "db":
 		return "Built-in SQLite MCP server with query, exec, and vector search tools."
 	case "llm":
