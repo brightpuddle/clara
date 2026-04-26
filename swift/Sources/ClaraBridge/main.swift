@@ -301,7 +301,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         [
             tool(
                 name: "clara_list_events",
-                description: "List the available event triggers emitted by this server for use in Starlark 'task(on_event, trigger=...)' declarations.",
+                description: "List the available event triggers emitted by this server for use in intent event declarations.",
                 properties: []
             ),
             tool(

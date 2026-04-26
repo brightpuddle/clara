@@ -159,7 +159,7 @@ func TestAssurance_TUIOffline_Send(t *testing.T) {
 
 func TestAssurance_TUIOffline_SendInteractive(t *testing.T) {
 	// Use separate harnesses to avoid sequence pollution
-	t.Run("tui.notify.send_interactive in starlark queues and exits", func(t *testing.T) {
+	t.Run("tui.notify.send_interactive queues and exits", func(t *testing.T) {
 		h := NewE2EHarness(t)
 
 		prompt := "Queue me"

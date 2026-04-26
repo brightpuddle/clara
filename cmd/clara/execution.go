@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
 
 	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
+	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/cockroachdb/errors"
+	"github.com/hashicorp/go-plugin"
 	"github.com/rs/zerolog"
 )
 
@@ -21,10 +25,127 @@ func executeIntentRun(
 	db *store.Store,
 	log zerolog.Logger,
 ) error {
-	if intent.WorkflowKind() == orchestrator.WorkflowTypeStarlark {
-		return executeStarlarkRun(ctx, intent, runID, entrypoint, args, reg, db, log)
+	switch intent.WorkflowKind() {
+	case orchestrator.WorkflowTypeNative:
+		return executeNativeRun(ctx, intent, runID, entrypoint, args, reg, db, log)
+	default:
+		return executeStateMachineRun(ctx, intent, runID, reg, db, log)
 	}
-	return executeStateMachineRun(ctx, intent, runID, reg, db, log)
+}
+
+func executeNativeRun(
+	ctx context.Context,
+	intent *orchestrator.Intent,
+	runID string,
+	entrypoint string,
+	args any,
+	reg *registry.Registry,
+	db *store.Store,
+	log zerolog.Logger,
+) error {
+	// For native plugins, the 'Script' field contains the path to the binary
+	pluginPath := intent.Script
+	if pluginPath == "" {
+		return errors.New("native intent missing plugin path")
+	}
+
+	// 1. Setup the plugin client
+	client := plugin.NewClient(&plugin.ClientConfig{
+		HandshakeConfig: contract.HandshakeConfig,
+		Plugins: map[string]plugin.Plugin{
+			"intent": &contract.IntentPlugin{},
+		},
+		Cmd:    exec.Command(pluginPath),
+		Logger: buildHCLogAdapter(log, intent.ID),
+	})
+	defer client.Kill()
+
+	rpcClient, err := client.Client()
+	if err != nil {
+		return errors.Wrap(err, "connect to native intent plugin")
+	}
+
+	raw, err := rpcClient.Dispense("intent")
+	if err != nil {
+		return errors.Wrap(err, "dispense native intent")
+	}
+
+	nativeIntent := raw.(contract.Intent)
+
+	// 2. Setup a host-side shell integration for the plugin to use
+	// For now, we use a simple wrapper that uses the registry's 'shell.run' tool if available,
+	// or falls back to os/exec for the PoC.
+	shell := &registryShell{
+		ctx: ctx,
+		reg: reg,
+		log: log,
+	}
+
+	// 3. Execute
+	name := "World" // Default for the PoC
+	if s, ok := args.(string); ok {
+		name = s
+	} else if m, ok := args.(map[string]any); ok {
+		if n, ok := m["name"].(string); ok {
+			name = n
+		}
+	}
+
+	appendRunEvent(ctx, db, log, interpreter.StepEvent{
+		RunID:    runID,
+		IntentID: intent.ID,
+		State:    "NATIVE",
+		Action:   "execute",
+		Args:     map[string]any{"name": name},
+	})
+
+	err = nativeIntent.Execute(name, shell)
+	if err != nil {
+		appendRunEvent(ctx, db, log, interpreter.StepEvent{
+			RunID:    runID,
+			IntentID: intent.ID,
+			State:    "NATIVE",
+			Action:   "execute",
+			Error:    err.Error(),
+		})
+		return err
+	}
+
+	appendRunEvent(ctx, db, log, interpreter.StepEvent{
+		RunID:    runID,
+		IntentID: intent.ID,
+		State:    "NATIVE",
+		Action:   "execute",
+		Result:   "completed",
+	})
+
+	return nil
+}
+
+type registryShell struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (s *registryShell) Run(command string) (string, error) {
+	s.log.Debug().Str("command", command).Msg("native intent requested shell execution")
+
+	// Try calling the 'shell.run' tool via registry
+	if s.reg.Has("shell.run") {
+		res, err := s.reg.Call(s.ctx, "shell.run", map[string]any{"command": command})
+		if err == nil {
+			if s, ok := res.(string); ok {
+				return s, nil
+			}
+			return fmt.Sprintf("%v", res), nil
+		}
+	}
+
+	// Fallback to local execution for PoC
+	cmd := exec.Command("bash", "-c", command)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 func executeStateMachineRun(
@@ -35,19 +156,13 @@ func executeStateMachineRun(
 	db *store.Store,
 	log zerolog.Logger,
 ) error {
-	it := interpreter.New(reg, log).
-		WithOnChange(func(ctx context.Context, runID, intentID, state string, mem map[string]any) {
-			if err := db.SaveRunState(ctx, runID, intentID, state, mem); err != nil {
-				log.Warn().Err(err).Str("run_id", runID).Msg("failed to persist run state")
-			}
-		}).
-		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-			appendRunEvent(ctx, db, log, event)
-		})
+	it := interpreter.New(reg, log).WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
+		appendRunEvent(ctx, db, log, event)
+	})
 	return it.Execute(ctx, intent, intent.InitialState, interpreter.RunOptions{RunID: runID})
 }
 
-func executeStarlarkRun(
+func runIntentInBackground(
 	ctx context.Context,
 	intent *orchestrator.Intent,
 	runID string,
@@ -56,76 +171,50 @@ func executeStarlarkRun(
 	reg *registry.Registry,
 	db *store.Store,
 	log zerolog.Logger,
-) error {
-	it := interpreter.NewStarlark(reg, log)
-	if cfg != nil {
-		it = it.WithMCPTimeout(cfg.MCPStartupTimeout)
+) {
+	var mem map[string]any
+	if m, ok := args.(map[string]any); ok {
+		mem = m
 	}
-	it = it.WithOnChange(func(ctx context.Context, runID, intentID, state string, mem map[string]any) {
-		if err := db.SaveRunState(ctx, runID, intentID, state, mem); err != nil {
-			log.Warn().Err(err).Str("run_id", runID).Msg("failed to persist starlark run state")
-		}
-	}).
-		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-			appendRunEvent(ctx, db, log, event)
-		}).
-		WithHistory(
-			func(ctx context.Context, runID string) ([]interpreter.ReplayEntry, error) {
-				entries, err := db.LoadReplayHistory(ctx, runID)
-				if err != nil {
-					return nil, err
-				}
-				converted := make([]interpreter.ReplayEntry, 0, len(entries))
-				for _, entry := range entries {
-					converted = append(converted, interpreter.ReplayEntry{
-						Sequence:   entry.Sequence,
-						RunID:      entry.RunID,
-						IntentID:   entry.IntentID,
-						Entrypoint: entry.Entrypoint,
-						Kind:       entry.Kind,
-						Name:       entry.Name,
-						Args:       entry.Args,
-						Result:     entry.Result,
-						Error:      entry.Error,
-					})
-				}
-				return converted, nil
-			},
-			func(ctx context.Context, runID, intentID string, entry interpreter.ReplayEntry) error {
-				return db.AppendReplayHistory(ctx, store.ReplayHistoryEntry{
-					Sequence:   entry.Sequence,
-					RunID:      runID,
-					IntentID:   intentID,
-					Entrypoint: entry.Entrypoint,
-					Kind:       entry.Kind,
-					Name:       entry.Name,
-					Args:       entry.Args,
-					Result:     entry.Result,
-					Error:      entry.Error,
-				})
-			},
-		)
 
-	err := it.Execute(ctx, intent, "", interpreter.RunOptions{
-		RunID:       runID,
-		Entrypoint:  entrypoint,
-		HandlerArgs: args,
-	})
-	var pauseErr *interpreter.PauseError
-	if errors.As(err, &pauseErr) {
-		if markErr := db.MarkRunWaiting(context.WithoutCancel(ctx), runID, pauseErr.Request.Name, pauseErr.Request.Args); markErr != nil {
-			return errors.Wrap(markErr, "mark starlark run waiting")
-		}
-		appendRunEvent(context.WithoutCancel(ctx), db, log, interpreter.StepEvent{
-			RunID:    runID,
-			IntentID: intent.ID,
-			State:    "SCRIPT",
-			Action:   "wait." + pauseErr.Request.Name,
-			Args:     pauseErr.Request.Args,
-			Error:    "waiting for resume input",
-		})
+	if err := db.InitRun(
+		context.WithoutCancel(ctx),
+		runID,
+		intent.ID,
+		initialRunState(intent),
+		intent.WorkflowKind(),
+		entrypoint,
+		intent.Script,
+		mem,
+	); err != nil {
+		log.Error().Err(err).Str("run_id", runID).Msg("failed to initialize run")
+		return
 	}
-	return err
+
+	err := executeIntentRun(ctx, intent, runID, entrypoint, args, reg, db, log)
+	if err != nil {
+		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "failed", err.Error()); finishErr != nil {
+			log.Warn().
+				Err(finishErr).
+				Str("run_id", runID).
+				Msg("failed to persist run failure")
+		}
+		return
+	}
+
+	if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "completed", ""); finishErr != nil {
+		log.Warn().
+			Err(finishErr).
+			Str("run_id", runID).
+			Msg("failed to persist run completion")
+	}
+}
+
+func initialRunState(intent *orchestrator.Intent) string {
+	if intent.WorkflowKind() == orchestrator.WorkflowTypeNative {
+		return "NATIVE"
+	}
+	return intent.InitialState
 }
 
 func appendRunEvent(
@@ -147,35 +236,6 @@ func appendRunEvent(
 	}
 }
 
-func resumeIntentByIDInBackground(
-	ctx context.Context,
-	intent *orchestrator.Intent,
-	input any,
-	reg *registry.Registry,
-	db *store.Store,
-	log zerolog.Logger,
-) {
-	runState, _, err := db.LoadLatestWaitingRun(ctx, intent.ID)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Str("intent_id", intent.ID).
-			Msg("failed to load waiting run for trigger input")
-		return
-	}
-	if runState.RunID == "" {
-		log.Warn().Str("intent_id", intent.ID).Msg("no waiting run found for trigger input")
-		return
-	}
-	if err := appendWaitInput(ctx, db, runState, input); err != nil {
-		log.Error().Err(err).Str("run_id", runState.RunID).Msg("failed to append waiting input")
-		return
-	}
-	if err := resumeStoredStarlarkRun(ctx, runState, reg, db, log); err != nil {
-		log.Error().Err(err).Str("run_id", runState.RunID).Msg("failed to resume waiting run")
-	}
-}
-
 func cancelLatestWaitingRun(
 	ctx context.Context,
 	intentID string,
@@ -191,84 +251,5 @@ func cancelLatestWaitingRun(
 	}
 	if err := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "cancelled", "stopped by user"); err != nil {
 		log.Warn().Err(err).Str("run_id", runState.RunID).Msg("failed to cancel waiting run")
-	}
-}
-
-func appendWaitInput(
-	ctx context.Context,
-	db *store.Store,
-	runState store.RunState,
-	input any,
-) error {
-	history, err := db.LoadReplayHistory(ctx, runState.RunID)
-	if err != nil {
-		return errors.Wrap(err, "load replay history")
-	}
-	if err := db.AppendReplayHistory(ctx, store.ReplayHistoryEntry{
-		RunID:      runState.RunID,
-		IntentID:   runState.IntentID,
-		Entrypoint: runState.Entrypoint,
-		Sequence:   len(history),
-		Kind:       "wait",
-		Name:       runState.WaitName,
-		Args:       runState.WaitArgs,
-		Result:     input,
-	}); err != nil {
-		return errors.Wrap(err, "append wait result")
-	}
-	return nil
-}
-
-func resumeStoredStarlarkRun(
-	ctx context.Context,
-	runState store.RunState,
-	reg *registry.Registry,
-	db *store.Store,
-	log zerolog.Logger,
-) error {
-	intent := &orchestrator.Intent{
-		ID:           runState.IntentID,
-		WorkflowType: orchestrator.WorkflowTypeStarlark,
-		Script:       runState.ScriptSource,
-	}
-	if err := intent.Validate(); err != nil {
-		return errors.Wrap(err, "validate stored starlark intent")
-	}
-	if err := db.InitRun(
-		context.WithoutCancel(ctx),
-		runState.RunID,
-		runState.IntentID,
-		"SCRIPT",
-		orchestrator.WorkflowTypeStarlark,
-		runState.Entrypoint,
-		runState.ScriptSource,
-		nil,
-	); err != nil {
-		return errors.Wrap(err, "reinitialize run")
-	}
-
-	err := executeIntentRun(ctx, intent, runState.RunID, runState.Entrypoint, nil, reg, db, log)
-	var pauseErr *interpreter.PauseError
-	switch {
-	case ctx.Err() != nil:
-		return nil
-	case errors.As(err, &pauseErr):
-		return nil
-	case err != nil:
-		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "failed", err.Error()); finishErr != nil {
-			log.Warn().
-				Err(finishErr).
-				Str("run_id", runState.RunID).
-				Msg("failed to persist resumed run failure")
-		}
-		return errors.Wrap(err, "resume workflow")
-	default:
-		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runState.RunID, "completed", ""); finishErr != nil {
-			log.Warn().
-				Err(finishErr).
-				Str("run_id", runState.RunID).
-				Msg("failed to persist resumed run completion")
-		}
-		return nil
 	}
 }

@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/config"
-	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -195,18 +195,8 @@ func (h *E2EHarness) registerDaemonTools() {
 			}
 		}
 
-		args["id"] = float64(id)
-		args["run_id"] = runID
-		args["intent_id"] = intentID
-		return nil, &interpreter.PauseError{
-			Request: interpreter.PauseRequest{
-				Name: "tui.notify.send_interactive",
-				Args: args,
-			},
-		}
+		return nil, errors.New("workflow paused: waiting for TUI input")
 	})
-
-	// Legacy db.exec support removed (should use tui.answer IPC)
 }
 
 func (h *E2EHarness) startIPCServer() {
@@ -251,7 +241,7 @@ func (h *E2EHarness) startIPCServer() {
 				w.Write(&ipc.Response{Message: "answer recorded"})
 			}
 		case ipc.MethodStart:
-			w.Write(&ipc.Response{Message: "Harness: Resume ignored (stateless)"})
+			w.Write(&ipc.Response{Message: "Harness: Start ignored (stateless)"})
 		case ipc.MethodMCPRegister:
 			token := "test-token"
 			socketPath := h.Config.DynamicMCPSocketPath()

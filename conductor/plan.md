@@ -1,29 +1,29 @@
 # TUI Notification End-to-End Assurance Plan
 
 ## Objective
-Implement a comprehensive end-to-end test suite for TUI notifications to ensure bidirectional behavior works correctly in all scenarios (TUI open/closed, Starlark scripts, CLI tool calls) and to prevent regressions like the "duplicate prompt" issue.
+Implement a comprehensive end-to-end test suite for TUI notifications to ensure bidirectional behavior works correctly in all scenarios (TUI open/closed, CLI tool calls) and to prevent regressions like the "duplicate prompt" issue.
 
 ## Scenarios to Cover
 
 ### 1. TUI Open Scenarios
 - [ ] `tui.notify.send` sends notification to the TUI.
 - [ ] `clara tool call tui.notify.send` sends notification to the TUI and completes.
-- [ ] `tui.notify.send_interactive` (Starlark) blocks until user responds in TUI.
-- [ ] Script resumes correctly with the user's response.
+- [ ] `tui.notify.send_interactive` blocks until user responds in TUI.
+- [ ] Workflow resumes correctly with the user's response.
 - [ ] `clara tool call tui.notify.send_interactive` blocks until TUI response and logs it.
 
 ### 2. TUI Offline Scenarios
 - [ ] `tui.notify.send` logs to intent history and continues without error.
 - [ ] `clara tool call tui.notify.send` logs message and terminates.
-- [ ] `tui.notify.send_interactive` (Starlark) pauses script and queues in DB.
-- [ ] Script resumes with correct history replay when TUI eventually answers.
+- [ ] `tui.notify.send_interactive` pauses workflow and queues in DB.
+- [ ] Workflow resumes when TUI eventually answers.
 - [ ] `clara tool call tui.notify.send_interactive` blocks until TUI opens and answers.
 - [ ] Breaking out of the CLI call (Ctrl+C) removes the queued notification from DB.
 
 ### 3. Persistence & Replay Scenarios
 - [ ] Queued notifications are presented in oldest-first sequence when TUI opens.
 - [ ] Answered notifications are NEVER presented again.
-- [ ] Starlark replay correctly skips already-answered interactive prompts.
+- [ ] Replay correctly skips already-answered interactive prompts.
 - [ ] No "waiting for resume input" errors for non-interactive notifications.
 
 ## Implementation Steps
@@ -63,4 +63,3 @@ Implement a comprehensive end-to-end test suite for TUI notifications to ensure 
 - [x] Update conductor/product.md with new vision and objectives
 - [x] Update conductor/tech-stack.md to include Linux support
 - [x] Cleanup conductor/workflow.md by removing mobile-specific boilerplate
-

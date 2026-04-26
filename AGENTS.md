@@ -7,7 +7,7 @@ orchestrator. It is a background daemon written in Go that:
 
 1. Proxies and aggregates MCP (Model Context Protocol) servers into a unified
    tool registry.
-2. Executes **Intents** authored as `.star` Starlark workflows at runtime.
+2. Executes **Intents** authored as Native Go plugins at runtime.
 3. Persists operational state (runs, checkpoints, metadata) in an internal
    SQLite store.
 4. Treats every intent-visible capability as an MCP service.
@@ -29,7 +29,7 @@ services available, whether they are local or online.
 
 ```bash
 # Build
-make build          # go build -o clara ./cmd/clara
+make build          # builds clara and all plugins in ./bin/
 go build ./cmd/clara
 
 # Test (all)
@@ -75,16 +75,17 @@ cmd/
     serve.go        # clara serve (daemon)
     agent.go        # clara agent {start,stop,status,logs}
     intent.go       # clara intent {list,run,trigger,...}
-    run.go          # clara run <task-file>
     tool.go         # clara tool {list,show,call}
     mcp.go          # clara mcp {fs,db,...}
     gateway.go      # clara gateway (aggregated MCP server)
+  intents/          # Native Go plugin intents
+  integrations/     # Native Go plugin integrations
 internal/
   config/           # Config loader (config.yaml + os.ExpandEnv)
   orchestrator/     # Intent, State, Transition types (core domain)
   registry/         # MCP client management + unified tool registry
   interpreter/      # State machine Execute loop (expr-lang conditions)
-  supervisor/       # .star file watcher + runtime lifecycle
+  supervisor/       # Intent lifecycle management
   mcpserver/        # Built-in MCP servers (fs/, db/, ollamaembeddings/)
   store/            # Internal daemon persistence (SQLite)
   tui/              # Interactive TUI (bubbletea)
@@ -125,14 +126,14 @@ Order: standard library → third-party → internal
 
 ### Naming Conventions
 
-- **Files:** `snake_case.go` (e.g., `intent_loader.go`, `mcp_server.go`).
+- **Files:** `snake_case.go` (e.g., `mcp_server.go`).
 - **Packages:** short, lowercase, no underscores (e.g., `config`,
   `orchestrator`, `mcpserver`).
 - **Exported identifiers:** `CamelCase` (e.g., `Intent`, `Validate`,
   `NewRegistry`).
 - **Unexported identifiers:** `lowerCamelCase` (e.g., `loadConfig`,
   `parseIntent`).
-- **Constants:** `CamelCase` for exported (e.g., `WorkflowTypeStarlark`,
+- **Constants:** `CamelCase` for exported (e.g., `WorkflowTypeNative`,
   `IntentModeOnDemand`).
 - Constructor functions: `New<Type>(...)`.
 
@@ -243,7 +244,7 @@ Key dependencies:
 | Error handling (stacktraces) | `github.com/cockroachdb/errors` |
 | SQLite (CGO-free)            | `github.com/ncruces/go-sqlite3` |
 | State machine conditions     | `github.com/expr-lang/expr`     |
-| Starlark runtime             | `go.starlark.net`               |
+| Native Go plugins            | `github.com/hashicorp/go-plugin`|
 | CLI                          | `github.com/spf13/cobra`        |
 | MCP client/server            | `github.com/mark3labs/mcp-go`   |
 | Structured concurrency       | `github.com/sourcegraph/conc`   |
@@ -255,8 +256,6 @@ Key dependencies:
 
 - **Intent-visible services must be MCP services.** Do not add direct
   daemon-only tools for intents.
-- **Authored intents are `.star` files.** Do not introduce new
-  JSON/YAML/Markdown intent formats.
 - **The internal store is private.** Clara's SQLite DB is for orchestration
   persistence only.
 - **Gateway mode preserves protocol isolation.** `clara gateway` and MCP stdio
@@ -265,15 +264,6 @@ Key dependencies:
   transport paths.
 - **Keep docs in sync.** Feature and architectural changes must update
   `README.md`.
-
-## Project Sources of Truth
-
-The primary sources of truth for project rules, architecture, and workflow are
-maintained in the `conductor/` directory:
-
-- [Product Definition](conductor/product.md)
-- [Tech Stack](conductor/tech-stack.md)
-- [Workflow](conductor/workflow.md)
 
 ## Project Sources of Truth
 

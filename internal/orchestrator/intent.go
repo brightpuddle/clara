@@ -75,29 +75,18 @@ func (b *Intent) Validate() error {
 				return err
 			}
 		}
-	case WorkflowTypeStarlark:
+	case WorkflowTypeNative:
+		// Native workflows use the Script field to store the binary path
 		if b.Script == "" {
 			return &ValidationError{
 				Field:   "script",
-				Message: "must not be empty for starlark workflows",
-			}
-		}
-		if len(b.States) > 0 {
-			return &ValidationError{
-				Field:   "states",
-				Message: "must be empty for starlark workflows",
-			}
-		}
-		if b.InitialState != "" {
-			return &ValidationError{
-				Field:   "initial_state",
-				Message: "must be empty for starlark workflows",
+				Message: "must not be empty for native workflows",
 			}
 		}
 	default:
 		return &ValidationError{
 			Field:   "workflow_type",
-			Message: "must be one of state_machine or starlark",
+			Message: "must be one of state_machine or native",
 		}
 	}
 	return nil
@@ -105,7 +94,7 @@ func (b *Intent) Validate() error {
 
 const (
 	WorkflowTypeStateMachine = "state_machine"
-	WorkflowTypeStarlark     = "starlark"
+	WorkflowTypeNative       = "native"
 
 	IntentModeOnDemand = "on_demand"
 	IntentModeSchedule = "schedule"
@@ -164,15 +153,10 @@ func (t *Task) validate(index int) error {
 // WorkflowKind returns the active execution engine for this Intent.
 func (b *Intent) WorkflowKind() string {
 	switch b.WorkflowType {
-	case "", WorkflowTypeStateMachine:
-		if b.Script != "" && len(b.States) == 0 {
-			return WorkflowTypeStarlark
-		}
-		return WorkflowTypeStateMachine
-	case WorkflowTypeStarlark:
-		return WorkflowTypeStarlark
+	case WorkflowTypeNative:
+		return WorkflowTypeNative
 	default:
-		return b.WorkflowType
+		return WorkflowTypeStateMachine
 	}
 }
 
@@ -269,8 +253,6 @@ func (e *ValidationError) Error() string {
 }
 
 // ParseIntent deserializes a JSON or YAML document into an Intent and validates it.
-// It remains useful for tests and internal compiled forms even though authored
-// intent files are now expected to be `.star`.
 func ParseIntent(data []byte) (*Intent, error) {
 	var b Intent
 	if err := json.Unmarshal(data, &b); err != nil {

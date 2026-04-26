@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/config"
-	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
@@ -124,6 +123,11 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			}
 		})
 	attachServer := registry.NewDynamicAttachServer(cfg.DynamicMCPSocketPath(), reg, logger)
+
+	loader := newPluginLoader(reg, sup, logger)
+	if err := loader.loadAll(); err != nil {
+		logger.Error().Err(err).Msg("failed to load native plugins")
+	}
 
 	handler := buildHandler(reg, sup, attachServer, db, logger, shutdown)
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
@@ -270,44 +274,6 @@ func buildHandler(
 			}
 			writeResp(&ipc.Response{Data: list})
 
-		case ipc.MethodRun:
-			taskFile, _ := req.Params["path"].(string)
-			content, _ := req.Data.(string)
-			if taskFile == "" {
-				writeResp(&ipc.Response{Error: "missing path parameter"})
-				return
-			}
-			if content == "" {
-				// Try reading from path if content not provided (might be on the same machine)
-				data, err := os.ReadFile(taskFile)
-				if err != nil {
-					writeResp(&ipc.Response{Error: "failed to read task file: " + err.Error()})
-					return
-				}
-				content = string(data)
-			}
-
-			namespaces := []string{"llm", "search", "clara_tui"}
-			if cfg != nil {
-				for _, srv := range cfg.MCPServers {
-					namespaces = append(namespaces, srv.Name)
-				}
-			}
-
-			intent, err := orchestrator.LoadIntentFile(taskFile, []byte(content), namespaces)
-			if err != nil {
-				writeResp(&ipc.Response{Error: "failed to load intent: " + err.Error()})
-				return
-			}
-
-			runID := fmt.Sprintf("%s-remote-%d", intent.ID, time.Now().UnixNano())
-			go runIntentInBackground(ctx, intent, runID, "", req.Args, reg, db, log)
-
-			writeResp(&ipc.Response{
-				Message: "intent " + intent.ID + " started remotely",
-				Data:    map[string]any{"run_id": runID, "intent_id": intent.ID},
-			})
-
 		case ipc.MethodStart:
 			id, _ := req.Params["id"].(string)
 			if id == "" {
@@ -320,23 +286,6 @@ func buildHandler(
 				return
 			}
 			taskName, _ := req.Params["task"].(string)
-
-			// --input delivers JSON to a waiting run rather than starting a new one.
-			if input, ok := req.Params["input"]; ok {
-				runState, _, err := db.LoadLatestWaitingRun(ctx, id)
-				if err != nil || runState.RunID == "" {
-					writeResp(&ipc.Response{
-						Error: "intent " + id + " has no waiting run to receive input",
-					})
-					return
-				}
-				go resumeIntentByIDInBackground(ctx, intent, input, reg, db, log)
-				writeResp(&ipc.Response{
-					Message: "delivered input to waiting intent " + id,
-					Data:    map[string]any{"run_id": runState.RunID},
-				})
-				return
-			}
 
 			// Dispatch by task mode: on-demand fires a single run; auto tasks
 			// (schedule/worker/event) activate the persistent loop.
@@ -375,7 +324,6 @@ func buildHandler(
 				writeResp(&ipc.Response{Error: err.Error()})
 				return
 			}
-			cancelLatestWaitingRun(ctx, id, db, log)
 			if taskName != "" {
 				writeResp(&ipc.Response{Message: "intent " + id + " task " + taskName + " stopped"})
 			} else {
@@ -756,64 +704,6 @@ func buildHandler(
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})
 		}
 	}
-}
-
-func runIntentInBackground(
-	ctx context.Context,
-	intent *orchestrator.Intent,
-	runID string,
-	entrypoint string,
-	args any,
-	reg *registry.Registry,
-	db *store.Store,
-	log zerolog.Logger,
-) {
-	var mem map[string]any
-	if m, ok := args.(map[string]any); ok {
-		mem = m
-	}
-	if err := db.InitRun(
-		context.WithoutCancel(ctx),
-		runID,
-		intent.ID,
-		initialRunState(intent),
-		intent.WorkflowKind(),
-		entrypoint,
-		intent.Script,
-		mem,
-	); err != nil {
-		log.Warn().Err(err).Str("run_id", runID).Msg("failed to initialize manual run")
-		return
-	}
-	err := executeIntentRun(ctx, intent, runID, entrypoint, args, reg, db, log)
-	if err != nil {
-		var pauseErr *interpreter.PauseError
-		if errors.As(err, &pauseErr) {
-			log.Info().Str("intent_id", intent.ID).Str("run_id", runID).Msg("manual intent paused")
-			return
-		}
-		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "failed", err.Error()); finishErr != nil {
-			log.Warn().
-				Err(finishErr).
-				Str("run_id", runID).
-				Msg("failed to persist manual run failure")
-		}
-		log.Error().Err(err).Str("intent_id", intent.ID).Msg("manual intent run error")
-		return
-	}
-	if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "completed", ""); finishErr != nil {
-		log.Warn().
-			Err(finishErr).
-			Str("run_id", runID).
-			Msg("failed to persist manual run completion")
-	}
-}
-
-func initialRunState(intent *orchestrator.Intent) string {
-	if intent.WorkflowKind() == orchestrator.WorkflowTypeStarlark {
-		return "SCRIPT"
-	}
-	return intent.InitialState
 }
 
 // intentTaskIsOnDemand reports whether the target task for a start request is
@@ -1205,16 +1095,8 @@ func registerPermanentTUITools(reg *registry.Registry, db *store.Store, logger z
 			}
 		}
 
-		// If TUI is offline and it's a script run, return PauseError to the interpreter
-		args["id"] = id
-		args["run_id"] = runID
-		args["intent_id"] = intentID
-		return nil, &interpreter.PauseError{
-			Request: interpreter.PauseRequest{
-				Name: "tui.notify.send_interactive",
-				Args: args,
-			},
-		}
+		// If TUI is offline and it's a script run, pause execution.
+		return nil, errors.New("workflow paused: waiting for TUI input")
 	})
 }
 

@@ -30,10 +30,10 @@ itself is a reliable, repeatable, and inspectable workflow that runs anywhere.
 
 - **Reliability:** You shouldn't have to wonder if your file organizer "felt
   like" working today.
-- **Efficiency:** Running a Starlark script is orders of magnitude faster and
+- **Efficiency:** Running a native binary is orders of magnitude faster and
   cheaper than prompting an LLM for every step.
 - **Inspectability:** You can diff, version, and improve your rulesets over
-  time.
+  time using standard software engineering tools.
 - **Durable State:** Clara manages long-running tasks that can wait for human
   input or external events without keeping a "hot" LLM context alive.
 
@@ -46,11 +46,12 @@ Clara is built on three core pillars:
    capability exists (Filesystem, Chrome, Slack, Photos), it is delivered
    through an MCP server. This keeps the core daemon focused on orchestration
    and policy.
-2. **The Intents (Starlark):** High-level workflows are authored in Starlark
-   (`.star`). These are declarative, Python-like scripts that define how tools
-   should be used, when they should trigger, and how they should handle state.
+2. **The Intents (Native Go):** High-level workflows are authored as Native Go
+   plugins. These are compiled binaries that define how tools should be used,
+   when they should trigger, and how they should handle state, communicating
+   with Clara via a high-performance RPC interface.
 3. **The Daemon:** A Go-based background service that manages MCP server
-   lifecycles, watches your tasks directory, executes intents, and persists
+   lifecycles, discovers native plugins, executes intents, and persists
    state in a local SQLite store.
 
 ## Getting Started
@@ -68,19 +69,9 @@ integrations like Photos/Reminders), and the companion Chrome extension.
 
 ### Your First Intent
 
-Create a file in `~/.local/share/clara/tasks/hello.star`:
+Native intents are authored in Go and compiled into plugins. Once installed in `~/.config/clara/intents/`, they are automatically discovered by the daemon.
 
-```python
-# hello.star
-clara.describe("A simple directory listing")
-
-def main():
-    # Call any tool from the unified MCP registry
-    files = fs.list_directory(path = ".")
-    return {"found": len(files)}
-```
-
-Run it immediately:
+Run an intent immediately:
 
 ```bash
 clara intent start hello
@@ -90,75 +81,21 @@ clara intent logs hello
 ## Writing Intents
 
 Intents are more than just scripts; they are managed tasks. Clara supports
-several execution modes (see the [Starlark API Reference](docs/api/starlark.md) for full details):
+several execution modes:
 
 - **On-Demand:** Triggered manually via CLI or TUI.
 - **Scheduled:** Cron-style execution (e.g., `0 7 * * *` for your morning
   brief).
-- **Worker:** Fixed-interval loops (e.g., `10m` for a file sync).
-- Event-Driven: Reactive to MCP notifications (e.g.,
-  `clara.on(macos.theme_on_change)`).
+- **Worker:** Fixed-interval loops (e.g., `1h` for a file sync).
+- **Event-Driven:** Reactive to MCP notifications (e.g., a file change or system event).
 
+### Testing
 
-### Assertions & Testing
+Native intents are tested using standard Go testing tools. This provides access to the full Go ecosystem for assertions, mocking, and coverage analysis.
 
-To ensure your intents are reliable, Clara provides a built-in `must` module for both runtime checks and unit testing.
-
-#### Runtime Assertions
-Use assertions in your production scripts to catch unexpected behavior early. If an assertion fails, the script stops immediately with a clear error.
-
-```python
-def main():
-    # Ensure a tool returned the expected structure
-    result = tmux.list_sessions()
-    must.true(len(result) > 0)
-    
-    # Verify a precondition
-    must.eq(clara.context.get("env"), "prod")
-```
-
-#### Unit Testing
-You can write unit tests for your intents by creating files ending in `_test.star`. These files are ignored by the background supervisor but can be run via the CLI.
-
-1.  **Create a test file:** `tasks/sync_test.star`
-2.  **Define test functions:** Any function starting with `test_` is treated as a test case.
-
-```python
-# tasks/sync_test.star
-
-def test_bidirectional_sync():
-    # Assertions in tests provide clear pass/fail output
-    must.eq(1 + 1, 2)
-    must.neq(5, 3)
-    
-    # You can also assert that a function fails
-    def fail_me():
-        fail("oops")
-    must.fails(fail_me)
-```
-
-3.  **Run tests:**
 ```bash
-clara test tasks/
+go test ./...
 ```
-
-Clara runs each test function in an isolated environment with its own in-memory database and registry, ensuring tests are deterministic and side-effect free.
-
-### The `wait` Pattern
-
-One of Clara's most powerful features is the ability to pause execution for
-human intervention:
-
-```python
-def main():
-    # ... do some research ...
-    approval = clara.wait("approval", prompt = "Should I send this email?")
-    if approval.get("approved"):
-        # ... proceed ...
-```
-
-Clara persists the state to disk and exits. When you approve the task in the
-TUI, Clara reloads the state and resumes exactly where it left off.
 
 ## The Ecosystem
 
@@ -179,53 +116,11 @@ Clara ships with a variety of built-in and first-party MCP servers:
 - **`web`:** Internet search via DuckDuckGo.
 - **`webex`:** Webex messaging and search.
 
-You can use any MCP server with Clara, but I wasn't happy with the state of a
-lot of the MCP projects out there. The built in ones are all written in Go
-(except where another language was mandated), tested and maintained as a unit
-with the rest of the solution, and they're simple, fast, lightweight, and
-reliable.
-
-### Setting up the Chrome Extension
-
-The Chrome extension connects Clara to Chrome via Native Messaging. It
-self-heals after browser restarts, sleeps, or server restarts, and auto-updates
-whenever the server has a newer version.
-
-**First-time setup (one-time):**
-
-```bash
-# 1. Write the latest extension files to disk
-clara chrome update-extension
-#    → ~/.local/share/clara/extension/
-
-# 2. Load the extension in Chrome
-#    Open: chrome://extensions
-#    Enable "Developer mode" (toggle, top-right)
-#    Click "Load unpacked" → select ~/.local/share/clara/extension/
-#    Copy the Extension ID shown on that page
-
-# 3. Register the Native Messaging host
-clara chrome setup-native <EXTENSION_ID>
-
-# 4. Quit and relaunch Chrome
-#    The extension icon turns green when Clara is running.
-```
-
-**After a `clara` binary update:** no manual steps needed. When the extension
-reconnects it sends its version; if it's out of date the server writes fresh
-files to disk and sends a reload signal automatically.
-
-**Icon states:**
-
-| Icon | Meaning |
-|------|---------|
-| 🟢 Green circle | Connected — Clara is reachable |
-| ⚫ Grey circle | Disconnected — Clara is not running or Native Messaging is not configured |
-
 ## Project Structure
 
 - `cmd/clara/`: The unified binary (CLI + Daemon).
-- `internal/interpreter/`: The Starlark runtime and state machine.
+- `cmd/intents/`: Source code for native Go plugin intents.
+- `cmd/integrations/`: Source code for native Go plugin integrations.
 - `internal/mcpserver/`: Built-in MCP implementations.
 - `swift/`: Native macOS bridge.
 - `extension/`: Chrome extension source.

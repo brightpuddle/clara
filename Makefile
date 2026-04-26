@@ -19,10 +19,31 @@ SIGN_IDENTITY := $(shell security find-identity -v -p codesigning 2>/dev/null \
                    | grep -q '"$(CERT_NAME)"' \
                    && echo '$(CERT_NAME)' || echo -)
 
-## build: compile the unified clara binary with embedded Info.plist for TCC
-build:
-	go build -ldflags="-extldflags '-Wl,-sectcreate,__TEXT,__info_plist,cmd/clara/Info.plist'" -o clara ./cmd/clara
-	codesign --force --deep --sign "$(SIGN_IDENTITY)" clara
+## build: compile the unified clara binary and all plugins
+build: build-core build-integrations build-intents
+	codesign --force --deep --sign "$(SIGN_IDENTITY)" bin/clara
+
+build-core:
+	mkdir -p bin
+	go build -ldflags="-extldflags '-Wl,-sectcreate,__TEXT,__info_plist,cmd/clara/Info.plist'" -o bin/clara ./cmd/clara
+
+build-integrations:
+	mkdir -p bin/integrations
+	for d in cmd/integrations/*; do \
+		if [ -d "$$d" ]; then \
+			name=$$(basename "$$d"); \
+			go build -o bin/integrations/$$name ./$$d; \
+		fi; \
+	done
+
+build-intents:
+	mkdir -p bin/intents
+	for d in cmd/intents/*; do \
+		if [ -d "$$d" ]; then \
+			name=$$(basename "$$d"); \
+			go build -o bin/intents/$$name ./$$d; \
+		fi; \
+	done
 
 ## test: run all Go tests
 test:
@@ -55,21 +76,32 @@ release:
 release-check:
 	@command -v goreleaser >/dev/null 2>&1 || { echo >&2 "goreleaser is not installed. Visit https://goreleaser.com/install/"; exit 1; }
 
-## install: install clara and ClaraBridge, and restart or start the LaunchAgent
+## install: install clara, plugins, and ClaraBridge, and restart or start the LaunchAgent
 install: build $(BRIDGE_APP_EXE)
-	install -m 755 clara "$(INSTALL_BIN)"
+	install -m 755 bin/clara "$(INSTALL_BIN)"
 	# Re-sign at destination to ensure the embedded Info.plist is valid
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
 	
+	mkdir -p $(HOME)/.config/clara/integrations
+	mkdir -p $(HOME)/.config/clara/intents
+	if [ -d bin/integrations ]; then cp bin/integrations/* $(HOME)/.config/clara/integrations/; fi
+	if [ -d bin/intents ]; then cp bin/intents/* $(HOME)/.config/clara/intents/; fi
+
 	install -d "$(LAUNCH_AGENT_DIR)"
 	install -m 644 "$(LAUNCH_AGENT_FILE)" "$(LAUNCH_AGENT_PLIST)"
 	"$(INSTALL_BIN)" agent stop >/dev/null 2>&1 || true
 	"$(INSTALL_BIN)" agent start
 
-## install-clara: build and install only the Go clara agent
+## install-clara: build and install only the Go clara agent and plugins
 install-clara: build
-	install -m 755 clara "$(INSTALL_BIN)"
+	install -m 755 bin/clara "$(INSTALL_BIN)"
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
+
+	mkdir -p $(HOME)/.config/clara/integrations
+	mkdir -p $(HOME)/.config/clara/intents
+	if [ -d bin/integrations ]; then cp bin/integrations/* $(HOME)/.config/clara/integrations/; fi
+	if [ -d bin/intents ]; then cp bin/intents/* $(HOME)/.config/clara/intents/; fi
+
 	install -d "$(LAUNCH_AGENT_DIR)"
 	install -m 644 "$(LAUNCH_AGENT_FILE)" "$(LAUNCH_AGENT_PLIST)"
 	"$(INSTALL_BIN)" agent stop >/dev/null 2>&1 || true
