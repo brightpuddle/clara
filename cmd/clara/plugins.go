@@ -89,6 +89,7 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 			HandshakeConfig: contract.HandshakeConfig,
 			Plugins: map[string]plugin.Plugin{
 				"shell": &contract.ShellIntegrationPlugin{},
+				"fs":    &contract.FSIntegrationPlugin{},
 				// More plugins will be added here
 			},
 			Cmd:    exec.Command(path),

@@ -156,3 +156,65 @@ func (p *IntentPlugin) Server(b *plugin.MuxBroker) (interface{}, error) {
 func (p *IntentPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
 	return &IntentRPC{client: c, broker: b}, nil
 }
+
+// --- FSIntegration RPC Boilerplate ---
+
+type FSIntegration interface {
+	Integration
+}
+
+type FSIntegrationRPC struct{ client *rpc.Client }
+
+func (g *FSIntegrationRPC) Configure(config []byte) error {
+	var resp error
+	err := g.client.Call("Plugin.Configure", config, &resp)
+	if err != nil {
+		return err
+	}
+	return resp
+}
+
+func (g *FSIntegrationRPC) Tools() ([]byte, error) {
+	var resp []byte
+	err := g.client.Call("Plugin.Tools", new(interface{}), &resp)
+	return resp, err
+}
+
+func (g *FSIntegrationRPC) CallTool(name string, args []byte) ([]byte, error) {
+	var resp []byte
+	err := g.client.Call("Plugin.CallTool", CallToolArgs{Name: name, Args: args}, &resp)
+	return resp, err
+}
+
+type FSIntegrationRPCServer struct {
+	Impl FSIntegration
+}
+
+func (s *FSIntegrationRPCServer) Configure(config []byte, resp *error) error {
+	*resp = s.Impl.Configure(config)
+	return nil
+}
+
+func (s *FSIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+	var err error
+	*resp, err = s.Impl.Tools()
+	return err
+}
+
+func (s *FSIntegrationRPCServer) CallTool(args CallToolArgs, resp *[]byte) error {
+	var err error
+	*resp, err = s.Impl.CallTool(args.Name, args.Args)
+	return err
+}
+
+type FSIntegrationPlugin struct {
+	Impl FSIntegration
+}
+
+func (p *FSIntegrationPlugin) Server(*plugin.MuxBroker) (interface{}, error) {
+	return &FSIntegrationRPCServer{Impl: p.Impl}, nil
+}
+
+func (p *FSIntegrationPlugin) Client(b *plugin.MuxBroker, c *rpc.Client) (interface{}, error) {
+	return &FSIntegrationRPC{client: c}, nil
+}

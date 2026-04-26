@@ -17,7 +17,6 @@ import (
 	"github.com/brightpuddle/clara/internal/config"
 	chromemcp "github.com/brightpuddle/clara/internal/mcpserver/chrome"
 	dbmcp "github.com/brightpuddle/clara/internal/mcpserver/db"
-	fsmcp "github.com/brightpuddle/clara/internal/mcpserver/fs"
 	llmmcp "github.com/brightpuddle/clara/internal/mcpserver/llm"
 	searchmcp "github.com/brightpuddle/clara/internal/mcpserver/search"
 	shellmcp "github.com/brightpuddle/clara/internal/mcpserver/shell"
@@ -105,13 +104,6 @@ var mcpserverCmd = &cobra.Command{
 	Short: "Start a built-in MCP server on stdio",
 }
 
-var mcpserverFsWatchPath string
-var mcpserverFsRecursive bool
-var mcpserverFsCmd = &cobra.Command{
-	Use:   "fs",
-	Short: "Start the built-in filesystem MCP server",
-	RunE:  runMCPFs,
-}
 
 var mcpserverDBCmd = &cobra.Command{
 	Use:   "db [database-path]",
@@ -206,19 +198,6 @@ var mcpserverShellCmd = &cobra.Command{
 }
 
 func init() {
-	mcpserverFsCmd.Flags().StringVar(
-		&mcpserverFsWatchPath,
-		"watch-path",
-		"",
-		"Directory path to serve and watch for changes",
-	)
-	mcpserverFsCmd.Flags().BoolVarP(
-		&mcpserverFsRecursive,
-		"recursive",
-		"r",
-		false,
-		"Recursively watch the directory",
-	)
 
 	mcpserverWebexCmd.Flags().StringVar(
 		&mcpserverWebexAccessToken,
@@ -259,7 +238,6 @@ func init() {
 	)
 
 	mcpserverCmd.AddCommand(
-		mcpserverFsCmd,
 		mcpserverDBCmd,
 		mcpserverLLMCmd,
 		mcpserverRunCmd,
@@ -276,11 +254,6 @@ func init() {
 	mcpserverChromeCmd.AddCommand(mcpserverChromeNativeHostCmd)
 }
 
-func runMCPFs(cmd *cobra.Command, args []string) error {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-	return fsmcp.Serve(ctx, mcpserverFsWatchPath, mcpserverFsRecursive)
-}
 
 func runMCPDB(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
