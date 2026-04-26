@@ -44,6 +44,9 @@ type Config struct {
 	// MCPServers lists the MCP servers the daemon manages.
 	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
 
+	// Integrations configures the native Go plugins.
+	Integrations map[string]map[string]any `yaml:"integrations"`
+
 	// StdioMCP configures the local stdio MCP gateway server.
 	StdioMCP *StdioMCPConfig `yaml:"stdio_mcp"`
 

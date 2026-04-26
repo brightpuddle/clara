@@ -124,7 +124,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		})
 	attachServer := registry.NewDynamicAttachServer(cfg.DynamicMCPSocketPath(), reg, logger)
 
-	loader := newPluginLoader(reg, sup, logger)
+	loader := newPluginLoader(reg, sup, cfg, logger)
 	if err := loader.loadAll(); err != nil {
 		logger.Error().Err(err).Msg("failed to load native plugins")
 	}

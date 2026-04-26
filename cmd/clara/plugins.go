@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -9,12 +11,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
 
@@ -22,13 +26,15 @@ import (
 type pluginLoader struct {
 	reg *registry.Registry
 	sup *supervisor.Supervisor
+	cfg *config.Config
 	log zerolog.Logger
 }
 
-func newPluginLoader(reg *registry.Registry, sup *supervisor.Supervisor, log zerolog.Logger) *pluginLoader {
+func newPluginLoader(reg *registry.Registry, sup *supervisor.Supervisor, cfg *config.Config, log zerolog.Logger) *pluginLoader {
 	return &pluginLoader{
 		reg: reg,
 		sup: sup,
+		cfg: cfg,
 		log: log.With().Str("component", "plugin_loader").Logger(),
 	}
 }
@@ -79,18 +85,103 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 		path := filepath.Join(dir, name)
 		l.log.Info().Str("name", name).Str("path", path).Msg("discovered native integration")
 
-		// For integrations, we need to launch the plugin and register its tools.
-		// For the PoC, we'll just show how to inject the logger.
-		_ = plugin.NewClient(&plugin.ClientConfig{
+		client := plugin.NewClient(&plugin.ClientConfig{
 			HandshakeConfig: contract.HandshakeConfig,
 			Plugins: map[string]plugin.Plugin{
 				"shell": &contract.ShellIntegrationPlugin{},
+				// More plugins will be added here
 			},
 			Cmd:    exec.Command(path),
 			Logger: buildHCLogAdapter(l.log, name),
 		})
-		// In a real implementation, we would keep the client, dispense the integration,
-		// and wrap its methods as Clara tools in l.reg.
+
+		rpcClient, err := client.Client()
+		if err != nil {
+			l.log.Error().Err(err).Str("name", name).Msg("failed to connect to integration plugin")
+			client.Kill()
+			continue
+		}
+
+		raw, err := rpcClient.Dispense(name)
+		if err != nil {
+			l.log.Error().Err(err).Str("name", name).Msg("failed to dispense integration plugin")
+			client.Kill()
+			continue
+		}
+
+		integration, ok := raw.(contract.Integration)
+		if !ok {
+			l.log.Error().Str("name", name).Msg("plugin does not implement contract.Integration")
+			client.Kill()
+			continue
+		}
+
+		var configBytes []byte
+		if l.cfg.Integrations != nil {
+			if cfg, ok := l.cfg.Integrations[name]; ok {
+				configBytes, err = json.Marshal(cfg)
+				if err != nil {
+					l.log.Error().Err(err).Str("name", name).Msg("failed to marshal integration config")
+					client.Kill()
+					continue
+				}
+			}
+		}
+
+		if err := integration.Configure(configBytes); err != nil {
+			l.log.Error().Err(err).Str("name", name).Msg("failed to configure integration")
+			client.Kill()
+			continue
+		}
+
+		toolsBytes, err := integration.Tools()
+		if err != nil {
+			l.log.Error().Err(err).Str("name", name).Msg("failed to retrieve tools from integration")
+			client.Kill()
+			continue
+		}
+
+		var tools []mcp.Tool
+		if len(toolsBytes) > 0 {
+			if err := json.Unmarshal(toolsBytes, &tools); err != nil {
+				l.log.Error().Err(err).Str("name", name).Msg("failed to decode tools from integration")
+				client.Kill()
+				continue
+			}
+		}
+
+		for _, tool := range tools {
+			// Copy tool variable to avoid closure capture issues
+			tool := tool
+			originalToolName := tool.Name
+			
+			// Prefix the tool name with the integration name to namespace it
+			if !strings.HasPrefix(tool.Name, name+".") {
+				tool.Name = name + "." + tool.Name
+			}
+
+			l.reg.RegisterWithSpec(tool, func(ctx context.Context, args map[string]any) (any, error) {
+				argsBytes, err := json.Marshal(args)
+				if err != nil {
+					return nil, err
+				}
+				
+				respBytes, err := integration.CallTool(originalToolName, argsBytes)
+				if err != nil {
+					return nil, err
+				}
+				
+				var resp any
+				if len(respBytes) > 0 {
+					if err := json.Unmarshal(respBytes, &resp); err != nil {
+						return string(respBytes), nil // Return as string if it isn't JSON
+					}
+				}
+				return resp, nil
+			})
+		}
+		
+		l.log.Info().Str("name", name).Int("tools", len(tools)).Msg("successfully loaded native integration")
 	}
 
 	return nil

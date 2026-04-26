@@ -128,6 +128,12 @@ type registryShell struct {
 	log zerolog.Logger
 }
 
+func (s *registryShell) Configure(config []byte) error { return nil }
+
+func (s *registryShell) Tools() ([]byte, error) { return nil, nil }
+
+func (s *registryShell) CallTool(name string, args []byte) ([]byte, error) { return nil, nil }
+
 func (s *registryShell) Run(command string) (string, error) {
 	s.log.Debug().Str("command", command).Msg("native intent requested shell execution")
 

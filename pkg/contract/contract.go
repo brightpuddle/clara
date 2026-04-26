@@ -15,7 +15,14 @@ var HandshakeConfig = plugin.HandshakeConfig{
 
 // --- Interfaces ---
 
+type Integration interface {
+	Configure(config []byte) error
+	Tools() ([]byte, error)
+	CallTool(name string, args []byte) ([]byte, error)
+}
+
 type ShellIntegration interface {
+	Integration
 	Run(command string) (string, error)
 }
 
@@ -25,7 +32,33 @@ type Intent interface {
 
 // --- ShellIntegration RPC Boilerplate ---
 
+type CallToolArgs struct {
+	Name string
+	Args []byte
+}
+
 type ShellIntegrationRPC struct{ client *rpc.Client }
+
+func (g *ShellIntegrationRPC) Configure(config []byte) error {
+	var resp error
+	err := g.client.Call("Plugin.Configure", config, &resp)
+	if err != nil {
+		return err
+	}
+	return resp
+}
+
+func (g *ShellIntegrationRPC) Tools() ([]byte, error) {
+	var resp []byte
+	err := g.client.Call("Plugin.Tools", new(interface{}), &resp)
+	return resp, err
+}
+
+func (g *ShellIntegrationRPC) CallTool(name string, args []byte) ([]byte, error) {
+	var resp []byte
+	err := g.client.Call("Plugin.CallTool", CallToolArgs{Name: name, Args: args}, &resp)
+	return resp, err
+}
 
 func (g *ShellIntegrationRPC) Run(command string) (string, error) {
 	var resp string
@@ -35,6 +68,23 @@ func (g *ShellIntegrationRPC) Run(command string) (string, error) {
 
 type ShellIntegrationRPCServer struct {
 	Impl ShellIntegration
+}
+
+func (s *ShellIntegrationRPCServer) Configure(config []byte, resp *error) error {
+	*resp = s.Impl.Configure(config)
+	return nil
+}
+
+func (s *ShellIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+	var err error
+	*resp, err = s.Impl.Tools()
+	return err
+}
+
+func (s *ShellIntegrationRPCServer) CallTool(args CallToolArgs, resp *[]byte) error {
+	var err error
+	*resp, err = s.Impl.CallTool(args.Name, args.Args)
+	return err
 }
 
 func (s *ShellIntegrationRPCServer) Run(command string, resp *string) error {
