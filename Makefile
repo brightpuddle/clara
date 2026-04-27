@@ -23,6 +23,19 @@ SIGN_IDENTITY := $(shell security find-identity -v -p codesigning 2>/dev/null \
 build: build-core build-integrations build-intents
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" bin/clara
 
+## proto: generate protobuf bindings for Go and Swift
+proto:
+	mkdir -p pkg/contract/proto
+	protoc --go_out=pkg/contract/proto --go_opt=module=github.com/brightpuddle/clara/pkg/contract/proto \
+		--go-grpc_out=pkg/contract/proto --go-grpc_opt=module=github.com/brightpuddle/clara/pkg/contract/proto \
+		proto/clara/plugin/v1/integration.proto
+	# Swift generation
+	mkdir -p swift/Sources/ClaraBridge/Generated
+	protoc --swift_out=swift/Sources/ClaraBridge/Generated \
+		--grpc-swift_out=swift/Sources/ClaraBridge/Generated \
+		--proto_path=proto \
+		proto/clara/plugin/v1/integration.proto
+
 build-core:
 	mkdir -p bin
 	go build -ldflags="-extldflags '-Wl,-sectcreate,__TEXT,__info_plist,cmd/clara/Info.plist'" -o bin/clara ./cmd/clara

@@ -23,6 +23,17 @@ type Integration interface {
 	CallTool(name string, args []byte) ([]byte, error)
 }
 
+// Event is a real-time notification from a plugin.
+type Event struct {
+	Name string
+	Data []byte // JSON encoded parameters
+}
+
+// EventStreamer is an optional interface for plugins that push real-time events.
+type EventStreamer interface {
+	StreamEvents() (<-chan Event, error)
+}
+
 // Context provides access to host-side services and integrations for intents.
 type Context interface {
 	Shell() (ShellIntegration, error)
@@ -31,6 +42,7 @@ type Context interface {
 	Chrome() (ChromeIntegration, error)
 	Zk() (ZkIntegration, error)
 	LLM() (LLMIntegration, error)
+	MacOS() (MacOSIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -188,6 +200,19 @@ func (g *ContextRPC) LLM() (LLMIntegration, error) {
 	return &LLMIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
+func (g *ContextRPC) MacOS() (MacOSIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.MacOS", EmptyArgs{}, &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &MacOSIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
+}
+
 type ContextRPCServer struct {
 	Impl   Context
 	broker *plugin.MuxBroker
@@ -264,6 +289,19 @@ func (s *ContextRPCServer) LLM(args EmptyArgs, resp *uint32) error {
 	}
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &LLMIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) MacOS(args EmptyArgs, resp *uint32) error {
+	impl, err := s.Impl.MacOS()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &MacOSIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
 		Impl:                 impl,
 	})

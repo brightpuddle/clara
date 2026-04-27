@@ -1,201 +1,163 @@
-// ClaraBridge — Swift native macOS MCP server.
-//
-// This executable speaks MCP over stdio and exposes native macOS capabilities
-// such as EventKit-backed reminders, calendar events, and user notifications.
+// ClaraBridge — Swift native macOS gRPC plugin for Clara.
 
 import AppKit
 @preconcurrency import EventKit
 import Foundation
+import GRPC
+import NIO
+import NIOHTTP1
 @preconcurrency import Photos
+import SwiftProtobuf
 @preconcurrency import UserNotifications
 
-@main
-struct ClaraBridgeMain {
-    static func main() {
-        let app = NSApplication.shared
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        app.setActivationPolicy(.accessory)
-        app.run()
+// --- Main Entry Point ---
+
+@MainActor
+func main() {
+    let env = ProcessInfo.processInfo.environment
+    guard env["CLARA_PLUGIN_MAGIC_COOKIE"] == "hello_clara" else {
+        FileHandle.standardError.write(Data("Missing or invalid CLARA_PLUGIN_MAGIC_COOKIE\n".utf8))
+        exit(1)
     }
+
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.setActivationPolicy(.accessory)
+    app.run()
 }
+
+main()
+
+// --- Implementation ---
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var server: MCPStdioServer?
+    private var server: GRPC.Server?
+    private var group: MultiThreadedEventLoopGroup?
+    private let logger = ClaraLogger()
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.activate(ignoringOtherApps: true)
-        let server = MCPStdioServer()
-        self.server = server
-        server.start()
+        startGRPCServer()
+    }
+
+    private func startGRPCServer() {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        self.group = group
+
+        let eventManager = EventManager()
+        let bridgeTools = BridgeTools(eventManager: eventManager)
+        let provider = ClaraBridgeGRPCProvider(bridgeTools: bridgeTools, eventManager: eventManager)
+
+        do {
+            let server = try Server.start(
+                configuration: .default(
+                    target: .hostAndPort("127.0.0.1", 0),
+                    eventLoopGroup: group,
+                    serviceProviders: [provider]
+                )
+            ).wait()
+            
+            self.server = server
+            guard let port = server.channel.localAddress?.port else {
+                self.logger.log("Failed to determine local port")
+                exit(1)
+            }
+
+            print("1|1|tcp|127.0.0.1:\(port)|grpc")
+            fflush(stdout)
+            
+            self.logger.log("ClaraBridge gRPC server listening on 127.0.0.1:\(port)")
+        } catch {
+            self.logger.log("Failed to start gRPC server: \(error)")
+            exit(1)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        try? server?.close().wait()
+        try? group?.syncShutdownGracefully()
     }
 }
 
-@MainActor
-final class MCPStdioServer {
-    private let input = FileHandle.standardInput
-    private let output = FileHandle.standardOutput
-    private let errorOutput = FileHandle.standardError
-    private var buffer = Data()
-    private let bridgeTools: BridgeTools
-    private let logger = ClaraLogger()
+final class EventManager: @unchecked Sendable {
+    private let lock = NSLock()
+    private var streams: [UUID: GRPCAsyncResponseStreamWriter<Clara_Plugin_V1_Event>] = [:]
 
-    init() {
-        bridgeTools = BridgeTools()
-        bridgeTools.server = self
+    func addStream(_ writer: GRPCAsyncResponseStreamWriter<Clara_Plugin_V1_Event>) -> UUID {
+        let id = UUID()
+        lock.lock()
+        defer { lock.unlock() }
+        streams[id] = writer
+        return id
     }
 
-    func start() {
-        logger.log("ClaraBridge starting")
-        input.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            Task { @MainActor [weak self] in
-                self?.consumeInput(data)
+    func removeStream(id: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        streams.removeValue(forKey: id)
+    }
+
+    func emit(name: String, data: [String: Any]) {
+        lock.lock()
+        let currentStreams = Array(streams.values)
+        lock.unlock()
+
+        var ev = Clara_Plugin_V1_Event()
+        ev.name = name
+        if let jsonData = try? JSONSerialization.data(withJSONObject: data) {
+            ev.data = jsonData
+        }
+        
+        for stream in currentStreams {
+            // Fire and forget since we can't await here
+            Task {
+                try? await stream.send(ev)
             }
         }
     }
+}
 
-    func sendNotification(method: String, params: [String: Any]) {
-        do {
-            try writeEnvelope([
-                "jsonrpc": "2.0",
-                "method": method,
-                "params": params,
-            ])
-        } catch {
-            logError("failed to send notification \(method): \(error.localizedDescription)")
-        }
+final class ClaraBridgeGRPCProvider: Clara_Plugin_V1_IntegrationAsyncProvider {
+    let bridgeTools: BridgeTools
+    let eventManager: EventManager
+    
+    init(bridgeTools: BridgeTools, eventManager: EventManager) {
+        self.bridgeTools = bridgeTools
+        self.eventManager = eventManager
+    }
+    
+    func configure(request: Clara_Plugin_V1_ConfigureRequest, context: GRPCAsyncServerCallContext) async throws -> Clara_Plugin_V1_ConfigureResponse {
+        return Clara_Plugin_V1_ConfigureResponse()
+    }
+    
+    func description(request: Clara_Plugin_V1_DescriptionRequest, context: GRPCAsyncServerCallContext) async throws -> Clara_Plugin_V1_DescriptionResponse {
+        var resp = Clara_Plugin_V1_DescriptionResponse()
+                resp.description_p = "Native macOS integration for reminders, calendar, and notifications."
+        return resp
+    }
+    
+    func tools(request: Clara_Plugin_V1_ToolsRequest, context: GRPCAsyncServerCallContext) async throws -> Clara_Plugin_V1_ToolsResponse {
+        var resp = Clara_Plugin_V1_ToolsResponse()
+        resp.tools = try await bridgeTools.listToolsSerialized()
+        return resp
     }
 
-    private func consumeInput(_ data: Data) {
-        if data.isEmpty {
-            input.readabilityHandler = nil
-            return
-        }
-
-        buffer.append(data)
-        while let newlineIndex = buffer.firstIndex(of: 0x0A) {
-            let lineData = Data(buffer[..<newlineIndex])
-            buffer.removeSubrange(...newlineIndex)
-            if lineData.isEmpty {
-                continue
-            }
-            let sanitized = trimCarriageReturn(from: lineData)
-            guard let line = String(data: sanitized, encoding: .utf8) else {
-                do {
-                    try writeError(id: nil, error: .invalidRequest("request line must be valid UTF-8"))
-                } catch {
-                    logError("failed to write UTF-8 error response: \(error.localizedDescription)")
-                }
-                continue
-            }
-
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                do {
-                    try await self.handleLine(line)
-                } catch let protocolError as MCPProtocolError {
-                    try? self.writeError(id: nil, error: protocolError)
-                } catch {
-                    try? self.writeError(id: nil, error: .internalError(error.localizedDescription))
-                }
-            }
-        }
+    func callTool(request: Clara_Plugin_V1_CallToolRequest, context: GRPCAsyncServerCallContext) async throws -> Clara_Plugin_V1_CallToolResponse {
+        let data = try await self.bridgeTools.callToolSerialized(name: request.name, argumentsData: request.args)
+        var resp = Clara_Plugin_V1_CallToolResponse()
+        resp.result = data
+        return resp
     }
 
-    private func handleLine(_ line: String) async throws {
-        guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
+    func streamEvents(request: Clara_Plugin_V1_StreamEventsRequest, responseStream: GRPCAsyncResponseStreamWriter<Clara_Plugin_V1_Event>, context: GRPCAsyncServerCallContext) async throws {
+        let id = eventManager.addStream(responseStream)
+        defer { eventManager.removeStream(id: id) }
+
+        while !Task.isCancelled {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
         }
-
-        let data = Data(line.utf8)
-        let raw = try JSONSerialization.jsonObject(with: data)
-        guard let request = raw as? [String: Any] else {
-            throw MCPProtocolError.invalidRequest("request must be a JSON object")
-        }
-
-        let requestID = request["id"]
-        guard let method = request["method"] as? String else {
-            try writeError(id: requestID, error: .invalidRequest("missing method"))
-            return
-        }
-
-        switch method {
-        case "initialize":
-            try writeResult(id: requestID, result: initializeResult())
-        case "notifications/initialized":
-            return
-        case "tools/list":
-            try writeResult(id: requestID, result: ["tools": bridgeTools.listTools()])
-        case "tools/call":
-            do {
-                let params = request["params"] as? [String: Any] ?? [:]
-                guard let name = params["name"] as? String, !name.isEmpty else {
-                    throw MCPProtocolError.invalidParams("missing tool name")
-                }
-                let arguments = params["arguments"] as? [String: Any] ?? [:]
-                let result = try await bridgeTools.callTool(name: name, arguments: arguments)
-                try writeResult(id: requestID, result: result)
-            } catch let toolError as MCPToolError {
-                try writeResult(id: requestID, result: toolError.resultPayload)
-            } catch let protocolError as MCPProtocolError {
-                try writeError(id: requestID, error: protocolError)
-            } catch {
-                let bridgeError = MCPToolError.wrapping(error, context: "tools/call")
-                try writeResult(id: requestID, result: bridgeError.resultPayload)
-            }
-        default:
-            if requestID != nil {
-                try writeError(id: requestID, error: .methodNotFound("method not found: \(method)"))
-            }
-        }
-    }
-
-    private func initializeResult() -> [String: Any] {
-        [
-            "protocolVersion": "2025-11-25",
-            "capabilities": [
-                "tools": ["listChanged": false],
-            ],
-            "serverInfo": [
-                "name": "ClaraBridge",
-                "version": "0.1.0",
-            ],
-            "instructions": "Native macOS MCP server for reminders, calendar events, system notifications, and local callbacks.",
-        ]
-    }
-
-    private func writeResult(id: Any?, result: [String: Any]) throws {
-        try writeEnvelope(["jsonrpc": "2.0", "id": id ?? NSNull(), "result": result])
-    }
-
-    private func writeError(id: Any?, error: MCPProtocolError) throws {
-        try writeEnvelope([
-            "jsonrpc": "2.0",
-            "id": id ?? NSNull(),
-            "error": [
-                "code": error.code,
-                "message": error.message,
-            ],
-        ])
-    }
-
-    private func writeEnvelope(_ envelope: [String: Any]) throws {
-        let json = try JSONSerialization.data(withJSONObject: envelope)
-        output.write(json)
-        output.write(Data([0x0A]))
-    }
-
-    private func trimCarriageReturn(from data: Data) -> Data {
-        guard data.last == 0x0D else {
-            return data
-        }
-        return data.dropLast()
-    }
-
-    func logError(_ message: String) {
-        logger.log(message)
     }
 }
 
@@ -205,20 +167,16 @@ final class ClaraLogger: Sendable {
     private let queue = DispatchQueue(label: "com.brightpuddle.clara.logger", qos: .background)
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let logDir = home.appendingPathComponent(".local/share/clara/logs")
-        let fileURL = logDir.appendingPathComponent("ClaraBridge.log")
-
-        do {
-            try FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: fileURL.path) {
-                FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+        let env = ProcessInfo.processInfo.environment
+        if let path = env["CLARA_PLUGIN_LOG_FILE"] {
+            let url = URL(fileURLWithPath: path)
+            self.logFile = url
+            if !FileManager.default.fileExists(atPath: url.path) {
+                FileManager.default.createFile(atPath: url.path, contents: nil)
             }
-            let handle = try FileHandle(forWritingTo: fileURL)
-            handle.seekToEndOfFile()
-            self.logFile = fileURL
-            self.fileHandle = handle
-        } catch {
+            self.fileHandle = try? FileHandle(forWritingTo: url)
+            self.fileHandle?.seekToEndOfFile()
+        } else {
             self.logFile = nil
             self.fileHandle = nil
         }
@@ -229,22 +187,27 @@ final class ClaraLogger: Sendable {
         let line = "[\(timestamp)] \(message)\n"
         guard let data = line.data(using: .utf8) else { return }
 
-        // Use a serial background queue to ensure logging never blocks the caller (e.g. @MainActor)
         queue.async { [weak self] in
-            // Always log to stderr (to be picked up by clara)
-            FileHandle.standardError.write(data)
-
-            // Also log to file if available
-            if let handle = self?.fileHandle {
-                handle.write(data)
-            }
+            self?.fileHandle?.write(data)
+            self?.fileHandle?.synchronizeFile()
         }
     }
 }
 
 @MainActor
-final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
-    weak var server: MCPStdioServer?
+final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+    @MainActor
+    func listToolsSerialized() throws -> Data {
+        return try JSONSerialization.data(withJSONObject: listTools())
+    }
+
+    func callToolSerialized(name: String, argumentsData: Data) async throws -> Data {
+        let args = try JSONSerialization.jsonObject(with: argumentsData) as? [String: Any] ?? [:]
+        let result = try await callTool(name: name, arguments: args)
+        return try JSONSerialization.data(withJSONObject: result)
+    }
+
+
 
     private let eventStore = EKEventStore()
     private var remindersAuthorized = false
@@ -261,7 +224,11 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
     private var reminderPushBaseline: [String: StoreSnapshotItem]?
     private var eventPushBaseline: [String: StoreSnapshotItem]?
 
-    override init() {
+
+    private let eventManager: EventManager
+    
+    init(eventManager: EventManager) {
+        self.eventManager = eventManager
         super.init()
         eventStoreObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
@@ -286,6 +253,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         Task { @MainActor [weak self] in
             await self?.requestAccessEagerly()
         }
+
     }
 
     @MainActor
@@ -301,7 +269,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
         [
             tool(
                 name: "clara_list_events",
-                description: "List the available event triggers emitted by this server for use in intent event declarations.",
+                description: "List the available event triggers emitted by this server for use in Starlark 'task(on_event, trigger=...)' declarations.",
                 properties: []
             ),
             tool(
@@ -570,7 +538,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
 
     @MainActor
     func callTool(name: String, arguments: [String: Any]) async throws -> [String: Any] {
-        server?.logError("ClaraBridge: calling tool \(name) with args \(arguments)")
+        print("ClaraBridge: calling tool \(name) with args \(arguments)")
         switch name {
         case "clara_list_events":
             return try toolResult([
@@ -741,7 +709,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                     filterValue: change.item["list_name"] as? String,
                     item: change.item
                 )
-                server?.sendNotification(method: "clara/reminders_on_change", params: payload)
+                eventManager.emit(name: "reminders_on_change", data: payload)
             }
         } catch {
             // Silently ignore snapshot errors — permissions may not be granted yet.
@@ -771,8 +739,8 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
                     filterValue: change.item["calendar_name"] as? String,
                     item: change.item
                 )
-                server?.sendNotification(method: "clara/events_on_change", params: payload)
-                server?.sendNotification(method: "clara/events_on_event", params: payload)
+                eventManager.emit(name: "events_on_change", data: payload)
+                eventManager.emit(name: "events_on_event", data: payload)
             }
         } catch {
             // Silently ignore snapshot errors.
@@ -801,15 +769,16 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             }
         }
 
-        server?.sendNotification(method: "clara/notify_on_response", params: payload)
+        eventManager.emit(name: "notify_on_response", data: payload)
     }
 
     @MainActor
     private func handleThemeChange() {
         let theme = getTheme()
-        server?.sendNotification(method: "clara/theme_on_change", params: ["theme": theme])
+        eventManager.emit(name: "theme_on_change", data: ["theme": theme])
     }
 
+    @MainActor
     private func getTheme() -> String {
         if #available(macOS 10.15, *) {
             let appearance = NSApp.effectiveAppearance
@@ -1688,13 +1657,13 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate {
             actions: actions,
             intentIdentifiers: []
         )
-        notificationCenter().setNotificationCategories(Set(notificationCategories.values))
+        UNUserNotificationCenter.current().setNotificationCategories(Set(notificationCategories.values))
     }
 
     private func scheduleNotification(identifier: String, content: UNMutableNotificationContent) async throws {
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            notificationCenter().add(request) { error in
+            UNUserNotificationCenter.current().add(request) { error in
                 if let error {
                     continuation.resume(throwing: MCPToolError("failed to schedule notification: \(error.localizedDescription)"))
                 } else {

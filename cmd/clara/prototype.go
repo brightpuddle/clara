@@ -102,3 +102,7 @@ func (c *prototypeContext) Zk() (contract.ZkIntegration, error) {
 func (c *prototypeContext) LLM() (contract.LLMIntegration, error) {
 	return nil, fmt.Errorf("LLM not implemented in prototype")
 }
+
+func (c *prototypeContext) MacOS() (contract.MacOSIntegration, error) {
+	return nil, fmt.Errorf("MacOS not implemented in prototype")
+}

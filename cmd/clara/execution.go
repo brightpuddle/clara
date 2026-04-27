@@ -151,6 +151,10 @@ func (c *registryContext) LLM() (contract.LLMIntegration, error) {
 	return &registryLLM{ctx: c.ctx, reg: c.reg, log: c.log}, nil
 }
 
+func (c *registryContext) MacOS() (contract.MacOSIntegration, error) {
+	return &registryMacOS{ctx: c.ctx, reg: c.reg, log: c.log}, nil
+}
+
 type registryShell struct {
 	ctx context.Context
 	reg *registry.Registry
@@ -510,6 +514,32 @@ func (l *registryLLM) Embed(category string, input []string) ([][]float32, error
 	data, _ := json.Marshal(res)
 	err = json.Unmarshal(data, &resp)
 	return resp, err
+}
+
+type registryMacOS struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (m *registryMacOS) Configure(config []byte) error { return nil }
+func (m *registryMacOS) Description() (string, error) {
+	return "Host-side registry macos integration", nil
+}
+func (m *registryMacOS) Tools() ([]byte, error) { return nil, nil }
+func (m *registryMacOS) CallTool(name string, args []byte) ([]byte, error) {
+	m.log.Debug().Str("tool", name).Msg("native intent requested macos tool call")
+	var params map[string]any
+	if err := json.Unmarshal(args, &params); err != nil {
+		return nil, err
+	}
+
+	res, err := m.reg.Call(m.ctx, "macos."+name, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(res)
 }
 
 func executeStateMachineRun(

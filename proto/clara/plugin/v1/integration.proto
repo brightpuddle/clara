@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package clara.plugin.v1;
+
+option go_package = "github.com/brightpuddle/clara/pkg/contract/proto";
+
+service Integration {
+  rpc Configure(ConfigureRequest) returns (ConfigureResponse);
+  rpc Description(DescriptionRequest) returns (DescriptionResponse);
+  rpc Tools(ToolsRequest) returns (ToolsResponse);
+  rpc CallTool(CallToolRequest) returns (CallToolResponse);
+  
+  // Real-time events stream
+  rpc StreamEvents(StreamEventsRequest) returns (stream Event);
+}
+
+message ConfigureRequest {
+  bytes config = 1;
+}
+
+message ConfigureResponse {}
+
+message DescriptionRequest {}
+
+message DescriptionResponse {
+  string description = 1;
+}
+
+message ToolsRequest {}
+
+message ToolsResponse {
+  bytes tools = 1;
+}
+
+message CallToolRequest {
+  string name = 1;
+  bytes args = 2;
+}
+
+message CallToolResponse {
+  bytes result = 1;
+}
+
+message StreamEventsRequest {}
+
+message Event {
+  string name = 1;
+  bytes data = 2; // JSON encoded parameters
+}

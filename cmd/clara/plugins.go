@@ -73,6 +73,20 @@ func (l *pluginLoader) loadAll() error {
 			Msg("failed to load integrations")
 	}
 
+	// Load ClaraBridge (macos) if present
+	macosPaths := []string{
+		"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge",
+		"./build/ClaraBridge.app/Contents/MacOS/ClaraBridge",
+	}
+	for _, p := range macosPaths {
+		if _, err := os.Stat(p); err == nil {
+			if err := l.loadIntegrationAt("macos", p); err != nil {
+				l.log.Error().Err(err).Msg("failed to load macos integration")
+			}
+			break
+		}
+	}
+
 	if err := l.loadIntents(intentsDir); err != nil {
 		l.log.Error().Stack().Err(err).Str("dir", intentsDir).Msg("failed to load intents")
 	}
@@ -198,9 +212,11 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 			"chrome": &contract.ChromeIntegrationPlugin{},
 			"zk":     &contract.ZkIntegrationPlugin{},
 			"llm":    &contract.LLMIntegrationPlugin{},
+			"macos":  &contract.IntegrationGRPCPlugin{},
 		},
-		Cmd:    exec.Command(path),
-		Logger: buildHCLogAdapter(l.log, name),
+		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC, plugin.ProtocolGRPC},
+		Cmd:              exec.Command(path),
+		Logger:           buildHCLogAdapter(l.log, name),
 	})
 
 	rpcClient, err := client.Client()
@@ -219,6 +235,22 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 	if !ok {
 		client.Kill()
 		return fmt.Errorf("plugin does not implement contract.Integration")
+	}
+
+	// Handle real-time events if supported
+	if streamer, ok := integration.(contract.EventStreamer); ok {
+		events, err := streamer.StreamEvents()
+		if err == nil {
+			go func() {
+				for ev := range events {
+					var params any
+					if len(ev.Data) > 0 {
+						_ = json.Unmarshal(ev.Data, &params)
+					}
+					l.reg.EmitNotification(name, ev.Name, params)
+				}
+			}()
+		}
 	}
 
 	var configBytes []byte
