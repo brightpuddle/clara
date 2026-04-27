@@ -28,6 +28,7 @@ type Context interface {
 	Shell() (ShellIntegration, error)
 	FS() (FSIntegration, error)
 	DB() (DBIntegration, error)
+	Chrome() (ChromeIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -150,6 +151,19 @@ func (g *ContextRPC) DB() (DBIntegration, error) {
 	return &DBIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
+func (g *ContextRPC) Chrome() (ChromeIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.Chrome", new(interface{}), &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &ChromeIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
+}
+
 type ContextRPCServer struct {
 	Impl   Context
 	broker *plugin.MuxBroker
@@ -187,6 +201,19 @@ func (s *ContextRPCServer) DB(args interface{}, resp *uint32) error {
 	}
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &DBIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) Chrome(args interface{}, resp *uint32) error {
+	impl, err := s.Impl.Chrome()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &ChromeIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
 		Impl:                 impl,
 	})

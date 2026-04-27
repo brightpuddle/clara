@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 
@@ -136,6 +137,10 @@ func (c *registryContext) FS() (contract.FSIntegration, error) {
 
 func (c *registryContext) DB() (contract.DBIntegration, error) {
 	return &registryDB{ctx: c.ctx, reg: c.reg, log: c.log}, nil
+}
+
+func (c *registryContext) Chrome() (contract.ChromeIntegration, error) {
+	return &registryChrome{ctx: c.ctx, reg: c.reg, log: c.log}, nil
 }
 
 type registryShell struct {
@@ -274,6 +279,32 @@ func (d *registryDB) StageRows(table string, rows []any, replace bool) (int, err
 		}
 	}
 	return 0, nil
+}
+
+type registryChrome struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (c *registryChrome) Configure(config []byte) error { return nil }
+func (c *registryChrome) Description() (string, error) {
+	return "Host-side registry chrome integration", nil
+}
+func (c *registryChrome) Tools() ([]byte, error) { return nil, nil }
+func (c *registryChrome) CallTool(name string, args []byte) ([]byte, error) {
+	c.log.Debug().Str("tool", name).Msg("native intent requested chrome tool call")
+	var params map[string]any
+	if err := json.Unmarshal(args, &params); err != nil {
+		return nil, err
+	}
+
+	res, err := c.reg.Call(c.ctx, "chrome."+name, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(res)
 }
 
 func executeStateMachineRun(

@@ -90,3 +90,7 @@ func (c *prototypeContext) FS() (contract.FSIntegration, error) {
 func (c *prototypeContext) DB() (contract.DBIntegration, error) {
 	return nil, fmt.Errorf("DB not implemented in prototype")
 }
+
+func (c *prototypeContext) Chrome() (contract.ChromeIntegration, error) {
+	return nil, fmt.Errorf("Chrome not implemented in prototype")
+}
