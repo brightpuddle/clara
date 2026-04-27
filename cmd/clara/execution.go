@@ -134,6 +134,10 @@ func (c *registryContext) FS() (contract.FSIntegration, error) {
 	return nil, errors.New("FS integration not implemented in registry")
 }
 
+func (c *registryContext) DB() (contract.DBIntegration, error) {
+	return &registryDB{ctx: c.ctx, reg: c.reg, log: c.log}, nil
+}
+
 type registryShell struct {
 	ctx context.Context
 	reg *registry.Registry
@@ -168,6 +172,108 @@ func (s *registryShell) Run(command string) (string, error) {
 	cmd := exec.Command("bash", "-c", command)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+type registryDB struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (d *registryDB) Configure(config []byte) error { return nil }
+func (d *registryDB) Description() (string, error) {
+	return "Host-side registry db integration", nil
+}
+func (d *registryDB) Tools() ([]byte, error) { return nil, nil }
+func (d *registryDB) CallTool(name string, args []byte) ([]byte, error) { return nil, nil }
+
+func (d *registryDB) Query(sql string, params []any) ([]map[string]any, error) {
+	d.log.Debug().Str("sql", sql).Msg("native intent requested db query")
+	res, err := d.reg.Call(d.ctx, "db.query", map[string]any{
+		"sql":    sql,
+		"params": params,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if results, ok := res.([]map[string]any); ok {
+		return results, nil
+	}
+	// Attempt to convert if it's not exactly the right type (could be []any of map[string]any)
+	if slice, ok := res.([]any); ok {
+		var results []map[string]any
+		for _, item := range slice {
+			if m, ok := item.(map[string]any); ok {
+				results = append(results, m)
+			}
+		}
+		return results, nil
+	}
+	return nil, fmt.Errorf("unexpected query result type: %T", res)
+}
+
+func (d *registryDB) Exec(sql string, params []any) (int64, error) {
+	d.log.Debug().Str("sql", sql).Msg("native intent requested db exec")
+	res, err := d.reg.Call(d.ctx, "db.exec", map[string]any{
+		"sql":    sql,
+		"params": params,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if m, ok := res.(map[string]any); ok {
+		if rows, ok := m["rows_affected"].(int64); ok {
+			return rows, nil
+		}
+		if rows, ok := m["rows_affected"].(float64); ok {
+			return int64(rows), nil
+		}
+	}
+	return 0, nil
+}
+
+func (d *registryDB) VecSearch(table string, vector []float32, limit int, minScore float64) ([]map[string]any, error) {
+	d.log.Debug().Str("table", table).Msg("native intent requested db vec_search")
+	res, err := d.reg.Call(d.ctx, "db.vec_search", map[string]any{
+		"table":     table,
+		"vector":    vector,
+		"limit":     limit,
+		"min_score": minScore,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if slice, ok := res.([]any); ok {
+		var results []map[string]any
+		for _, item := range slice {
+			if m, ok := item.(map[string]any); ok {
+				results = append(results, m)
+			}
+		}
+		return results, nil
+	}
+	return nil, fmt.Errorf("unexpected vec_search result type: %T", res)
+}
+
+func (d *registryDB) StageRows(table string, rows []any, replace bool) (int, error) {
+	d.log.Debug().Str("table", table).Int("rows", len(rows)).Msg("native intent requested db stage_rows")
+	res, err := d.reg.Call(d.ctx, "db.stage_rows", map[string]any{
+		"table":   table,
+		"rows":    rows,
+		"replace": replace,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if m, ok := res.(map[string]any); ok {
+		if inserted, ok := m["rows_inserted"].(int); ok {
+			return inserted, nil
+		}
+		if inserted, ok := m["rows_inserted"].(float64); ok {
+			return int(inserted), nil
+		}
+	}
+	return 0, nil
 }
 
 func executeStateMachineRun(

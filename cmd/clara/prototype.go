@@ -86,3 +86,7 @@ func (c *prototypeContext) Shell() (contract.ShellIntegration, error) {
 func (c *prototypeContext) FS() (contract.FSIntegration, error) {
 	return nil, fmt.Errorf("FS not implemented in prototype")
 }
+
+func (c *prototypeContext) DB() (contract.DBIntegration, error) {
+	return nil, fmt.Errorf("DB not implemented in prototype")
+}

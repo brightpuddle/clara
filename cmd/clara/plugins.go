@@ -182,6 +182,7 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 		Plugins: map[string]plugin.Plugin{
 			"shell": &contract.ShellIntegrationPlugin{},
 			"fs":    &contract.FSIntegrationPlugin{},
+			"db":    &contract.DBIntegrationPlugin{},
 			// More plugins will be added here
 		},
 		Cmd:    exec.Command(path),

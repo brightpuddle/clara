@@ -27,6 +27,7 @@ type Integration interface {
 type Context interface {
 	Shell() (ShellIntegration, error)
 	FS() (FSIntegration, error)
+	DB() (DBIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -136,6 +137,19 @@ func (g *ContextRPC) FS() (FSIntegration, error) {
 	return &FSIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
+func (g *ContextRPC) DB() (DBIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.DB", new(interface{}), &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &DBIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
+}
+
 type ContextRPCServer struct {
 	Impl   Context
 	broker *plugin.MuxBroker
@@ -162,6 +176,19 @@ func (s *ContextRPCServer) FS(args interface{}, resp *uint32) error {
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &FSIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) DB(args interface{}, resp *uint32) error {
+	impl, err := s.Impl.DB()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &DBIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
 	})
 	return nil
 }
