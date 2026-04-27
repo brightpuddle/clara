@@ -630,6 +630,32 @@ func (r *Registry) RemoveServer(name string) error {
 	return nil
 }
 
+// UnregisterNamespace removes all tools belonging to a namespace prefix
+// (e.g., "shell.") and clears capabilities, server names, and namespace
+// descriptions associated with that namespace.
+func (r *Registry) UnregisterNamespace(ns string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.capabilities, ns)
+	delete(r.serverNames, ns)
+	delete(r.namespaceDescriptions, ns)
+
+	if tools, ok := r.serverTools[ns]; ok {
+		for _, toolName := range tools {
+			r.deleteToolLocked(toolName)
+		}
+		delete(r.serverTools, ns)
+	}
+
+	prefix := ns + "."
+	for toolName := range r.tools {
+		if strings.HasPrefix(toolName, prefix) {
+			r.deleteToolLocked(toolName)
+		}
+	}
+}
+
 // RestartServer stops and then starts a named MCP server.
 func (r *Registry) RestartServer(ctx context.Context, name string) error {
 	if err := r.StopServer(name); err != nil {

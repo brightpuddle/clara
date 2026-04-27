@@ -201,3 +201,47 @@ func TestRegistry_RegisterWithSpecStoresMetadata(t *testing.T) {
 		t.Fatalf("examples: got %v", info.Examples)
 	}
 }
+
+func TestUnregisterNamespace(t *testing.T) {
+	reg := registry.New(zerolog.Nop())
+
+	// Register tools in different namespaces
+	reg.Register("shell.ls", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+	reg.Register("shell.pwd", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+	reg.Register("fs.read", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+
+	// Register namespace metadata
+	reg.RegisterNamespaceDescription("shell", "Shell commands")
+	reg.StoreCapabilities(&registry.ServerCapabilities{
+		Name: "shell",
+	})
+
+	// Verify they exist
+	if !reg.Has("shell.ls") || !reg.Has("shell.pwd") || !reg.Has("fs.read") {
+		t.Fatal("expected all tools to be registered")
+	}
+
+	// Unregister shell namespace
+	reg.UnregisterNamespace("shell")
+
+	// Verify shell tools are gone
+	if reg.Has("shell.ls") {
+		t.Error("expected shell.ls to be removed")
+	}
+	if reg.Has("shell.pwd") {
+		t.Error("expected shell.pwd to be removed")
+	}
+
+	// Verify fs tool remains
+	if !reg.Has("fs.read") {
+		t.Error("expected fs.read to remain")
+	}
+
+	// Verify metadata is cleared
+	if reg.NamespaceDescription("shell") != "" {
+		t.Error("expected shell namespace description to be cleared")
+	}
+	if reg.GetCapabilities("shell") != nil {
+		t.Error("expected shell capabilities to be cleared")
+	}
+}
