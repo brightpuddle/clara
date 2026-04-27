@@ -143,6 +143,10 @@ func (c *registryContext) Chrome() (contract.ChromeIntegration, error) {
 	return &registryChrome{ctx: c.ctx, reg: c.reg, log: c.log}, nil
 }
 
+func (c *registryContext) Zk() (contract.ZkIntegration, error) {
+	return &registryZk{ctx: c.ctx, reg: c.reg, log: c.log}, nil
+}
+
 type registryShell struct {
 	ctx context.Context
 	reg *registry.Registry
@@ -305,6 +309,126 @@ func (c *registryChrome) CallTool(name string, args []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(res)
+}
+
+type registryZk struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (z *registryZk) Configure(config []byte) error { return nil }
+func (z *registryZk) Description() (string, error) {
+	return "Host-side registry zk integration", nil
+}
+func (z *registryZk) Tools() ([]byte, error) { return nil, nil }
+func (z *registryZk) CallTool(name string, args []byte) ([]byte, error) {
+	z.log.Debug().Str("tool", name).Msg("native intent requested zk tool call")
+	var params map[string]any
+	if err := json.Unmarshal(args, &params); err != nil {
+		return nil, err
+	}
+
+	res, err := z.reg.Call(z.ctx, "zk."+name, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(res)
+}
+
+func (z *registryZk) ListNotes() ([]contract.NoteInfo, error) {
+	res, err := z.reg.Call(z.ctx, "zk.note_list", nil)
+	if err != nil {
+		return nil, err
+	}
+	var notes []contract.NoteInfo
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &notes)
+	return notes, err
+}
+
+func (z *registryZk) GetNote(note string) (contract.NoteDetail, error) {
+	res, err := z.reg.Call(z.ctx, "zk.note_get", map[string]any{"note": note})
+	if err != nil {
+		return contract.NoteDetail{}, err
+	}
+	var detail contract.NoteDetail
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &detail)
+	return detail, err
+}
+
+func (z *registryZk) CreateNote(name, content string) (contract.NoteDetail, error) {
+	res, err := z.reg.Call(z.ctx, "zk.note_create", map[string]any{"name": name, "content": content})
+	if err != nil {
+		return contract.NoteDetail{}, err
+	}
+	var detail contract.NoteDetail
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &detail)
+	return detail, err
+}
+
+func (z *registryZk) UpdateNote(note, content string) error {
+	_, err := z.reg.Call(z.ctx, "zk.note_update", map[string]any{"note": note, "content": content})
+	return err
+}
+
+func (z *registryZk) DeleteNote(note string) error {
+	_, err := z.reg.Call(z.ctx, "zk.note_delete", map[string]any{"note": note})
+	return err
+}
+
+func (z *registryZk) ResolveWikilink(target string) (string, error) {
+	res, err := z.reg.Call(z.ctx, "zk.note_resolve_wikilink", map[string]any{"target": target})
+	if err != nil {
+		return "", err
+	}
+	if m, ok := res.(map[string]any); ok {
+		if path, ok := m["path"].(string); ok {
+			return path, nil
+		}
+	}
+	return "", nil
+}
+
+func (z *registryZk) ListTags() ([]contract.TagEntry, error) {
+	res, err := z.reg.Call(z.ctx, "zk.tag_list", nil)
+	if err != nil {
+		return nil, err
+	}
+	var tags []contract.TagEntry
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &tags)
+	return tags, err
+}
+
+func (z *registryZk) GetNotesByTag(tag string) ([]contract.NoteInfo, error) {
+	res, err := z.reg.Call(z.ctx, "zk.tag_notes", map[string]any{"tag": tag})
+	if err != nil {
+		return nil, err
+	}
+	var notes []contract.NoteInfo
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &notes)
+	return notes, err
+}
+
+func (z *registryZk) SearchNotes(query string, limit int) ([]contract.NoteInfo, error) {
+	res, err := z.reg.Call(z.ctx, "zk.note_search", map[string]any{"query": query, "limit": limit})
+	if err != nil {
+		return nil, err
+	}
+	var notes []contract.NoteInfo
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &notes)
+	return notes, err
+}
+
+func (z *registryZk) ReloadVault() error {
+	_, err := z.reg.Call(z.ctx, "zk.vault_reload", nil)
+	return err
 }
 
 func executeStateMachineRun(

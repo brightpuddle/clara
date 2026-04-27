@@ -94,3 +94,7 @@ func (c *prototypeContext) DB() (contract.DBIntegration, error) {
 func (c *prototypeContext) Chrome() (contract.ChromeIntegration, error) {
 	return nil, fmt.Errorf("Chrome not implemented in prototype")
 }
+
+func (c *prototypeContext) Zk() (contract.ZkIntegration, error) {
+	return nil, fmt.Errorf("Zk not implemented in prototype")
+}

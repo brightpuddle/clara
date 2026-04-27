@@ -184,7 +184,7 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 			"fs":     &contract.FSIntegrationPlugin{},
 			"db":     &contract.DBIntegrationPlugin{},
 			"chrome": &contract.ChromeIntegrationPlugin{},
-			// More plugins will be added here
+			"zk":     &contract.ZkIntegrationPlugin{},
 		},
 		Cmd:    exec.Command(path),
 		Logger: buildHCLogAdapter(l.log, name),
