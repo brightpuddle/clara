@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/orchestrator"
@@ -28,14 +29,18 @@ type pluginLoader struct {
 	sup *supervisor.Supervisor
 	cfg *config.Config
 	log zerolog.Logger
+
+	mu      sync.Mutex
+	clients map[string]*plugin.Client
 }
 
 func newPluginLoader(reg *registry.Registry, sup *supervisor.Supervisor, cfg *config.Config, log zerolog.Logger) *pluginLoader {
 	return &pluginLoader{
-		reg: reg,
-		sup: sup,
-		cfg: cfg,
-		log: log.With().Str("component", "plugin_loader").Logger(),
+		reg:     reg,
+		sup:     sup,
+		cfg:     cfg,
+		log:     log.With().Str("component", "plugin_loader").Logger(),
+		clients: make(map[string]*plugin.Client),
 	}
 }
 
@@ -83,113 +88,195 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 		}
 
 		path := filepath.Join(dir, name)
-		l.log.Info().Str("name", name).Str("path", path).Msg("discovered native integration")
-
-		client := plugin.NewClient(&plugin.ClientConfig{
-			HandshakeConfig: contract.HandshakeConfig,
-			Plugins: map[string]plugin.Plugin{
-				"shell": &contract.ShellIntegrationPlugin{},
-				"fs":    &contract.FSIntegrationPlugin{},
-				// More plugins will be added here
-			},
-			Cmd:    exec.Command(path),
-			Logger: buildHCLogAdapter(l.log, name),
-		})
-
-		rpcClient, err := client.Client()
-		if err != nil {
-			l.log.Error().Err(err).Str("name", name).Msg("failed to connect to integration plugin")
-			client.Kill()
-			continue
+		if err := l.loadIntegrationAt(name, path); err != nil {
+			l.log.Error().Err(err).Str("name", name).Msg("failed to load integration")
 		}
-
-		raw, err := rpcClient.Dispense(name)
-		if err != nil {
-			l.log.Error().Err(err).Str("name", name).Msg("failed to dispense integration plugin")
-			client.Kill()
-			continue
-		}
-
-		integration, ok := raw.(contract.Integration)
-		if !ok {
-			l.log.Error().Str("name", name).Msg("plugin does not implement contract.Integration")
-			client.Kill()
-			continue
-		}
-
-		var configBytes []byte
-		if l.cfg.Integrations != nil {
-			if cfg, ok := l.cfg.Integrations[name]; ok {
-				configBytes, err = json.Marshal(cfg)
-				if err != nil {
-					l.log.Error().Err(err).Str("name", name).Msg("failed to marshal integration config")
-					client.Kill()
-					continue
-				}
-			}
-		}
-
-		if err := integration.Configure(configBytes); err != nil {
-			l.log.Error().Err(err).Str("name", name).Msg("failed to configure integration")
-			client.Kill()
-			continue
-		}
-
-		desc, err := integration.Description()
-		if err == nil && desc != "" {
-			l.reg.RegisterNamespaceDescription(name, desc)
-		}
-
-		toolsBytes, err := integration.Tools()
-		if err != nil {
-			l.log.Error().Err(err).Str("name", name).Msg("failed to retrieve tools from integration")
-			client.Kill()
-			continue
-		}
-
-		var tools []mcp.Tool
-		if len(toolsBytes) > 0 {
-			if err := json.Unmarshal(toolsBytes, &tools); err != nil {
-				l.log.Error().Err(err).Str("name", name).Msg("failed to decode tools from integration")
-				client.Kill()
-				continue
-			}
-		}
-
-		for _, tool := range tools {
-			// Copy tool variable to avoid closure capture issues
-			tool := tool
-			originalToolName := tool.Name
-			
-			// Prefix the tool name with the integration name to namespace it
-			if !strings.HasPrefix(tool.Name, name+".") {
-				tool.Name = name + "." + tool.Name
-			}
-
-			l.reg.RegisterWithSpec(tool, func(ctx context.Context, args map[string]any) (any, error) {
-				argsBytes, err := json.Marshal(args)
-				if err != nil {
-					return nil, err
-				}
-				
-				respBytes, err := integration.CallTool(originalToolName, argsBytes)
-				if err != nil {
-					return nil, err
-				}
-				
-				var resp any
-				if len(respBytes) > 0 {
-					if err := json.Unmarshal(respBytes, &resp); err != nil {
-						return string(respBytes), nil // Return as string if it isn't JSON
-					}
-				}
-				return resp, nil
-			})
-		}
-		
-		l.log.Info().Str("name", name).Int("tools", len(tools)).Msg("successfully loaded native integration")
 	}
 
+	return nil
+}
+
+// Load loads a specific plugin by name from the standard integrations directory.
+func (l *pluginLoader) Load(name string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(home, ".config", "clara", "integrations", name)
+	return l.loadIntegrationAt(name, path)
+}
+
+// Unload kills a plugin client and unregisters its tools and intents.
+func (l *pluginLoader) Unload(name string) error {
+	l.mu.Lock()
+	client, ok := l.clients[name]
+	delete(l.clients, name)
+	l.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("plugin %q not loaded", name)
+	}
+
+	client.Kill()
+	l.reg.UnregisterNamespace(name)
+	_ = l.sup.UnregisterIntent(name)
+
+	l.log.Info().Str("name", name).Msg("plugin unloaded")
+	return nil
+}
+
+// Reload unloads and then loads a plugin.
+func (l *pluginLoader) Reload(name string) error {
+	if err := l.Unload(name); err != nil {
+		l.log.Warn().Err(err).Str("name", name).Msg("unload failed during reload")
+	}
+	return l.Load(name)
+}
+
+// List returns a list of available plugins and their current status.
+func (l *pluginLoader) List() []map[string]any {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	dir := filepath.Join(home, ".config", "clara", "integrations")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	var result []map[string]any
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		name := entry.Name()
+		_, loaded := l.clients[name]
+		status := "Unloaded"
+		if loaded {
+			status = "Loaded"
+		}
+		result = append(result, map[string]any{
+			"name":   name,
+			"status": status,
+		})
+	}
+	return result
+}
+
+func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
+	l.mu.Lock()
+	if _, ok := l.clients[name]; ok {
+		l.mu.Unlock()
+		return fmt.Errorf("plugin %q already loaded", name)
+	}
+	l.mu.Unlock()
+
+	l.log.Info().Str("name", name).Str("path", path).Msg("loading native integration")
+
+	client := plugin.NewClient(&plugin.ClientConfig{
+		HandshakeConfig: contract.HandshakeConfig,
+		Plugins: map[string]plugin.Plugin{
+			"shell": &contract.ShellIntegrationPlugin{},
+			"fs":    &contract.FSIntegrationPlugin{},
+			// More plugins will be added here
+		},
+		Cmd:    exec.Command(path),
+		Logger: buildHCLogAdapter(l.log, name),
+	})
+
+	rpcClient, err := client.Client()
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("failed to connect to integration plugin: %w", err)
+	}
+
+	raw, err := rpcClient.Dispense(name)
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("failed to dispense integration plugin: %w", err)
+	}
+
+	integration, ok := raw.(contract.Integration)
+	if !ok {
+		client.Kill()
+		return fmt.Errorf("plugin does not implement contract.Integration")
+	}
+
+	var configBytes []byte
+	if l.cfg.Integrations != nil {
+		if cfg, ok := l.cfg.Integrations[name]; ok {
+			configBytes, err = json.Marshal(cfg)
+			if err != nil {
+				client.Kill()
+				return fmt.Errorf("failed to marshal integration config: %w", err)
+			}
+		}
+	}
+
+	if err := integration.Configure(configBytes); err != nil {
+		client.Kill()
+		return fmt.Errorf("failed to configure integration: %w", err)
+	}
+
+	desc, err := integration.Description()
+	if err == nil && desc != "" {
+		l.reg.RegisterNamespaceDescription(name, desc)
+	}
+
+	toolsBytes, err := integration.Tools()
+	if err != nil {
+		client.Kill()
+		return fmt.Errorf("failed to retrieve tools from integration: %w", err)
+	}
+
+	var tools []mcp.Tool
+	if len(toolsBytes) > 0 {
+		if err := json.Unmarshal(toolsBytes, &tools); err != nil {
+			client.Kill()
+			return fmt.Errorf("failed to decode tools from integration: %w", err)
+		}
+	}
+
+	for _, tool := range tools {
+		// Copy tool variable to avoid closure capture issues
+		tool := tool
+		originalToolName := tool.Name
+
+		// Prefix the tool name with the integration name to namespace it
+		if !strings.HasPrefix(tool.Name, name+".") {
+			tool.Name = name + "." + tool.Name
+		}
+
+		l.reg.RegisterWithSpec(tool, func(ctx context.Context, args map[string]any) (any, error) {
+			argsBytes, err := json.Marshal(args)
+			if err != nil {
+				return nil, err
+			}
+
+			respBytes, err := integration.CallTool(originalToolName, argsBytes)
+			if err != nil {
+				return nil, err
+			}
+
+			var resp any
+			if len(respBytes) > 0 {
+				if err := json.Unmarshal(respBytes, &resp); err != nil {
+					return string(respBytes), nil // Return as string if it isn't JSON
+				}
+			}
+			return resp, nil
+		})
+	}
+
+	l.mu.Lock()
+	l.clients[name] = client
+	l.mu.Unlock()
+
+	l.log.Info().Str("name", name).Int("tools", len(tools)).Msg("successfully loaded native integration")
 	return nil
 }
 
