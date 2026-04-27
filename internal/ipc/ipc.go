@@ -25,6 +25,10 @@ const (
 	MethodTUIHistory    = "tui.history"
 	MethodTUIClear      = "tui.clear"
 	MethodTUIAnswer     = "tui.answer"
+	MethodPluginList    = "plugin.list"
+	MethodPluginLoad    = "plugin.load"
+	MethodPluginUnload  = "plugin.unload"
+	MethodPluginReload  = "plugin.reload"
 )
 
 // Request is a command sent from the CLI to the daemon.

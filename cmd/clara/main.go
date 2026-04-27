@@ -71,6 +71,7 @@ func init() {
 	rootCmd.AddCommand(toolCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(mcpserverCmd)
+	rootCmd.AddCommand(pluginCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(runCmd)
 

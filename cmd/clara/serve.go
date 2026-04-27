@@ -129,7 +129,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Error().Err(err).Msg("failed to load native plugins")
 	}
 
-	handler := buildHandler(reg, sup, attachServer, db, logger, shutdown)
+	handler := buildHandler(reg, sup, attachServer, db, loader, logger, shutdown)
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 	if err != nil {
 		return errors.Wrap(err, "create control socket server")
@@ -195,6 +195,7 @@ func buildHandler(
 	sup *supervisor.Supervisor,
 	attach *registry.DynamicAttachServer,
 	db *store.Store,
+	loader *pluginLoader,
 	log zerolog.Logger,
 	shutdown func(),
 ) ipc.HandlerFunc {
@@ -694,6 +695,45 @@ func buildHandler(
 				return
 			}
 			writeResp(&ipc.Response{Message: "answer recorded"})
+
+		case ipc.MethodPluginList:
+			writeResp(&ipc.Response{Data: loader.List()})
+
+		case ipc.MethodPluginLoad:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			if err := loader.Load(name); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "plugin " + name + " loaded"})
+
+		case ipc.MethodPluginUnload:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			if err := loader.Unload(name); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "plugin " + name + " unloaded"})
+
+		case ipc.MethodPluginReload:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			if err := loader.Reload(name); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "plugin " + name + " reloaded"})
 
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})
