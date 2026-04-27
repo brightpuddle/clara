@@ -1,4 +1,4 @@
-.PHONY: build test vet lint proto fmt bridge clean install install-clara uninstall sign-cert
+.PHONY: build test vet lint proto fmt bridge clean install install-clara uninstall sign-cert setup check-deps
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
@@ -19,12 +19,40 @@ SIGN_IDENTITY := $(shell security find-identity -v -p codesigning 2>/dev/null \
                    | grep -q '"$(CERT_NAME)"' \
                    && echo '$(CERT_NAME)' || echo -)
 
+## setup: install development dependencies (Homebrew + Go tools)
+setup:
+	@echo "Installing Homebrew dependencies..."
+	brew install protobuf swift-protobuf
+	@echo "Installing Go protobuf plugins..."
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	@echo "Building Swift gRPC v1 generator from source (required for ClaraBridge)..."
+	@if [ ! -f /usr/local/bin/protoc-gen-grpc-swift ]; then \
+		rm -rf /tmp/grpc-swift-src; \
+		git clone --depth 1 --branch 1.23.0 https://github.com/grpc/grpc-swift.git /tmp/grpc-swift-src; \
+		cd /tmp/grpc-swift-src && swift build -c release --product protoc-gen-grpc-swift; \
+		sudo cp /tmp/grpc-swift-src/.build/release/protoc-gen-grpc-swift /usr/local/bin/; \
+		rm -rf /tmp/grpc-swift-src; \
+	fi
+	@echo "Setup complete."
+
+## check-deps: verify all required protobuf tools are installed
+check-deps:
+	@command -v protoc >/dev/null 2>&1 || { echo "Error: protoc not found. Run 'make setup'."; exit 1; }
+	@command -v protoc-gen-go >/dev/null 2>&1 || { echo "Error: protoc-gen-go not found. Run 'make setup'."; exit 1; }
+	@command -v protoc-gen-go-grpc >/dev/null 2>&1 || { echo "Error: protoc-gen-go-grpc not found. Run 'make setup'."; exit 1; }
+	@command -v protoc-gen-swift >/dev/null 2>&1 || { echo "Error: protoc-gen-swift not found. Run 'make setup'."; exit 1; }
+	@if [ ! -f /usr/local/bin/protoc-gen-grpc-swift ]; then \
+		echo "Error: /usr/local/bin/protoc-gen-grpc-swift (v1) not found. Run 'make setup'."; \
+		exit 1; \
+	fi
+
 ## build: compile the unified clara binary and all plugins
 build: build-core build-integrations build-intents
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" bin/clara
 
 ## proto: generate protobuf bindings for Go and Swift
-proto:
+proto: check-deps
 	mkdir -p pkg/contract/proto
 	protoc --go_out=pkg/contract/proto --go_opt=module=github.com/brightpuddle/clara/pkg/contract/proto \
 		--go-grpc_out=pkg/contract/proto --go-grpc_opt=module=github.com/brightpuddle/clara/pkg/contract/proto \
