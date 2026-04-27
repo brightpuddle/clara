@@ -58,13 +58,13 @@ func (g *IntegrationRPC) Configure(config []byte) error {
 
 func (g *IntegrationRPC) Description() (string, error) {
 	var resp string
-	err := g.Client.Call("Plugin.Description", new(interface{}), &resp)
+	err := g.Client.Call("Plugin.Description", struct{}{}, &resp)
 	return resp, err
 }
 
 func (g *IntegrationRPC) Tools() ([]byte, error) {
 	var resp []byte
-	err := g.Client.Call("Plugin.Tools", new(interface{}), &resp)
+	err := g.Client.Call("Plugin.Tools", struct{}{}, &resp)
 	return resp, err
 }
 
@@ -85,13 +85,13 @@ func (s *IntegrationRPCServer) Configure(config []byte, resp *error) error {
 	return nil
 }
 
-func (s *IntegrationRPCServer) Description(args interface{}, resp *string) error {
+func (s *IntegrationRPCServer) Description(args struct{}, resp *string) error {
 	var err error
 	*resp, err = s.Impl.Description()
 	return err
 }
 
-func (s *IntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+func (s *IntegrationRPCServer) Tools(args struct{}, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err

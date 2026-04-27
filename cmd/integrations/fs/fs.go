@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/brightpuddle/clara/internal/mcpserver/markdown"
 	"github.com/cockroachdb/errors"
 	"github.com/fsnotify/fsnotify"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -411,13 +410,6 @@ func handleReadFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 			if err := yaml.Unmarshal(data, &parsed); err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("read_file yaml decode: %v", err)), nil
 			}
-		case "markdown":
-			stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-			doc, err := markdown.Parse(data, stem)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("read_file markdown decode: %v", err)), nil
-			}
-			parsed = doc
 		default:
 			return mcp.NewToolResultError(fmt.Sprintf("read_file: unsupported decode format %q", decode)), nil
 		}
@@ -447,26 +439,6 @@ func handleWriteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 			content, err = json.MarshalIndent(data, "", "  ")
 		case "yaml":
 			content, err = yaml.Marshal(data)
-		case "markdown":
-			// If data is a map, we look for 'content' and 'frontmatter'
-			if m, ok := data.(map[string]any); ok {
-				var buf strings.Builder
-				if fm, hasFM := m["frontmatter"]; hasFM && fm != nil {
-					buf.WriteString("---\n")
-					fmData, err := yaml.Marshal(fm)
-					if err != nil {
-						return mcp.NewToolResultError(fmt.Sprintf("write_file markdown frontmatter encode: %v", err)), nil
-					}
-					buf.Write(fmData)
-					buf.WriteString("---\n")
-				}
-				if c, hasC := m["content"]; hasC {
-					buf.WriteString(fmt.Sprint(c))
-				}
-				content = []byte(buf.String())
-			} else {
-				return mcp.NewToolResultError("write_file: markdown encode requires a map with 'content' and optional 'frontmatter'"), nil
-			}
 		default:
 			return mcp.NewToolResultError(fmt.Sprintf("write_file: unsupported encode format %q", encode)), nil
 		}
