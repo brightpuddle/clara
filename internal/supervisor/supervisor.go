@@ -134,6 +134,28 @@ func (s *Supervisor) RegisterIntent(path string, intent *orchestrator.Intent) er
 	return s.deployIntent(path, intent)
 }
 
+// UnregisterIntent removes an intent from the supervisor and stops its tasks.
+func (s *Supervisor) UnregisterIntent(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	managed, ok := s.intents[id]
+	if !ok {
+		return errors.Newf("intent %q not found", id)
+	}
+
+	for _, cancel := range managed.cancels {
+		cancel()
+	}
+	managed.cancels = nil
+	managed.activeTasks = 0
+	managed.active = false
+
+	delete(s.intents, id)
+	delete(s.failures, managed.path)
+	return nil
+}
+
 func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -190,7 +212,9 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 
 func (s *Supervisor) runPersistentTask(ctx context.Context, managed *managedIntent, task orchestrator.Task) {
 	id := managed.intent.ID
-	runSeq := atomicAdd64(&managed.runSeq, 1)
+	runSeq := atomic.LoadInt64(&managed.runSeq)
+
+	defer s.trackTaskFinished(managed, runSeq)
 
 	switch task.Mode {
 	case orchestrator.IntentModeSchedule:
@@ -332,7 +356,6 @@ func (s *Supervisor) executeTask(
 		}
 		s.onFinished(ctx, runID, managed.intent.ID, status, errorText)
 	}
-	s.trackTaskFinished(managed, runSeq)
 }
 
 func (s *Supervisor) trackTaskFinished(managed *managedIntent, runSeq int64) {
