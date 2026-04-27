@@ -30,6 +30,7 @@ type Context interface {
 	DB() (DBIntegration, error)
 	Chrome() (ChromeIntegration, error)
 	Zk() (ZkIntegration, error)
+	LLM() (LLMIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -174,6 +175,19 @@ func (g *ContextRPC) Zk() (ZkIntegration, error) {
 	return &ZkIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
+func (g *ContextRPC) LLM() (LLMIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.LLM", EmptyArgs{}, &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &LLMIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
+}
+
 type ContextRPCServer struct {
 	Impl   Context
 	broker *plugin.MuxBroker
@@ -237,6 +251,19 @@ func (s *ContextRPCServer) Zk(args EmptyArgs, resp *uint32) error {
 	}
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &ZkIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) LLM(args EmptyArgs, resp *uint32) error {
+	impl, err := s.Impl.LLM()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &LLMIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
 		Impl:                 impl,
 	})

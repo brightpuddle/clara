@@ -147,6 +147,10 @@ func (c *registryContext) Zk() (contract.ZkIntegration, error) {
 	return &registryZk{ctx: c.ctx, reg: c.reg, log: c.log}, nil
 }
 
+func (c *registryContext) LLM() (contract.LLMIntegration, error) {
+	return &registryLLM{ctx: c.ctx, reg: c.reg, log: c.log}, nil
+}
+
 type registryShell struct {
 	ctx context.Context
 	reg *registry.Registry
@@ -429,6 +433,83 @@ func (z *registryZk) SearchNotes(query string, limit int) ([]contract.NoteInfo, 
 func (z *registryZk) ReloadVault() error {
 	_, err := z.reg.Call(z.ctx, "zk.vault_reload", nil)
 	return err
+}
+
+type registryLLM struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (l *registryLLM) Configure(config []byte) error { return nil }
+func (l *registryLLM) Description() (string, error) {
+	return "Host-side registry llm integration", nil
+}
+func (l *registryLLM) Tools() ([]byte, error) { return nil, nil }
+func (l *registryLLM) CallTool(name string, args []byte) ([]byte, error) {
+	l.log.Debug().Str("tool", name).Msg("native intent requested llm tool call")
+	var params map[string]any
+	if err := json.Unmarshal(args, &params); err != nil {
+		return nil, err
+	}
+
+	res, err := l.reg.Call(l.ctx, "llm."+name, params)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(res)
+}
+
+func (l *registryLLM) Generate(category string, req contract.GenerateRequest) (contract.GenerateResponse, error) {
+	l.log.Debug().Str("category", category).Msg("native intent requested llm generation")
+	res, err := l.reg.Call(l.ctx, "llm.generate", map[string]any{
+		"category":    category,
+		"messages":    req.Messages,
+		"temperature": req.Temperature,
+		"max_tokens":  req.MaxTokens,
+	})
+	if err != nil {
+		return contract.GenerateResponse{}, err
+	}
+	var resp contract.GenerateResponse
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &resp)
+	return resp, err
+}
+
+func (l *registryLLM) GenerateVision(category string, req contract.VisionRequest) (contract.GenerateResponse, error) {
+	l.log.Debug().Str("category", category).Msg("native intent requested llm vision generation")
+	res, err := l.reg.Call(l.ctx, "llm.generate_vision", map[string]any{
+		"category":     category,
+		"messages":     req.Messages,
+		"image_url":    req.ImageURL,
+		"image_base64": req.ImageBase64,
+		"temperature":  req.Temperature,
+		"max_tokens":   req.MaxTokens,
+	})
+	if err != nil {
+		return contract.GenerateResponse{}, err
+	}
+	var resp contract.GenerateResponse
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &resp)
+	return resp, err
+}
+
+func (l *registryLLM) Embed(category string, input []string) ([][]float32, error) {
+	l.log.Debug().Str("category", category).Msg("native intent requested llm embedding")
+	res, err := l.reg.Call(l.ctx, "llm.embed", map[string]any{
+		"category": category,
+		"input":    input,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var resp [][]float32
+	data, _ := json.Marshal(res)
+	err = json.Unmarshal(data, &resp)
+	return resp, err
 }
 
 func executeStateMachineRun(

@@ -197,6 +197,7 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 			"db":     &contract.DBIntegrationPlugin{},
 			"chrome": &contract.ChromeIntegrationPlugin{},
 			"zk":     &contract.ZkIntegrationPlugin{},
+			"llm":    &contract.LLMIntegrationPlugin{},
 		},
 		Cmd:    exec.Command(path),
 		Logger: buildHCLogAdapter(l.log, name),
