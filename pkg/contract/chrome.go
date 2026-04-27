@@ -23,18 +23,17 @@ type ChromeIntegrationRPCServer struct {
 	Impl ChromeIntegration
 }
 
-func (s *ChromeIntegrationRPCServer) Configure(config []byte, resp *error) error {
-	*resp = s.Impl.Configure(config)
-	return nil
+func (s *ChromeIntegrationRPCServer) Configure(config []byte, resp *struct{}) error {
+	return s.Impl.Configure(config)
 }
 
-func (s *ChromeIntegrationRPCServer) Description(args interface{}, resp *string) error {
+func (s *ChromeIntegrationRPCServer) Description(args EmptyArgs, resp *string) error {
 	var err error
 	*resp, err = s.Impl.Description()
 	return err
 }
 
-func (s *ChromeIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+func (s *ChromeIntegrationRPCServer) Tools(args EmptyArgs, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err

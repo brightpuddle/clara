@@ -855,7 +855,14 @@ func registerPermanentTUITools(reg *registry.Registry, db *store.Store, logger z
 			args["id"] = id
 			args["run_id"] = runID
 			args["intent_id"] = intentID
-			return reg.Call(ctx, "tui.hud_send_interactive", args)
+			res, err := reg.Call(ctx, "tui.hud_send_interactive", args)
+			if err == nil {
+				if ans, ok := res.(string); ok && strings.HasPrefix(ans, "Answer received: ") {
+					actualAns := strings.TrimPrefix(ans, "Answer received: ")
+					_ = db.UpdateTUIContentAnswer(ctx, id, actualAns)
+				}
+			}
+			return res, err
 		}
 
 		// If no RunID is present, this is likely a direct CLI tool call.

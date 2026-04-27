@@ -92,18 +92,17 @@ func (s *DBIntegrationRPCServer) StageRows(args StageRowsArgs, resp *int) error 
 	return err
 }
 
-func (s *DBIntegrationRPCServer) Configure(config []byte, resp *error) error {
-	*resp = s.Impl.Configure(config)
-	return nil
+func (s *DBIntegrationRPCServer) Configure(config []byte, resp *struct{}) error {
+	return s.Impl.Configure(config)
 }
 
-func (s *DBIntegrationRPCServer) Description(args interface{}, resp *string) error {
+func (s *DBIntegrationRPCServer) Description(args EmptyArgs, resp *string) error {
 	var err error
 	*resp, err = s.Impl.Description()
 	return err
 }
 
-func (s *DBIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+func (s *DBIntegrationRPCServer) Tools(args EmptyArgs, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err

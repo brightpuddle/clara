@@ -38,18 +38,17 @@ func (s *ShellIntegrationRPCServer) Run(command string, resp *string) error {
 // Standard methods need to be overridden to call s.Impl instead of s.IntegrationRPCServer.Impl
 // because s.Impl is more specific (ShellIntegration) and covers both.
 
-func (s *ShellIntegrationRPCServer) Configure(config []byte, resp *error) error {
-	*resp = s.Impl.Configure(config)
-	return nil
+func (s *ShellIntegrationRPCServer) Configure(config []byte, resp *struct{}) error {
+	return s.Impl.Configure(config)
 }
 
-func (s *ShellIntegrationRPCServer) Description(args interface{}, resp *string) error {
+func (s *ShellIntegrationRPCServer) Description(args EmptyArgs, resp *string) error {
 	var err error
 	*resp, err = s.Impl.Description()
 	return err
 }
 
-func (s *ShellIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+func (s *ShellIntegrationRPCServer) Tools(args EmptyArgs, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err

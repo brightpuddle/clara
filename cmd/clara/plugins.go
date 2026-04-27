@@ -34,7 +34,12 @@ type pluginLoader struct {
 	clients map[string]*plugin.Client
 }
 
-func newPluginLoader(reg *registry.Registry, sup *supervisor.Supervisor, cfg *config.Config, log zerolog.Logger) *pluginLoader {
+func newPluginLoader(
+	reg *registry.Registry,
+	sup *supervisor.Supervisor,
+	cfg *config.Config,
+	log zerolog.Logger,
+) *pluginLoader {
 	return &pluginLoader{
 		reg:     reg,
 		sup:     sup,
@@ -55,14 +60,21 @@ func (l *pluginLoader) loadAll() error {
 	integrationsDir := filepath.Join(claraConfigDir, "integrations")
 	intentsDir := filepath.Join(claraConfigDir, "intents")
 
-	l.log.Debug().Str("integrations_dir", integrationsDir).Str("intents_dir", intentsDir).Msg("scanning for plugins")
+	l.log.Debug().
+		Str("integrations_dir", integrationsDir).
+		Str("intents_dir", intentsDir).
+		Msg("scanning for plugins")
 
 	if err := l.loadIntegrations(integrationsDir); err != nil {
-		l.log.Error().Err(err).Str("dir", integrationsDir).Msg("failed to load integrations")
+		l.log.Error().
+			Stack().
+			Err(err).
+			Str("dir", integrationsDir).
+			Msg("failed to load integrations")
 	}
 
 	if err := l.loadIntents(intentsDir); err != nil {
-		l.log.Error().Err(err).Str("dir", intentsDir).Msg("failed to load intents")
+		l.log.Error().Stack().Err(err).Str("dir", intentsDir).Msg("failed to load intents")
 	}
 
 	return nil
@@ -89,7 +101,7 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 
 		path := filepath.Join(dir, name)
 		if err := l.loadIntegrationAt(name, path); err != nil {
-			l.log.Error().Err(err).Str("name", name).Msg("failed to load integration")
+			l.log.Error().Stack().Err(err).Str("name", name).Msg("failed to load integration")
 		}
 	}
 
@@ -278,7 +290,10 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 	l.clients[name] = client
 	l.mu.Unlock()
 
-	l.log.Info().Str("name", name).Int("tools", len(tools)).Msg("successfully loaded native integration")
+	l.log.Info().
+		Str("name", name).
+		Int("tools", len(tools)).
+		Msg("successfully loaded native integration")
 	return nil
 }
 
@@ -381,11 +396,40 @@ func (a *hcZerologAdapter) Log(level hclog.Level, msg string, args ...interface{
 	event.Msg(msg)
 }
 
-func (a *hcZerologAdapter) Trace(msg string, args ...interface{}) { a.Log(hclog.Trace, msg, args...) }
-func (a *hcZerologAdapter) Debug(msg string, args ...interface{}) { a.Log(hclog.Debug, msg, args...) }
-func (a *hcZerologAdapter) Info(msg string, args ...interface{})  { a.Log(hclog.Info, msg, args...) }
-func (a *hcZerologAdapter) Warn(msg string, args ...interface{})  { a.Log(hclog.Warn, msg, args...) }
-func (a *hcZerologAdapter) Error(msg string, args ...interface{}) { a.Log(hclog.Error, msg, args...) }
+func (a *hcZerologAdapter) Trace(
+	msg string,
+	args ...interface{},
+) {
+	a.Log(hclog.Trace, msg, args...)
+}
+
+func (a *hcZerologAdapter) Debug(
+	msg string,
+	args ...interface{},
+) {
+	a.Log(hclog.Debug, msg, args...)
+}
+
+func (a *hcZerologAdapter) Info(
+	msg string,
+	args ...interface{},
+) {
+	a.Log(hclog.Info, msg, args...)
+}
+
+func (a *hcZerologAdapter) Warn(
+	msg string,
+	args ...interface{},
+) {
+	a.Log(hclog.Warn, msg, args...)
+}
+
+func (a *hcZerologAdapter) Error(
+	msg string,
+	args ...interface{},
+) {
+	a.Log(hclog.Error, msg, args...)
+}
 
 func (a *hcZerologAdapter) IsTrace() bool { return a.level <= hclog.Trace }
 func (a *hcZerologAdapter) IsDebug() bool { return a.level <= hclog.Debug }
@@ -405,7 +449,11 @@ func (a *hcZerologAdapter) With(args ...interface{}) hclog.Logger {
 }
 
 func (a *hcZerologAdapter) Named(name string) hclog.Logger {
-	return &hcZerologAdapter{log: a.log.With().Str("name", name).Logger(), name: a.name + "." + name, level: a.level}
+	return &hcZerologAdapter{
+		log:   a.log.With().Str("name", name).Logger(),
+		name:  a.name + "." + name,
+		level: a.level,
+	}
 }
 
 func (a *hcZerologAdapter) ResetNamed(name string) hclog.Logger {

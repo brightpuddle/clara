@@ -75,11 +75,12 @@ type historyLoadedMsg struct {
 }
 
 type appModel struct {
-	cfg      *config.Config
-	client   *IPCClient
-	theme    *Theme
-	msgChan  chan tea.Msg
-	snapshot atomic.Value // stores modelSnapshot; updated after every Update call
+	cfg           *config.Config
+	client        *IPCClient
+	theme         *Theme
+	msgChan       chan tea.Msg
+	snapshot      atomic.Value // stores modelSnapshot; updated after every Update call
+	HistoryLoaded bool         // Used by tests to know when history has been fetched
 
 	width  int
 	height int
@@ -142,6 +143,7 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.content.SetSize(m.width, contentHeight)
 
 	case historyLoadedMsg:
+		m.HistoryLoaded = true
 		// Save newly arrived items (e.g. from notification system) to re-add after history
 		newlyArrived := m.content.items
 		// Remove the placeholder if it's the only thing there

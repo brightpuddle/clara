@@ -102,14 +102,32 @@ func (m *contentModel) SetSize(width, height int) {
 }
 
 func (m *contentModel) addItem(item ContentItem) {
+	// Deduplicate by ID
+	if item.ID != 0 {
+		for i := range m.items {
+			if m.items[i].ID == item.ID {
+				// If we have an active QA, don't overwrite it with a notification
+				// that might have come from history load (which marks answered QAs as notifications).
+				if m.items[i].Type == "qa" && item.Type == "notification" {
+					return
+				}
+				m.items[i] = item
+				return
+			}
+		}
+		for i := range m.pendingItems {
+			if m.pendingItems[i].ID == item.ID {
+				m.pendingItems[i] = item
+				return
+			}
+		}
+	}
+
 	if m.hasActiveQA() {
 		m.pendingItems = append(m.pendingItems, item)
 		return
 	}
 	m.items = append(m.items, item)
-	// If the item we just added was a notification, check if there's anything else in pending.
-	// Actually, if we just added a notification, and we have pending, it means there was an active QA
-	// that we just didn't see. But hasActiveQA() should catch it.
 }
 
 func (m *contentModel) hasActiveQA() bool {

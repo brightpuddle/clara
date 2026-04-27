@@ -77,7 +77,7 @@ func New(ctx context.Context) *Server {
 			mcp.Description("Absolute or relative path to the file to read."),
 		),
 		mcp.WithString("decode",
-			mcp.Description("Optional decoder: json, yaml, markdown. When set, returns parsed data instead of raw text."),
+			mcp.Description("Optional decoder: json, yaml. When set, returns parsed data instead of raw text."),
 		),
 	), handleReadFile)
 
@@ -97,7 +97,7 @@ func New(ctx context.Context) *Server {
 			mcp.Description("Structured data to write. When set, encode must also be set."),
 		),
 		mcp.WithString("encode",
-			mcp.Description("Optional encoder: json, yaml, markdown."),
+			mcp.Description("Optional encoder: json, yaml."),
 		),
 	), handleWriteFile)
 

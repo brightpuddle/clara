@@ -18,20 +18,14 @@ func TestRunDaemonServices_StartsServersBeforeSupervisor(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- runDaemonServices(ctx, daemonServiceHooks{
-			startServers: func(context.Context) error {
-				startedServers = true
-				return nil
-			},
-			stopServers: func() {},
 			startControl: func(ctx context.Context) error {
-				<-ctx.Done()
-				return nil
-			},
-			startAttach: func(ctx context.Context) error {
+				startedServers = true
 				<-ctx.Done()
 				return nil
 			},
 			startSupervisor: func(ctx context.Context) error {
+				// Give control server a moment to "start"
+				time.Sleep(50 * time.Millisecond)
 				supervisorSawStartedServers = startedServers
 				cancel()
 				<-ctx.Done()

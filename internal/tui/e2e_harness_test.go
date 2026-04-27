@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	"github.com/brightpuddle/clara/internal/store"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cockroachdb/errors"
-	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
@@ -171,7 +171,14 @@ func (h *E2EHarness) registerDaemonTools() {
 			args["id"] = float64(id)
 			args["run_id"] = runID
 			args["intent_id"] = intentID
-			return h.Registry.Call(ctx, "tui.hud_send_interactive", args)
+			res, err := h.Registry.Call(ctx, "tui.hud_send_interactive", args)
+			if err == nil {
+				if ans, ok := res.(string); ok && strings.HasPrefix(ans, "Answer received: ") {
+					actualAns := strings.TrimPrefix(ans, "Answer received: ")
+					_ = h.Store.UpdateTUIContentAnswer(ctx, id, actualAns)
+				}
+			}
+			return res, err
 		}
 
 		// CLI BLOCKING LOGIC
@@ -280,6 +287,62 @@ func (h *E2EHarness) StartTUIWithHistory(minItems int) error {
 		prompt:  newPromptModel(theme),
 		msgChan: make(chan tea.Msg, 100),
 	}
+
+	// Register TUI tools
+	h.Registry.Register("tui.hud_send", func(ctx context.Context, args map[string]any) (any, error) {
+		msg, _ := args["message"].(string)
+		id, _ := args["id"].(float64)
+		runID, _ := args["run_id"].(string)
+		intentID, _ := args["intent_id"].(string)
+		if h.TUIProgram != nil {
+			h.TUIProgram.Send(notificationMsg{
+				ID:       int64(id),
+				RunID:    runID,
+				IntentID: intentID,
+				Message:  msg,
+			})
+		}
+		return "ok", nil
+	})
+
+	h.Registry.Register("tui.hud_send_interactive", func(ctx context.Context, args map[string]any) (any, error) {
+		prompt, _ := args["prompt"].(string)
+		var opts []string
+		if raw, ok := args["options"].([]any); ok {
+			for _, r := range raw {
+				if s, ok := r.(string); ok {
+					opts = append(opts, s)
+				}
+			}
+		} else if raw, ok := args["options"].([]string); ok {
+			opts = raw
+		}
+		id, _ := args["id"].(float64)
+		runID, _ := args["run_id"].(string)
+		intentID, _ := args["intent_id"].(string)
+
+		if h.TUIProgram == nil {
+			return nil, errors.New("TUI offline")
+		}
+
+		respChan := make(chan string, 1)
+		h.TUIProgram.Send(interactiveNotificationMsg{
+			ID:           int64(id),
+			RunID:        runID,
+			IntentID:     intentID,
+			Prompt:       prompt,
+			Options:      opts,
+			ResponseChan: respChan,
+		})
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case ans := <-respChan:
+			return fmt.Sprintf("Answer received: %s", ans), nil
+		}
+	})
+
 	h.TUIProgram = tea.NewProgram(h.TUIModel, tea.WithInput(nil), tea.WithOutput(io.Discard))
 	h.TUIClosed = make(chan struct{})
 	go func() {
@@ -289,10 +352,12 @@ func (h *E2EHarness) StartTUIWithHistory(minItems int) error {
 	
 	// Wait for TUI history to be loaded
 	for i := 0; i < 100; i++ {
-		snap := h.TUISnapshot()
-		historyLoaded := (len(snap.items) + len(snap.pendingItems)) >= minItems
-		if historyLoaded {
-			return nil
+		if h.TUIModel.HistoryLoaded {
+			snap := h.TUISnapshot()
+			historyLoaded := (len(snap.items) + len(snap.pendingItems)) >= minItems
+			if historyLoaded {
+				return nil
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -311,6 +376,7 @@ func (h *E2EHarness) StopTUI() {
 		}
 		h.TUIProgram = nil
 		h.TUIModel = nil
+		h.Registry.UnregisterNamespace("tui") // Unregisters tui.hud_send*
 		// Give some time for socket to be released
 		time.Sleep(200 * time.Millisecond)
 	}

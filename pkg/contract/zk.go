@@ -51,7 +51,7 @@ type ZkIntegrationRPC struct {
 
 func (g *ZkIntegrationRPC) ListNotes() ([]NoteInfo, error) {
 	var resp []NoteInfo
-	err := g.Client.Call("Plugin.ListNotes", struct{}{}, &resp)
+	err := g.Client.Call("Plugin.ListNotes", EmptyArgs{}, &resp)
 	return resp, err
 }
 
@@ -68,21 +68,11 @@ func (g *ZkIntegrationRPC) CreateNote(name, content string) (NoteDetail, error) 
 }
 
 func (g *ZkIntegrationRPC) UpdateNote(note, content string) error {
-	var resp error
-	err := g.Client.Call("Plugin.UpdateNote", UpdateNoteArgs{Note: note, Content: content}, &resp)
-	if err != nil {
-		return err
-	}
-	return resp
+	return g.Client.Call("Plugin.UpdateNote", UpdateNoteArgs{Note: note, Content: content}, &struct{}{})
 }
 
 func (g *ZkIntegrationRPC) DeleteNote(note string) error {
-	var resp error
-	err := g.Client.Call("Plugin.DeleteNote", note, &resp)
-	if err != nil {
-		return err
-	}
-	return resp
+	return g.Client.Call("Plugin.DeleteNote", note, &struct{}{})
 }
 
 func (g *ZkIntegrationRPC) ResolveWikilink(target string) (string, error) {
@@ -93,7 +83,7 @@ func (g *ZkIntegrationRPC) ResolveWikilink(target string) (string, error) {
 
 func (g *ZkIntegrationRPC) ListTags() ([]TagEntry, error) {
 	var resp []TagEntry
-	err := g.Client.Call("Plugin.ListTags", struct{}{}, &resp)
+	err := g.Client.Call("Plugin.ListTags", EmptyArgs{}, &resp)
 	return resp, err
 }
 
@@ -110,12 +100,7 @@ func (g *ZkIntegrationRPC) SearchNotes(query string, limit int) ([]NoteInfo, err
 }
 
 func (g *ZkIntegrationRPC) ReloadVault() error {
-	var resp error
-	err := g.Client.Call("Plugin.ReloadVault", struct{}{}, &resp)
-	if err != nil {
-		return err
-	}
-	return resp
+	return g.Client.Call("Plugin.ReloadVault", EmptyArgs{}, &struct{}{})
 }
 
 type CreateNoteArgs struct {
@@ -138,7 +123,7 @@ type ZkIntegrationRPCServer struct {
 	Impl ZkIntegration
 }
 
-func (s *ZkIntegrationRPCServer) ListNotes(args struct{}, resp *[]NoteInfo) error {
+func (s *ZkIntegrationRPCServer) ListNotes(args EmptyArgs, resp *[]NoteInfo) error {
 	var err error
 	*resp, err = s.Impl.ListNotes()
 	return err
@@ -156,14 +141,12 @@ func (s *ZkIntegrationRPCServer) CreateNote(args CreateNoteArgs, resp *NoteDetai
 	return err
 }
 
-func (s *ZkIntegrationRPCServer) UpdateNote(args UpdateNoteArgs, resp *error) error {
-	*resp = s.Impl.UpdateNote(args.Note, args.Content)
-	return nil
+func (s *ZkIntegrationRPCServer) UpdateNote(args UpdateNoteArgs, resp *struct{}) error {
+	return s.Impl.UpdateNote(args.Note, args.Content)
 }
 
-func (s *ZkIntegrationRPCServer) DeleteNote(note string, resp *error) error {
-	*resp = s.Impl.DeleteNote(note)
-	return nil
+func (s *ZkIntegrationRPCServer) DeleteNote(note string, resp *struct{}) error {
+	return s.Impl.DeleteNote(note)
 }
 
 func (s *ZkIntegrationRPCServer) ResolveWikilink(target string, resp *string) error {
@@ -172,7 +155,7 @@ func (s *ZkIntegrationRPCServer) ResolveWikilink(target string, resp *string) er
 	return err
 }
 
-func (s *ZkIntegrationRPCServer) ListTags(args struct{}, resp *[]TagEntry) error {
+func (s *ZkIntegrationRPCServer) ListTags(args EmptyArgs, resp *[]TagEntry) error {
 	var err error
 	*resp, err = s.Impl.ListTags()
 	return err
@@ -190,23 +173,21 @@ func (s *ZkIntegrationRPCServer) SearchNotes(args SearchNotesArgs, resp *[]NoteI
 	return err
 }
 
-func (s *ZkIntegrationRPCServer) ReloadVault(args struct{}, resp *error) error {
-	*resp = s.Impl.ReloadVault()
-	return nil
+func (s *ZkIntegrationRPCServer) ReloadVault(args EmptyArgs, resp *struct{}) error {
+	return s.Impl.ReloadVault()
 }
 
-func (s *ZkIntegrationRPCServer) Configure(config []byte, resp *error) error {
-	*resp = s.Impl.Configure(config)
-	return nil
+func (s *ZkIntegrationRPCServer) Configure(config []byte, resp *struct{}) error {
+	return s.Impl.Configure(config)
 }
 
-func (s *ZkIntegrationRPCServer) Description(args interface{}, resp *string) error {
+func (s *ZkIntegrationRPCServer) Description(args EmptyArgs, resp *string) error {
 	var err error
 	*resp, err = s.Impl.Description()
 	return err
 }
 
-func (s *ZkIntegrationRPCServer) Tools(args interface{}, resp *[]byte) error {
+func (s *ZkIntegrationRPCServer) Tools(args EmptyArgs, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err

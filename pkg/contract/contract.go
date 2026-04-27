@@ -39,6 +39,8 @@ type Intent interface {
 
 // --- Base RPC Helpers ---
 
+type EmptyArgs struct{}
+
 type CallToolArgs struct {
 	Name string
 	Args []byte
@@ -51,23 +53,18 @@ type IntegrationRPC struct {
 }
 
 func (g *IntegrationRPC) Configure(config []byte) error {
-	var resp error
-	err := g.Client.Call("Plugin.Configure", config, &resp)
-	if err != nil {
-		return err
-	}
-	return resp
+	return g.Client.Call("Plugin.Configure", config, &struct{}{})
 }
 
 func (g *IntegrationRPC) Description() (string, error) {
 	var resp string
-	err := g.Client.Call("Plugin.Description", struct{}{}, &resp)
+	err := g.Client.Call("Plugin.Description", EmptyArgs{}, &resp)
 	return resp, err
 }
 
 func (g *IntegrationRPC) Tools() ([]byte, error) {
 	var resp []byte
-	err := g.Client.Call("Plugin.Tools", struct{}{}, &resp)
+	err := g.Client.Call("Plugin.Tools", EmptyArgs{}, &resp)
 	return resp, err
 }
 
@@ -83,18 +80,17 @@ type IntegrationRPCServer struct {
 	Impl Integration
 }
 
-func (s *IntegrationRPCServer) Configure(config []byte, resp *error) error {
-	*resp = s.Impl.Configure(config)
-	return nil
+func (s *IntegrationRPCServer) Configure(config []byte, resp *struct{}) error {
+	return s.Impl.Configure(config)
 }
 
-func (s *IntegrationRPCServer) Description(args struct{}, resp *string) error {
+func (s *IntegrationRPCServer) Description(args EmptyArgs, resp *string) error {
 	var err error
 	*resp, err = s.Impl.Description()
 	return err
 }
 
-func (s *IntegrationRPCServer) Tools(args struct{}, resp *[]byte) error {
+func (s *IntegrationRPCServer) Tools(args EmptyArgs, resp *[]byte) error {
 	var err error
 	*resp, err = s.Impl.Tools()
 	return err
@@ -115,7 +111,7 @@ type ContextRPC struct {
 
 func (g *ContextRPC) Shell() (ShellIntegration, error) {
 	var id uint32
-	err := g.client.Call("Plugin.Shell", new(interface{}), &id)
+	err := g.client.Call("Plugin.Shell", EmptyArgs{}, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +124,7 @@ func (g *ContextRPC) Shell() (ShellIntegration, error) {
 
 func (g *ContextRPC) FS() (FSIntegration, error) {
 	var id uint32
-	err := g.client.Call("Plugin.FS", new(interface{}), &id)
+	err := g.client.Call("Plugin.FS", EmptyArgs{}, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +137,7 @@ func (g *ContextRPC) FS() (FSIntegration, error) {
 
 func (g *ContextRPC) DB() (DBIntegration, error) {
 	var id uint32
-	err := g.client.Call("Plugin.DB", new(interface{}), &id)
+	err := g.client.Call("Plugin.DB", EmptyArgs{}, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +150,7 @@ func (g *ContextRPC) DB() (DBIntegration, error) {
 
 func (g *ContextRPC) Chrome() (ChromeIntegration, error) {
 	var id uint32
-	err := g.client.Call("Plugin.Chrome", new(interface{}), &id)
+	err := g.client.Call("Plugin.Chrome", EmptyArgs{}, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +163,7 @@ func (g *ContextRPC) Chrome() (ChromeIntegration, error) {
 
 func (g *ContextRPC) Zk() (ZkIntegration, error) {
 	var id uint32
-	err := g.client.Call("Plugin.Zk", new(interface{}), &id)
+	err := g.client.Call("Plugin.Zk", EmptyArgs{}, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +179,7 @@ type ContextRPCServer struct {
 	broker *plugin.MuxBroker
 }
 
-func (s *ContextRPCServer) Shell(args interface{}, resp *uint32) error {
+func (s *ContextRPCServer) Shell(args EmptyArgs, resp *uint32) error {
 	impl, err := s.Impl.Shell()
 	if err != nil {
 		return err
@@ -196,7 +192,7 @@ func (s *ContextRPCServer) Shell(args interface{}, resp *uint32) error {
 	return nil
 }
 
-func (s *ContextRPCServer) FS(args interface{}, resp *uint32) error {
+func (s *ContextRPCServer) FS(args EmptyArgs, resp *uint32) error {
 	impl, err := s.Impl.FS()
 	if err != nil {
 		return err
@@ -208,7 +204,7 @@ func (s *ContextRPCServer) FS(args interface{}, resp *uint32) error {
 	return nil
 }
 
-func (s *ContextRPCServer) DB(args interface{}, resp *uint32) error {
+func (s *ContextRPCServer) DB(args EmptyArgs, resp *uint32) error {
 	impl, err := s.Impl.DB()
 	if err != nil {
 		return err
@@ -221,7 +217,7 @@ func (s *ContextRPCServer) DB(args interface{}, resp *uint32) error {
 	return nil
 }
 
-func (s *ContextRPCServer) Chrome(args interface{}, resp *uint32) error {
+func (s *ContextRPCServer) Chrome(args EmptyArgs, resp *uint32) error {
 	impl, err := s.Impl.Chrome()
 	if err != nil {
 		return err
@@ -234,7 +230,7 @@ func (s *ContextRPCServer) Chrome(args interface{}, resp *uint32) error {
 	return nil
 }
 
-func (s *ContextRPCServer) Zk(args interface{}, resp *uint32) error {
+func (s *ContextRPCServer) Zk(args EmptyArgs, resp *uint32) error {
 	impl, err := s.Impl.Zk()
 	if err != nil {
 		return err
