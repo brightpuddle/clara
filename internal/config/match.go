@@ -35,19 +35,3 @@ func FilterExposed(names []string, includePatterns []string) []string {
 	}
 	return filtered
 }
-
-// MatchesIntent reports whether an intent ID matches the exposure configuration.
-func (c *StdioMCPConfig) MatchesIntent(id string) bool {
-	if c == nil {
-		return false
-	}
-	return MatchAny(id, c.ExposeIntents)
-}
-
-// MatchesTool reports whether a tool name matches the exposure configuration.
-func (c *StdioMCPConfig) MatchesTool(name string) bool {
-	if c == nil {
-		return false
-	}
-	return MatchAny(name, c.ExposeTools)
-}

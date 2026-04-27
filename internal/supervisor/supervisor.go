@@ -22,7 +22,6 @@ import (
 type Supervisor struct {
 	tasksDir   string
 	reg        *registry.Registry
-	regTimeout time.Duration
 	runIntent  IntentRunner
 	log        zerolog.Logger
 	onFinished RunFinishedFunc
@@ -70,14 +69,12 @@ type managedIntent struct {
 func New(
 	tasksDir string,
 	reg *registry.Registry,
-	regTimeout time.Duration,
 	runner IntentRunner,
 	log zerolog.Logger,
 ) *Supervisor {
 	sup := &Supervisor{
 		tasksDir:   tasksDir,
 		reg:        reg,
-		regTimeout: regTimeout,
 		runIntent:  runner,
 		log:        log.With().Str("component", "supervisor").Logger(),
 		intents:    make(map[string]*managedIntent),
@@ -101,28 +98,11 @@ func (s *Supervisor) WithOnRunFinished(fn RunFinishedFunc) *Supervisor {
 	return s
 }
 
-// Start blocks until ctx is cancelled. It waits for initial MCP servers to be ready.
+// Start blocks until ctx is cancelled.
 func (s *Supervisor) Start(ctx context.Context) error {
 	s.mu.Lock()
 	s.rootCtx = ctx
 	s.mu.Unlock()
-
-	// Ensure all initial MCP servers have had a chance to connect.
-	if s.regTimeout > 0 {
-		waitCtx, cancel := context.WithTimeout(ctx, s.regTimeout)
-		defer cancel()
-		if err := s.reg.WaitReady(waitCtx); err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				s.log.Warn().
-					Dur("timeout", s.regTimeout).
-					Msg("registry did not become fully ready in time; starting with available tools")
-			} else if !errors.Is(err, context.Canceled) {
-				s.log.Error().Err(err).Msg("failed waiting for registry readiness")
-			}
-		} else {
-			s.log.Info().Msg("registry ready; loading intents")
-		}
-	}
 
 	<-ctx.Done()
 	s.shutdown()

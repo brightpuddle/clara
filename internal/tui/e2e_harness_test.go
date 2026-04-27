@@ -50,8 +50,7 @@ func NewE2EHarness(t *testing.T) *E2EHarness {
 	id := randomHex(4)
 	cfg := &config.Config{
 		DataDir: dataDir,
-		ControlSocketPathOverride:    fmt.Sprintf("/tmp/cl_ctrl_%s.sock", id),
-		DynamicMCPSocketPathOverride: fmt.Sprintf("/tmp/cl_mcp_%s.sock", id),
+		ControlSocketPathOverride: fmt.Sprintf("/tmp/cl_ctrl_%s.sock", id),
 	}
 	
 	log := zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
@@ -242,70 +241,6 @@ func (h *E2EHarness) startIPCServer() {
 			}
 		case ipc.MethodStart:
 			w.Write(&ipc.Response{Message: "Harness: Start ignored (stateless)"})
-		case ipc.MethodMCPRegister:
-			token := "test-token"
-			socketPath := h.Config.DynamicMCPSocketPath()
-			
-			var l net.Listener
-			var listenErr error
-			for i := 0; i < 5; i++ {
-				_ = os.Remove(socketPath)
-				l, listenErr = net.Listen("unix", socketPath)
-				if listenErr == nil {
-					break
-				}
-				time.Sleep(100 * time.Millisecond)
-			}
-			if listenErr != nil {
-				w.Write(&ipc.Response{Error: fmt.Sprintf("harness failed to listen: %v", listenErr)})
-				return
-			}
-			
-			go func() {
-				defer l.Close()
-				
-				if ul, ok := l.(*net.UnixListener); ok {
-					ul.SetDeadline(time.Now().Add(2 * time.Second))
-				}
-
-				conn, err := l.Accept()
-				if err != nil {
-					return
-				}
-				
-				var handshake map[string]string
-				if err := json.NewDecoder(conn).Decode(&handshake); err != nil {
-					return
-				}
-				
-				json.NewEncoder(conn).Encode(map[string]string{"message": "OK"})
-				
-				transport := registry.NewConnTransport(conn)
-				mcpClient := client.NewClient(transport)
-				if err := mcpClient.Start(h.ctx); err != nil {
-					return
-				}
-				
-				time.Sleep(50 * time.Millisecond)
-
-				_, err = mcpClient.Initialize(h.ctx, mcp.InitializeRequest{})
-				if err != nil {
-					return
-				}
-				
-				toolsRes, err := mcpClient.ListTools(h.ctx, mcp.ListToolsRequest{})
-				if err != nil {
-					return
-				}
-				
-				caps := &registry.ServerCapabilities{Name: "tui", Tools: toolsRes.Tools}
-				h.Registry.RegisterConnectedClient("tui", mcpClient, caps, transport.Close)
-			}()
-			w.Write(&ipc.Response{Data: map[string]any{
-				"name":        "tui",
-				"token":       token,
-				"socket_path": socketPath,
-			}})
 		default:
 			w.Write(&ipc.Response{Error: "unsupported method"})
 		}
@@ -351,33 +286,19 @@ func (h *E2EHarness) StartTUIWithHistory(minItems int) error {
 		h.TUIProgram.Run()
 		close(h.TUIClosed)
 	}()
-	mcpSrv := NewTUIServer(h.TUIProgram, h.TUIModel.client)
-	mcpDone := make(chan error, 1)
-	go func() {
-		mcpDone <- h.TUIModel.client.StartDynamicMCP(h.ctx, mcpSrv)
-	}()
 	
-	// Wait for TUI to be registered in registry AND history to be loaded
+	// Wait for TUI history to be loaded
 	for i := 0; i < 100; i++ {
-		select {
-		case err := <-mcpDone:
-			if err != nil {
-				return fmt.Errorf("dynamic MCP failed: %w", err)
-			}
-		default:
-		}
-
-		registered := h.Registry.Has("tui.hud_send_interactive")
 		snap := h.TUISnapshot()
 		historyLoaded := (len(snap.items) + len(snap.pendingItems)) >= minItems
-		if registered && historyLoaded {
+		if historyLoaded {
 			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	snap := h.TUISnapshot()
-	return fmt.Errorf("TUI did not register tools or load history in time (registered: %v, items: %d, pending: %d, want: %d)",
-		h.Registry.Has("tui.hud_send_interactive"), len(snap.items), len(snap.pendingItems), minItems)
+	return fmt.Errorf("TUI did not load history in time (items: %d, pending: %d, want: %d)",
+		len(snap.items), len(snap.pendingItems), minItems)
 }
 
 func (h *E2EHarness) StopTUI() {
@@ -401,7 +322,6 @@ func (h *E2EHarness) Close() {
 	h.Store.Close()
 	os.RemoveAll(h.Config.DataDir)
 	_ = os.Remove(h.Config.ControlSocketPath())
-	_ = os.Remove(h.Config.DynamicMCPSocketPath())
 }
 
 func randomHex(n int) string {

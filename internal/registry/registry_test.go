@@ -212,9 +212,6 @@ func TestUnregisterNamespace(t *testing.T) {
 
 	// Register namespace metadata
 	reg.RegisterNamespaceDescription("shell", "Shell commands")
-	reg.StoreCapabilities(&registry.ServerCapabilities{
-		Name: "shell",
-	})
 
 	// Verify they exist
 	if !reg.Has("shell.ls") || !reg.Has("shell.pwd") || !reg.Has("fs.read") {
@@ -240,8 +237,5 @@ func TestUnregisterNamespace(t *testing.T) {
 	// Verify metadata is cleared
 	if reg.NamespaceDescription("shell") != "" {
 		t.Error("expected shell namespace description to be cleared")
-	}
-	if reg.GetCapabilities("shell") != nil {
-		t.Error("expected shell capabilities to be cleared")
 	}
 }

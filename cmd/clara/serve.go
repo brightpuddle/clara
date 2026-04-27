@@ -83,13 +83,10 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	defer db.Close()
 
 	reg := registry.New(logger)
-	if err := addMCPServers(reg, logger); err != nil {
-		return err
-	}
 
 	registerPermanentTUITools(reg, db, logger)
 
-	sup := supervisor.New(cfg.TasksDir(), reg, cfg.MCPStartupTimeout, func(
+	sup := supervisor.New(cfg.TasksDir(), reg, func(
 		runCtx context.Context,
 		intent *orchestrator.Intent,
 		runID string,
@@ -122,24 +119,20 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 				logger.Warn().Err(err).Str("run_id", runID).Msg("failed to persist run completion")
 			}
 		})
-	attachServer := registry.NewDynamicAttachServer(cfg.DynamicMCPSocketPath(), reg, logger)
 
 	loader := newPluginLoader(reg, sup, cfg, logger)
 	if err := loader.loadAll(); err != nil {
 		logger.Error().Err(err).Msg("failed to load native plugins")
 	}
 
-	handler := buildHandler(reg, sup, attachServer, db, loader, logger, shutdown)
+	handler := buildHandler(reg, sup, db, loader, logger, shutdown)
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 	if err != nil {
 		return errors.Wrap(err, "create control socket server")
 	}
 
 	return runDaemonServices(daemonCtx, daemonServiceHooks{
-		startServers: reg.StartServers,
-		stopServers:  reg.StopServers,
 		startControl: controlServer.ListenAndServe,
-		startAttach:  attachServer.ListenAndServe,
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
@@ -147,36 +140,16 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 }
 
 type daemonServiceHooks struct {
-	startServers    func(context.Context) error
-	stopServers     func()
 	startControl    func(context.Context) error
-	startAttach     func(context.Context) error
 	startSupervisor func(context.Context) error
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
-	if err := hooks.startServers(ctx); err != nil {
-		return errors.Wrap(err, "start MCP servers")
-	}
-
 	wg := conc.NewWaitGroup()
-
-	wg.Go(func() {
-		<-ctx.Done()
-		if hooks.stopServers != nil {
-			hooks.stopServers()
-		}
-	})
 
 	wg.Go(func() {
 		if err := hooks.startControl(ctx); err != nil {
 			logger.Error().Err(err).Msg("control server error")
-		}
-	})
-
-	wg.Go(func() {
-		if err := hooks.startAttach(ctx); err != nil {
-			logger.Error().Err(err).Msg("dynamic MCP attach server error")
 		}
 	})
 
@@ -193,7 +166,6 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 func buildHandler(
 	reg *registry.Registry,
 	sup *supervisor.Supervisor,
-	attach *registry.DynamicAttachServer,
 	db *store.Store,
 	loader *pluginLoader,
 	log zerolog.Logger,
@@ -224,11 +196,9 @@ func buildHandler(
 			writeResp(&ipc.Response{
 				Message: "running",
 				Data: map[string]any{
-					"servers":        reg.ActiveServerCount(),
 					"intents":        len(intents),
 					"active_intents": active,
 					"tools":          len(reg.Names()),
-					"dynamic_mcp":    len(reg.DynamicServerNames()),
 				},
 			})
 
@@ -347,13 +317,9 @@ func buildHandler(
 				result := make([]map[string]any, 0, len(providers))
 				for _, p := range providers {
 					var desc string
-					// Priority:
-					// 1. Explicit namespace description (from config, built-in defaults, or native plugins)
-					// 2. Server description from MCP capabilities
+					// Explicit namespace description (from config, built-in defaults, or native plugins)
 					if nsDesc := reg.NamespaceDescription(p.Name); nsDesc != "" {
 						desc = nsDesc
-					} else if caps := reg.GetCapabilities(p.Name); caps != nil && caps.Description != "" {
-						desc = caps.Description
 					}
 
 					result = append(result, map[string]any{
@@ -434,220 +400,6 @@ func buildHandler(
 				return
 			}
 			writeResp(&ipc.Response{Data: result})
-
-		case ipc.MethodMCPRegister:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-			registration, err := attach.Register(name)
-			if err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{
-				Message: "dynamic MCP registration created",
-				Data:    registration,
-			})
-
-		case ipc.MethodMCPUnregister:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-			if err := attach.Unregister(name); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "dynamic MCP registration removed"})
-
-		case ipc.MethodMCPList:
-			statuses := reg.ServerStatuses()
-			managed := make([]map[string]any, 0, len(statuses))
-			for name, status := range statuses {
-				managed = append(managed, map[string]any{
-					"name":   name,
-					"status": string(status),
-				})
-			}
-			sort.Slice(managed, func(i, j int) bool {
-				return managed[i]["name"].(string) < managed[j]["name"].(string)
-			})
-			writeResp(&ipc.Response{Data: map[string]any{
-				"managed": managed,
-				"active":  reg.DynamicServerNames(),
-				"pending": attach.Registrations(),
-			}})
-
-		case ipc.MethodMCPStart:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-			if err := reg.StartServer(ctx, name); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "MCP server " + name + " started"})
-
-		case ipc.MethodMCPStop:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-			if err := reg.StopServer(name); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "MCP server " + name + " stopped"})
-
-		case ipc.MethodMCPRestart:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-			if err := reg.RestartServer(ctx, name); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "MCP server " + name + " restarted"})
-
-		case ipc.MethodMCPAdd:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-			command, _ := req.Params["command"].(string)
-			url, _ := req.Params["url"].(string)
-			if command == "" && url == "" {
-				writeResp(&ipc.Response{Error: "either command or url is required"})
-				return
-			}
-			overwrite, _ := req.Params["overwrite"].(bool)
-			desc, _ := req.Params["description"].(string)
-			token, _ := req.Params["token"].(string)
-			skipVerify, _ := req.Params["skip_verify"].(bool)
-
-			// Check if already exists in config
-			var existingIdx = -1
-			for i, srv := range cfg.MCPServers {
-				if srv.Name == name {
-					existingIdx = i
-					break
-				}
-			}
-
-			if existingIdx != -1 && !overwrite {
-				writeResp(&ipc.Response{Error: "server " + name + " already exists; use overwrite:true to update"})
-				return
-			}
-
-			newSrvCfg := config.MCPServerConfig{
-				Name:        name,
-				Command:     command,
-				URL:         url,
-				Description: desc,
-				Token:       token,
-				SkipVerify:  skipVerify,
-			}
-			if env, ok := req.Params["env"].(map[string]any); ok {
-				newSrvCfg.Env = make(map[string]string)
-				for k, v := range env {
-					newSrvCfg.Env[k] = fmt.Sprint(v)
-				}
-			}
-
-			// Add to config
-			if existingIdx != -1 {
-				cfg.MCPServers[existingIdx] = newSrvCfg
-			} else {
-				cfg.MCPServers = append(cfg.MCPServers, newSrvCfg)
-			}
-
-			if err := saveConfig(cfg, log); err != nil {
-				writeResp(&ipc.Response{Error: "failed to save config: " + err.Error()})
-				return
-			}
-
-			// Update registry
-			if existingIdx != -1 || reg.HasServer(name) {
-				_ = reg.RemoveServer(name)
-			}
-
-			var mcpSrv *registry.MCPServer
-			if newSrvCfg.IsHTTPServer() {
-				mcpSrv = registry.NewHTTPMCPServer(
-					newSrvCfg.Name,
-					newSrvCfg.Description,
-					newSrvCfg.URL,
-					newSrvCfg.Token,
-					newSrvCfg.SkipVerify,
-					log,
-				)
-			} else {
-				args, err := newSrvCfg.CommandArgs()
-				if err != nil {
-					writeResp(&ipc.Response{Error: err.Error()})
-					return
-				}
-				if len(args) == 0 {
-					writeResp(&ipc.Response{Error: "empty command"})
-					return
-				}
-				mcpSrv = registry.NewMCPServer(
-					newSrvCfg.Name,
-					newSrvCfg.Description,
-					args[0],
-					args[1:],
-					newSrvCfg.ResolvedEnv(),
-					cfg.MCPCommandSearchPathList(),
-					log,
-				)
-			}
-
-			if err := reg.AddServer(mcpSrv); err != nil {
-				writeResp(&ipc.Response{Error: "failed to add to registry: " + err.Error()})
-				return
-			}
-			if err := reg.StartServer(ctx, name); err != nil {
-				writeResp(&ipc.Response{Error: "added but failed to start: " + err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "MCP server " + name + " added and started"})
-
-		case ipc.MethodMCPRemove:
-			name, _ := req.Params["name"].(string)
-			if name == "" {
-				writeResp(&ipc.Response{Error: "missing name parameter"})
-				return
-			}
-
-			found := false
-			for i, srv := range cfg.MCPServers {
-				if srv.Name == name {
-					cfg.MCPServers = append(cfg.MCPServers[:i], cfg.MCPServers[i+1:]...)
-					found = true
-					break
-				}
-			}
-			if !found {
-				writeResp(&ipc.Response{Error: "server " + name + " not found in config"})
-				return
-			}
-
-			if err := saveConfig(cfg, log); err != nil {
-				writeResp(&ipc.Response{Error: "failed to save config: " + err.Error()})
-				return
-			}
-
-			_ = reg.RemoveServer(name)
-			writeResp(&ipc.Response{Message: "MCP server " + name + " removed from config and stopped"})
 
 		case ipc.MethodEvents:
 			events, unsubscribe := sup.EventBus().Subscribe()

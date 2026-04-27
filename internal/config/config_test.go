@@ -12,11 +12,9 @@ func TestLoad_BasicParsing(t *testing.T) {
 	yaml := `
 log_level: debug
 data_dir: /tmp/clara-test
-mcp_servers:
-  - name: filesystem
-    command: npx -y @modelcontextprotocol/server-filesystem
-    env:
-      ROOT: /tmp
+integrations:
+  fs:
+    root: /tmp
 `
 	f := writeTempFile(t, yaml)
 	cfg, err := config.Load(f)
@@ -29,35 +27,33 @@ mcp_servers:
 	if cfg.DataDir != "/tmp/clara-test" {
 		t.Errorf("DataDir: got %q want %q", cfg.DataDir, "/tmp/clara-test")
 	}
-	if len(cfg.MCPServers) != 1 {
-		t.Fatalf("expected 1 MCP server, got %d", len(cfg.MCPServers))
+	if len(cfg.Integrations) != 1 {
+		t.Fatalf("expected 1 integration, got %d", len(cfg.Integrations))
 	}
-	srv := cfg.MCPServers[0]
-	if srv.Name != "filesystem" {
-		t.Errorf("server name: got %q want %q", srv.Name, "filesystem")
+	fs, ok := cfg.Integrations["fs"]
+	if !ok {
+		t.Fatal("expected 'fs' integration")
 	}
-	if srv.Command != "npx -y @modelcontextprotocol/server-filesystem" {
-		t.Errorf("command: got %q want %q", srv.Command, "npx -y @modelcontextprotocol/server-filesystem")
+	if fs["root"] != "/tmp" {
+		t.Errorf("fs root: got %v want %q", fs["root"], "/tmp")
 	}
 }
 
 func TestLoad_EnvExpansion(t *testing.T) {
 	t.Setenv("CLARA_TEST_API_KEY", "secret-key-123")
 	yaml := `
-mcp_servers:
-  - name: openai
-    command: openai-mcp
-    env:
-      OPENAI_API_KEY: ${CLARA_TEST_API_KEY}
+integrations:
+  shell:
+    api_key: ${CLARA_TEST_API_KEY}
 `
 	f := writeTempFile(t, yaml)
 	cfg, err := config.Load(f)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	env := cfg.MCPServers[0].ResolvedEnv()
-	if env["OPENAI_API_KEY"] != "secret-key-123" {
-		t.Errorf("env expansion: got %q want %q", env["OPENAI_API_KEY"], "secret-key-123")
+	shell := cfg.Integrations["shell"]
+	if shell["api_key"] != "secret-key-123" {
+		t.Errorf("env expansion: got %q want %q", shell["api_key"], "secret-key-123")
 	}
 }
 
@@ -70,9 +66,6 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.DataDir == "" {
 		t.Error("DataDir should have a default value")
-	}
-	if got := cfg.MCPCommandSearchPathList(); len(got) == 0 {
-		t.Fatal("MCPCommandSearchPathList should include defaults")
 	}
 }
 
@@ -119,9 +112,6 @@ tasks_dir: /tmp/clara-paths/tasks
 	if cfg.ControlSocketPath() != "/tmp/clara-paths/clara.sock" {
 		t.Errorf("ControlSocketPath: got %q", cfg.ControlSocketPath())
 	}
-	if cfg.DynamicMCPSocketPath() != "/tmp/clara-paths/clara-mcp.sock" {
-		t.Errorf("DynamicMCPSocketPath: got %q", cfg.DynamicMCPSocketPath())
-	}
 	if cfg.TasksDir() != "/tmp/clara-paths/tasks" {
 		t.Errorf("TasksDir: got %q", cfg.TasksDir())
 	}
@@ -149,111 +139,6 @@ func TestLogLevelNormalized(t *testing.T) {
 		if got := loaded.LogLevelNormalized(); got != tc.want {
 			t.Errorf("LogLevelNormalized(%q) = %q, want %q", tc.input, got, tc.want)
 		}
-	}
-}
-
-func TestMCPCommandSearchPathList_PrependsConfiguredPaths(t *testing.T) {
-	t.Setenv("PATH", "/usr/bin:/bin")
-	yaml := `
-mcp_command_search_paths:
-  - /custom/bin
-  - /usr/local/bin
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := config.Load(f)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-
-	got := cfg.MCPCommandSearchPathList()
-	wantPrefix := []string{"/custom/bin", "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin"}
-	if len(got) < len(wantPrefix) {
-		t.Fatalf("search path list too short: %v", got)
-	}
-	for i, want := range wantPrefix {
-		if got[i] != want {
-			t.Fatalf("path %d = %q, want %q (full=%v)", i, got[i], want, got)
-		}
-	}
-}
-
-func TestLoad_HTTPServerConfig(t *testing.T) {
-	yaml := `
-mcp_servers:
-  - name: chrome
-    url: "http://127.0.0.1:12306/mcp"
-    description: "Chrome browser automation"
-  - name: filesystem
-    command: npx -y @modelcontextprotocol/server-filesystem
-`
-	f := writeTempFile(t, yaml)
-	cfg, err := config.Load(f)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	if len(cfg.MCPServers) != 2 {
-		t.Fatalf("expected 2 MCP servers, got %d", len(cfg.MCPServers))
-	}
-
-	chrome := cfg.MCPServers[0]
-	if chrome.Name != "chrome" {
-		t.Errorf("name: got %q want %q", chrome.Name, "chrome")
-	}
-	if chrome.URL != "http://127.0.0.1:12306/mcp" {
-		t.Errorf("url: got %q want %q", chrome.URL, "http://127.0.0.1:12306/mcp")
-	}
-	if !chrome.IsHTTPServer() {
-		t.Error("IsHTTPServer should be true when URL is set")
-	}
-
-	fs := cfg.MCPServers[1]
-	if fs.IsHTTPServer() {
-		t.Error("IsHTTPServer should be false when only command is set")
-	}
-	if fs.Command != "npx -y @modelcontextprotocol/server-filesystem" {
-		t.Errorf("command: got %q want %q", fs.Command, "npx -y @modelcontextprotocol/server-filesystem")
-	}
-}
-
-func TestCommandArgs(t *testing.T) {
-	cases := []struct {
-		name    string
-		command string
-		want    []string
-	}{
-		{
-			"simple command",
-			"ls -l",
-			[]string{"ls", "-l"},
-		},
-		{
-			"complex command with quotes",
-			`npx -y @modelcontextprotocol/server-filesystem "/path with spaces"`,
-			[]string{"npx", "-y", "@modelcontextprotocol/server-filesystem", "/path with spaces"},
-		},
-		{
-			"empty command",
-			"",
-			nil,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := config.MCPServerConfig{Command: tc.command}
-			got, err := srv.CommandArgs()
-			if err != nil {
-				t.Fatalf("CommandArgs failed: %v", err)
-			}
-			if len(got) != len(tc.want) {
-				t.Fatalf("got %d args, want %d: %v", len(got), len(tc.want), got)
-			}
-			for i := range got {
-				if got[i] != tc.want[i] {
-					t.Errorf("arg %d: got %q want %q", i, got[i], tc.want[i])
-				}
-			}
-		})
 	}
 }
 

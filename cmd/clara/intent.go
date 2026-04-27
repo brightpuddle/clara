@@ -322,20 +322,10 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	}
 
 	reg := registry.New(logger)
-	if err := addMCPServers(reg, logger); err != nil {
-		return err
-	}
 	registerPermanentTUITools(reg, db, logger)
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	startCtx, startCancel := context.WithCancel(ctx)
-	defer startCancel()
-	if err := reg.StartServers(startCtx); err != nil {
-		return errors.Wrap(err, "start MCP servers")
-	}
-	defer reg.StopServers()
 
 	runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
 	theme := tui.DetectTheme()

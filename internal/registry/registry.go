@@ -1,10 +1,8 @@
 // Package registry manages the Clara tool registry. It is the central hub that
-// holds all Tool implementations and manages the lifecycle of MCP server
-// subprocesses.
+// holds all Tool implementations.
 //
 // Tools are registered by name and invoked by the interpreter. The naming
-// convention is "server.method" (e.g. "filesystem.read_file"). The registry
-// also owns the MCP client connections to each configured server.
+// convention is typically "namespace.method" (e.g. "fs.read_file").
 package registry
 
 import (
@@ -16,12 +14,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
 )
 
-// Tool is the standard callable unit in Clara. Every capability — MCP tool
+// Tool is the standard callable unit in Clara. Every capability — plugin tool
 // call, Swift bridge call, local SQLite query — is wrapped as a Tool.
 type Tool func(ctx context.Context, args map[string]any) (any, error)
 
@@ -48,21 +45,7 @@ var namespaceDefaults = []struct {
 
 type NotificationHandler func(serverName, method string, params any)
 
-// ServerCapabilities holds the full capability set discovered from an MCP server.
-type ServerCapabilities struct {
-	// Name is the registry alias for this server.
-	Name string
-	// Description is the human-readable summary (from config or built-in).
-	Description string
-	// Tools is the complete list of tools, including input schemas.
-	Tools []mcp.Tool
-	// Resources is the list of static resources exposed by the server.
-	Resources []mcp.Resource
-	// Prompts is the list of prompt templates exposed by the server.
-	Prompts []mcp.Prompt
-}
-
-// Registry holds the set of available Tools and MCP server managers.
+// Registry holds the set of available Tools.
 type Registry struct {
 	mu            sync.RWMutex
 	tools          map[string]Tool
@@ -71,29 +54,13 @@ type Registry struct {
 	namespaceDescriptions map[string]string
 	specs         map[string]mcp.Tool
 	examples      map[string][]string
-	servers       []*MCPServer
-	serverNames   map[string]struct{}
-	dynamic       map[string]dynamicServer
-	capabilities  map[string]*ServerCapabilities
-	serverTools   map[string][]string // serverName -> []toolNames
+	serverTools   map[string][]string // namespace -> []toolNames
 	notifications []NotificationHandler
 	log           zerolog.Logger
-
-	pendingServers map[string]struct{}
-	readyChan      chan struct{}
-
-	watchdogCancel context.CancelFunc
-}
-
-type dynamicServer struct {
-	close func() error
 }
 
 // New creates an empty Registry.
 func New(log zerolog.Logger) *Registry {
-	readyChan := make(chan struct{})
-	close(readyChan) // Ready by default until StartServers is called with servers.
-
 	return &Registry{
 		tools:          make(map[string]Tool),
 		defaultTools:   make(map[string]Tool),
@@ -101,17 +68,12 @@ func New(log zerolog.Logger) *Registry {
 		namespaceDescriptions: make(map[string]string),
 		specs:          make(map[string]mcp.Tool),
 		examples:       make(map[string][]string),
-		serverNames:    make(map[string]struct{}),
-		dynamic:        make(map[string]dynamicServer),
-		capabilities:   make(map[string]*ServerCapabilities),
 		serverTools:    make(map[string][]string),
-		pendingServers: make(map[string]struct{}),
-		readyChan:      readyChan,
 		log:            log,
 	}
 }
 
-// Subscribe registers a callback for MCP notifications.
+// Subscribe registers a callback for notifications.
 func (r *Registry) Subscribe(handler NotificationHandler) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -221,7 +183,6 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 	}
 
 	// Apply a default timeout of 30 seconds if one isn't already set.
-	// This prevents a hanging MCP server from blocking the CLI or a task forever.
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
@@ -319,35 +280,13 @@ func (r *Registry) Has(name string) bool {
 	return ok
 }
 
-// StoreCapabilities stores the full capability set discovered from a server.
-func (r *Registry) StoreCapabilities(caps *ServerCapabilities) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.capabilities[caps.Name] = caps
-}
-
-// GetCapabilities returns the capabilities for a named server, or nil if unknown.
-func (r *Registry) GetCapabilities(serverName string) *ServerCapabilities {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.capabilities[serverName]
-}
-
-// Namespaces returns a sorted list of all active namespaces (both server names
-// and mapped sub-namespaces).
+// Namespaces returns a sorted list of all active namespaces.
 func (r *Registry) Namespaces() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	seen := make(map[string]struct{})
 	for _, d := range namespaceDefaults {
 		seen[d.namespace] = struct{}{}
-	}
-	for name := range r.capabilities {
-		seen[name] = struct{}{}
-	}
-	// Also include server names that are reserved but not yet connected
-	for name := range r.serverNames {
-		seen[name] = struct{}{}
 	}
 	// Include namespaces from tool names (e.g. "mail" from "mail.search")
 	for name := range r.tools {
@@ -378,12 +317,6 @@ func (r *Registry) IsKnownNamespace(name string) bool {
 			return true
 		}
 	}
-	if _, ok := r.serverNames[name]; ok {
-		return true
-	}
-	if _, ok := r.capabilities[name]; ok {
-		return true
-	}
 	prefix := name + "."
 	for t := range r.tools {
 		if strings.HasPrefix(t, prefix) {
@@ -398,178 +331,6 @@ func (r *Registry) IsKnownNamespace(name string) bool {
 	return false
 }
 
-// AllCapabilities returns capabilities for all known servers, sorted by name.
-func (r *Registry) AllCapabilities() []*ServerCapabilities {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	result := make([]*ServerCapabilities, 0, len(r.capabilities))
-	for _, c := range r.capabilities {
-		result = append(result, c)
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
-	return result
-}
-
-// HasServer reports whether a server alias is reserved or active.
-func (r *Registry) HasServer(name string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, ok := r.serverNames[name]
-	return ok
-}
-
-// AddServer registers an MCPServer and starts managing it. The server's tools
-// are automatically registered in the registry under "name.toolname" when the
-// server connects.
-func (r *Registry) AddServer(srv *MCPServer) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if srv == nil {
-		return errors.New("registry: nil MCP server")
-	}
-	if _, exists := r.serverNames[srv.name]; exists {
-		return errors.Newf("server %q already registered", srv.name)
-	}
-	r.serverNames[srv.name] = struct{}{}
-	r.servers = append(r.servers, srv)
-	return nil
-}
-
-// StartServers launches all registered MCP servers and returns immediately.
-// Startup Handshakes continue in the background. Use WaitReady to block until
-// all servers have either connected or failed.
-func (r *Registry) StartServers(ctx context.Context) error {
-	servers := r.serversSnapshot()
-	if len(servers) == 0 {
-		return nil
-	}
-
-	r.mu.Lock()
-	r.pendingServers = make(map[string]struct{})
-	for _, s := range servers {
-		r.pendingServers[s.name] = struct{}{}
-	}
-	r.readyChan = make(chan struct{})
-	r.mu.Unlock()
-
-	r.log.Info().Int("count", len(servers)).Msg("starting MCP servers in background")
-	for _, srv := range servers {
-		go func(s *MCPServer) {
-			err := s.Start(ctx, r)
-			if err != nil {
-				r.log.Error().Err(err).Str("mcp_server", s.name).Msg("failed to start MCP server")
-			}
-			r.markServerDone(s.name)
-		}(srv)
-	}
-
-	// Start the watchdog to monitor server health
-	r.mu.Lock()
-	if r.watchdogCancel != nil {
-		r.watchdogCancel()
-	}
-	wCtx, cancel := context.WithCancel(context.Background())
-	r.watchdogCancel = cancel
-	r.mu.Unlock()
-	go r.runWatchdog(wCtx)
-
-	return nil
-}
-
-func (r *Registry) runWatchdog(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			r.checkServerHealth(ctx)
-		}
-	}
-}
-
-func (r *Registry) checkServerHealth(ctx context.Context) {
-	servers := r.serversSnapshot()
-	for _, s := range servers {
-		if s.Status() != StatusRunning {
-			continue
-		}
-
-		// Ping the server with a short timeout. ListTools is a lightweight way to check if it's alive.
-		pCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		_, err := s.mcpClient.ListTools(pCtx, mcp.ListToolsRequest{})
-		cancel()
-
-		if err != nil {
-			r.log.Warn().Err(err).Str("mcp_server", s.name).Msg("MCP server unresponsive; restarting")
-			go func(srv *MCPServer) {
-				// Use a fresh context for restart
-				restartCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				defer cancel()
-				if err := r.RestartServer(restartCtx, srv.name); err != nil {
-					r.log.Error().Err(err).Str("mcp_server", srv.name).Msg("watchdog failed to restart server")
-				}
-			}(s)
-		}
-	}
-}
-
-// WaitReady blocks until all servers from the initial StartServers call have
-// either connected successfully or failed to start, or until ctx is cancelled.
-func (r *Registry) WaitReady(ctx context.Context) error {
-	r.mu.RLock()
-	ready := r.readyChan
-	r.mu.RUnlock()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-ready:
-		return nil
-	}
-}
-
-func (r *Registry) markServerDone(name string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.pendingServers[name]; !ok {
-		return
-	}
-	delete(r.pendingServers, name)
-	if len(r.pendingServers) == 0 {
-		close(r.readyChan)
-	}
-}
-
-// StopServers terminates all configured MCP servers managed by the registry.
-func (r *Registry) StopServers() {
-	servers := r.serversSnapshot()
-	for _, srv := range servers {
-		_ = r.StopServer(srv.name)
-	}
-}
-
-// StartServer manually launches a single named MCP server.
-func (r *Registry) StartServer(ctx context.Context, name string) error {
-	r.mu.RLock()
-	var srv *MCPServer
-	for _, s := range r.servers {
-		if s.name == name {
-			srv = s
-			break
-		}
-	}
-	r.mu.RUnlock()
-
-	if srv == nil {
-		return errors.Newf("server %q not found", name)
-	}
-
-	return srv.Start(ctx, r)
-}
-
 func (r *Registry) deleteToolLocked(name string) {
 	delete(r.tools, name)
 	delete(r.descriptions, name)
@@ -577,68 +338,12 @@ func (r *Registry) deleteToolLocked(name string) {
 	delete(r.examples, name)
 }
 
-// StopServer manually terminates a single named MCP server and removes its tools.
-func (r *Registry) StopServer(name string) error {
-	r.mu.Lock()
-	var srv *MCPServer
-	for _, s := range r.servers {
-		if s.name == name {
-			srv = s
-			break
-		}
-	}
-	if srv != nil {
-		delete(r.capabilities, name)
-		if tools, ok := r.serverTools[name]; ok {
-			for _, toolName := range tools {
-				r.deleteToolLocked(toolName)
-			}
-			delete(r.serverTools, name)
-		}
-
-		prefix := name + "."
-		for toolName := range r.tools {
-			if strings.HasPrefix(toolName, prefix) {
-				r.deleteToolLocked(toolName)
-			}
-		}
-	}
-	r.mu.Unlock()
-
-	if srv == nil {
-		return errors.Newf("server %q not found", name)
-	}
-
-	srv.Stop()
-	return nil
-}
-
-// RemoveServer stops and removes a server from the registry.
-func (r *Registry) RemoveServer(name string) error {
-	_ = r.StopServer(name)
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	delete(r.serverNames, name)
-	for i, s := range r.servers {
-		if s.name == name {
-			r.servers = append(r.servers[:i], r.servers[i+1:]...)
-			break
-		}
-	}
-	return nil
-}
-
 // UnregisterNamespace removes all tools belonging to a namespace prefix
-// (e.g., "shell.") and clears capabilities, server names, and namespace
-// descriptions associated with that namespace.
+// (e.g., "shell.") and clears namespace descriptions associated with that namespace.
 func (r *Registry) UnregisterNamespace(ns string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	delete(r.capabilities, ns)
-	delete(r.serverNames, ns)
 	delete(r.namespaceDescriptions, ns)
 
 	if tools, ok := r.serverTools[ns]; ok {
@@ -654,25 +359,6 @@ func (r *Registry) UnregisterNamespace(ns string) {
 			r.deleteToolLocked(toolName)
 		}
 	}
-}
-
-// RestartServer stops and then starts a named MCP server.
-func (r *Registry) RestartServer(ctx context.Context, name string) error {
-	if err := r.StopServer(name); err != nil {
-		return err
-	}
-	return r.StartServer(ctx, name)
-}
-
-// ServerStatuses returns a map of server names to their current statuses.
-func (r *Registry) ServerStatuses() map[string]ServerStatus {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	statuses := make(map[string]ServerStatus)
-	for _, s := range r.servers {
-		statuses[s.name] = s.Status()
-	}
-	return statuses
 }
 
 // NormalizeToolResult converts JSON object/array strings returned by tools into
@@ -700,128 +386,6 @@ func NormalizeToolResult(result any) any {
 	return result
 }
 
-func (r *Registry) serversSnapshot() []*MCPServer {
-	r.mu.RLock()
-	servers := make([]*MCPServer, len(r.servers))
-	copy(servers, r.servers)
-	r.mu.RUnlock()
-	return servers
-}
-
-// RegisterConnectedClient adds a connected MCP client to the registry under the
-// provided server name.
-func (r *Registry) RegisterConnectedClient(
-	serverName string,
-	mcpClient *client.Client,
-	caps *ServerCapabilities,
-	closeFn func() error,
-) error {
-	if caps == nil {
-		return errors.New("registry: capabilities are required")
-	}
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if _, exists := r.serverNames[serverName]; !exists {
-		r.serverNames[serverName] = struct{}{}
-	}
-	if closeFn != nil {
-		r.dynamic[serverName] = dynamicServer{close: closeFn}
-	}
-
-	mcpClient.OnNotification(func(notification mcp.JSONRPCNotification) {
-		r.mu.RLock()
-		handlers := append([]NotificationHandler(nil), r.notifications...)
-		r.mu.RUnlock()
-
-		method := notification.Method
-		sourceServer := serverName
-
-		// Apply namespace mapping to notifications based on hardcoded defaults.
-		normalizedMethod := strings.TrimPrefix(method, "clara/")
-		method = normalizedMethod
-
-		defaults := []struct {
-			prefix    string
-			namespace string
-		}{
-			{"reminders_", "reminders"},
-			{"theme_", "theme"},
-			{"photos_", "photos"},
-			{"notify_", "notify"},
-			{"mail_", "mail"},
-			{"events_", "calendar"},
-		}
-
-		for _, d := range defaults {
-			if strings.HasPrefix(normalizedMethod, d.prefix) {
-				sourceServer = d.namespace
-				method = strings.TrimPrefix(normalizedMethod, d.prefix)
-				break
-			}
-		}
-
-		for _, handler := range handlers {
-			handler(sourceServer, method, notification.Params)
-		}
-	})
-
-	if err := r.registerMCPToolsLocked(serverName, mcpClient, caps.Tools); err != nil {
-		if closeFn != nil {
-			delete(r.dynamic, serverName)
-		}
-		if _, hadCaps := r.capabilities[serverName]; !hadCaps {
-			delete(r.serverNames, serverName)
-		}
-		return err
-	}
-	r.capabilities[serverName] = caps
-	return nil
-}
-
-// UnregisterDynamicServer detaches an active dynamic MCP server and removes all
-// of its registered capabilities.
-func (r *Registry) UnregisterDynamicServer(name string) error {
-	srv, ok := r.removeDynamicServer(name)
-	if !ok {
-		return errors.Newf("dynamic MCP server %q not found", name)
-	}
-	if srv.close == nil {
-		return nil
-	}
-	if err := srv.close(); err != nil {
-		return errors.Wrapf(err, "close dynamic MCP server %q", name)
-	}
-	return nil
-}
-
-// CleanupDynamicServer removes a dynamic MCP server after the underlying
-// transport disconnects. Missing servers are ignored.
-func (r *Registry) CleanupDynamicServer(name string) {
-	r.removeDynamicServer(name)
-}
-
-// DynamicServerNames returns the active dynamic MCP server aliases.
-func (r *Registry) DynamicServerNames() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	names := make([]string, 0, len(r.dynamic))
-	for name := range r.dynamic {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// ActiveServerCount returns the number of currently connected MCP servers.
-func (r *Registry) ActiveServerCount() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return len(r.capabilities)
-}
-
 // NamespaceDescription returns the human-readable summary for a mapped namespace.
 func (r *Registry) NamespaceDescription(name string) string {
 	r.mu.RLock()
@@ -846,7 +410,7 @@ func (r *Registry) NamespaceMeta(ns string) (server, prefix string, ok bool) {
 	for _, d := range namespaceDefaults {
 		if d.namespace == ns {
 			// Currently, all hardcoded namespaces are assumed to be hosted by
-			// the "macos" MCP server (ClaraBridge).
+			// the "macos" bridge (ClaraBridge).
 			return "macos", strings.TrimSuffix(d.prefix, "_"), true
 		}
 	}
@@ -869,108 +433,8 @@ func (r *Registry) ServerNamespacePrefixes(serverName string) map[string]string 
 	return result
 }
 
-func (r *Registry) removeDynamicServer(name string) (dynamicServer, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	srv, ok := r.dynamic[name]
-	if !ok {
-		return dynamicServer{}, false
-	}
-	delete(r.dynamic, name)
-	delete(r.serverNames, name)
-	delete(r.capabilities, name)
-
-	if tools, ok := r.serverTools[name]; ok {
-		for _, toolName := range tools {
-			r.deleteToolLocked(toolName)
-		}
-		delete(r.serverTools, name)
-	}
-
-	prefix := name + "."
-	for toolName := range r.tools {
-		if strings.HasPrefix(toolName, prefix) {
-			r.deleteToolLocked(toolName)
-		}
-	}
-
-	return srv, true
-}
-
-func (r *Registry) registerMCPToolsLocked(
-	serverName string,
-	mcpClient *client.Client,
-	tools []mcp.Tool,
-) error {
-	for _, tool := range tools {
-		cleanName := r.getFQToolName(serverName, tool.Name)
-		nsName := cleanName
-		if !strings.HasPrefix(cleanName, serverName+".") {
-			nsName = serverName + "." + cleanName
-		}
-
-		if _, exists := r.tools[nsName]; exists {
-			return errors.Newf("tool %q already registered", nsName)
-		}
-	}
-
-	for _, tool := range tools {
-		cleanName := r.getFQToolName(serverName, tool.Name)
-		nsName := cleanName
-		if !strings.HasPrefix(cleanName, serverName+".") {
-			nsName = serverName + "." + cleanName
-		}
-
-		mcpToolName := tool.Name
-		toolFn := func(ctx context.Context, args map[string]any) (any, error) {
-			req := mcp.CallToolRequest{}
-			req.Params.Name = mcpToolName
-			req.Params.Arguments = args
-			res, err := mcpClient.CallTool(ctx, req)
-			if err != nil {
-				return nil, errors.Wrapf(err, "call MCP tool %q", mcpToolName)
-			}
-			return normalizeCallToolResult(mcpToolName, res)
-		}
-
-		// Register under nsName (always succeeds).
-		r.addToolLocked(nsName, tool, toolFn)
-		r.serverTools[serverName] = append(r.serverTools[serverName], nsName)
-
-		// Register under cleanName (only if not already taken).
-		if cleanName != nsName {
-			if _, exists := r.tools[cleanName]; !exists {
-				r.addToolLocked(cleanName, tool, toolFn)
-				r.serverTools[serverName] = append(r.serverTools[serverName], cleanName)
-			}
-		}
-	}
-
-	r.log.Debug().Str("server", serverName).Int("count", len(tools)).Msg("MCP tools registered")
-	return nil
-}
-
-func (r *Registry) addToolLocked(name string, spec mcp.Tool, tool Tool) {
-	spec.Name = name
-	r.tools[name] = tool
-	if spec.Description != "" {
-		r.descriptions[name] = spec.Description
-	} else {
-		delete(r.descriptions, name)
-	}
-	r.specs[name] = spec
-	delete(r.examples, name)
-}
-
 func (r *Registry) getFQToolName(serverName, toolName string) string {
 	// SEP-986 Hardcoded defaults:
-	// reminders_ -> reminders.
-	// theme_ -> theme.
-	// photos_ -> photos.
-	// notify_ -> notify.
-	// mail_ -> mail.
-	// events_ -> calendar.
 	defaults := []struct {
 		prefix    string
 		namespace string
@@ -989,13 +453,10 @@ func (r *Registry) getFQToolName(serverName, toolName string) string {
 		}
 	}
 
-	// SEP-986: If the tool name already contains a dot, assume it's already
-	// fully qualified or namespaced correctly.
 	if strings.Contains(toolName, ".") {
 		return toolName
 	}
 
-	// Fallback: Treat the server name as a default prefix if it matches the tool name.
 	if strings.HasPrefix(toolName, serverName+"_") {
 		return serverName + "." + strings.TrimPrefix(toolName, serverName+"_")
 	}
@@ -1003,49 +464,3 @@ func (r *Registry) getFQToolName(serverName, toolName string) string {
 	return serverName + "." + toolName
 }
 
-func normalizeCallToolResult(toolName string, res *mcp.CallToolResult) (any, error) {
-	if res == nil {
-		return nil, nil
-	}
-	if res.IsError {
-		return nil, errors.Newf("%s: %s", toolName, extractCallToolText(res))
-	}
-	if res.StructuredContent != nil {
-		return res.StructuredContent, nil
-	}
-
-	var result any
-	if len(res.Content) == 1 {
-		if text, ok := res.Content[0].(mcp.TextContent); ok {
-			result = text.Text
-		}
-	}
-	if result == nil {
-		result = extractCallToolText(res)
-	}
-
-	// Transparent JSON Promotion: If the result is a string, try to parse it as JSON.
-	if s, ok := result.(string); ok && s != "" {
-		trimmed := strings.TrimSpace(s)
-		if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
-			(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
-			var parsed any
-			// Note: We ignore the error and fall back to the raw string if parsing fails.
-			if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
-				return parsed, nil
-			}
-		}
-	}
-
-	return result, nil
-}
-
-func extractCallToolText(res *mcp.CallToolResult) string {
-	parts := make([]string, 0, len(res.Content))
-	for _, item := range res.Content {
-		if text, ok := item.(mcp.TextContent); ok {
-			parts = append(parts, text.Text)
-		}
-	}
-	return strings.TrimSpace(strings.Join(parts, "\n"))
-}

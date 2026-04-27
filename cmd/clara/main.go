@@ -69,8 +69,6 @@ func init() {
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(intentCmd)
 	rootCmd.AddCommand(toolCmd)
-	rootCmd.AddCommand(mcpCmd)
-	rootCmd.AddCommand(mcpserverCmd)
 	rootCmd.AddCommand(pluginCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(runCmd)

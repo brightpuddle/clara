@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -10,17 +9,10 @@ import (
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/toolcatalog"
-	"github.com/mark3labs/mcp-go/server"
 )
 
 type IPCClient struct {
 	cfg *config.Config
-}
-
-type DynamicRegistration struct {
-	Name       string `json:"name"`
-	Token      string `json:"token"`
-	SocketPath string `json:"socket_path"`
 }
 
 type StatusCounts struct {
@@ -104,55 +96,6 @@ func decodeInto(data any, dst any) error {
 		return fmt.Errorf("decode payload: %w", err)
 	}
 	return nil
-}
-
-// StartDynamicMCP registers the TUI as a dynamic MCP peer with the daemon
-// and serves the local notification tools over a reverse connection.
-func (c *IPCClient) StartDynamicMCP(ctx context.Context, mcpSrv *server.MCPServer) error {
-	resp, err := c.Do(
-		ipc.Request{Method: ipc.MethodMCPRegister, Params: map[string]any{"name": "tui"}},
-	)
-	if err != nil {
-		return fmt.Errorf("register dynamic mcp: %w", err)
-	}
-	var reg DynamicRegistration
-	if err := decodeInto(resp.Data, &reg); err != nil {
-		return fmt.Errorf("decode registration: %w", err)
-	}
-
-	var conn net.Conn
-	var dialErr error
-	for i := 0; i < 5; i++ {
-		conn, dialErr = net.DialTimeout("unix", reg.SocketPath, 2*time.Second)
-		if dialErr == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if dialErr != nil {
-		return fmt.Errorf("dial dynamic attach socket after retries: %w", dialErr)
-	}
-
-	if err := json.NewEncoder(conn).Encode(map[string]string{"token": reg.Token}); err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("send token: %w", err)
-	}
-
-	var handshake struct {
-		Message string `json:"message"`
-		Error   string `json:"error"`
-	}
-	if err := json.NewDecoder(conn).Decode(&handshake); err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("read handshake: %w", err)
-	}
-	if handshake.Error != "" {
-		_ = conn.Close()
-		return fmt.Errorf("handshake error: %s", handshake.Error)
-	}
-
-	s := server.NewStdioServer(mcpSrv)
-	return s.Listen(ctx, conn, conn)
 }
 
 func (c *IPCClient) LoadTUIHistory(limit int) ([]map[string]any, error) {
