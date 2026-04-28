@@ -38,6 +38,7 @@ type Tool struct {
 type Provider struct {
 	Name        string
 	Description string
+	Events      []Tool
 }
 
 func FormatProviderList(providers []Provider, useColor bool) string {
@@ -53,6 +54,28 @@ func FormatProviderList(providers []Provider, useColor bool) string {
 			b.WriteString("  ")
 			b.WriteString(provider.Description)
 			b.WriteString("\n")
+		}
+		if len(provider.Events) > 0 {
+			b.WriteString("  ")
+			eventsLabel := "Events:"
+			if useColor {
+				eventsLabel = colorize(eventsLabel, ansiMagenta)
+			}
+			b.WriteString(eventsLabel)
+			b.WriteString("\n")
+			for _, ev := range provider.Events {
+				b.WriteString("    ")
+				evName := ev.Name
+				if useColor {
+					evName = colorize(evName, ansiMagenta)
+				}
+				b.WriteString(evName)
+				if ev.Description != "" {
+					b.WriteString(" - ")
+					b.WriteString(ev.Description)
+				}
+				b.WriteString("\n")
+			}
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")

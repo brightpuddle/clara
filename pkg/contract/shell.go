@@ -9,19 +9,24 @@ import (
 // ShellIntegration is the interface for shell-like integrations.
 type ShellIntegration interface {
 	Integration
-	Run(command string) (string, error)
+	Run(command string) (string, int, error)
 }
 
 // --- RPC Wrappers ---
+
+type ShellRunResponse struct {
+	Output   string
+	ExitCode int
+}
 
 type ShellIntegrationRPC struct {
 	IntegrationRPC
 }
 
-func (g *ShellIntegrationRPC) Run(command string) (string, error) {
-	var resp string
+func (g *ShellIntegrationRPC) Run(command string) (string, int, error) {
+	var resp ShellRunResponse
 	err := g.Client.Call("Plugin.Run", command, &resp)
-	return resp, err
+	return resp.Output, resp.ExitCode, err
 }
 
 type ShellIntegrationRPCServer struct {
@@ -29,9 +34,9 @@ type ShellIntegrationRPCServer struct {
 	Impl ShellIntegration
 }
 
-func (s *ShellIntegrationRPCServer) Run(command string, resp *string) error {
+func (s *ShellIntegrationRPCServer) Run(command string, resp *ShellRunResponse) error {
 	var err error
-	*resp, err = s.Impl.Run(command)
+	resp.Output, resp.ExitCode, err = s.Impl.Run(command)
 	return err
 }
 

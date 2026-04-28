@@ -303,10 +303,21 @@ func decodeProviderList(data any) ([]providerSummary, error) {
 		if !ok {
 			return nil, fmt.Errorf("unexpected provider payload: %T", item)
 		}
-		providers = append(providers, providerSummary{
+		p := providerSummary{
 			Name:        stringValue(m["name"]),
 			Description: stringValue(m["description"]),
-		})
+		}
+		if rawEvents, ok := m["events"].([]any); ok {
+			p.Events = make([]toolcatalog.Tool, 0, len(rawEvents))
+			for _, re := range rawEvents {
+				tool, err := decodeTool(re)
+				if err != nil {
+					return nil, err
+				}
+				p.Events = append(p.Events, tool)
+			}
+		}
+		providers = append(providers, p)
 	}
 	sort.Slice(providers, func(i, j int) bool { return providers[i].Name < providers[j].Name })
 	return providers, nil

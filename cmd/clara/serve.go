@@ -346,9 +346,11 @@ func buildHandler(
 						desc = nsDesc
 					}
 
+					events := listEventTools(ctx, reg, p.Name)
 					result = append(result, map[string]any{
 						"name":        p.Name,
 						"description": desc,
+						"events":      events,
 					})
 				}
 				writeResp(&ipc.Response{Data: result})
@@ -663,7 +665,10 @@ func buildEventTools(
 	prefixFilter string,
 	subNSPrefixes map[string]string,
 ) []map[string]any {
-	res, err := reg.Call(ctx, listTool, nil)
+	callCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	res, err := reg.Call(callCtx, listTool, nil)
 	if err != nil {
 		return nil
 	}

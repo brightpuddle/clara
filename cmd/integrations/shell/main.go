@@ -35,26 +35,36 @@ type RunShellArgs struct {
 }
 
 func (s *Shell) CallTool(name string, args []byte) ([]byte, error) {
-	if name == "run" {
+	switch name {
+	case "run":
 		var parsed RunShellArgs
 		if err := json.Unmarshal(args, &parsed); err != nil {
 			return nil, err
 		}
 
-		out, err := s.Run(parsed.Command)
+		out, exitCode, err := s.Run(parsed.Command)
 		if err != nil {
 			return nil, err
 		}
 
-		return json.Marshal(map[string]string{"output": out})
+		return json.Marshal(map[string]any{
+			"output":    out,
+			"exit_code": exitCode,
+		})
 	}
 	return nil, fmt.Errorf("unknown tool: %s", name)
 }
 
-func (s *Shell) Run(command string) (string, error) {
+func (s *Shell) Run(command string) (string, int, error) {
 	cmd := exec.Command("zsh", "-c", command)
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			return string(out), exitError.ExitCode(), nil
+		}
+		return string(out), -1, err
+	}
+	return string(out), 0, nil
 }
 
 func main() {
