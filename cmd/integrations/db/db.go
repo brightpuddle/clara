@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -37,7 +38,7 @@ type Service struct {
 var sqliteIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func Open(path string) (*Service, error) {
-	resolvedPath := path
+	resolvedPath := resolvePath(path)
 	if resolvedPath == "" {
 		resolvedPath = ":memory:"
 	}
@@ -55,6 +56,22 @@ func Open(path string) (*Service, error) {
 		return nil, errors.Wrapf(err, "open sqlite database %q", resolvedPath)
 	}
 	return &Service{db: db}, nil
+}
+
+func resolvePath(path string) string {
+	path = os.ExpandEnv(strings.TrimSpace(path))
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return path
+	}
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 func (s *Service) Close() error {

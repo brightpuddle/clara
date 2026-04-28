@@ -126,8 +126,8 @@ func runToolCall(cmd *cobra.Command, args []string) error {
 		Method: ipc.MethodToolCall,
 		Params: map[string]any{
 			"name": args[0],
-			"args": parsedArgs,
 		},
+		Args: parsedArgs,
 	})
 	if err != nil {
 		prettyPrint(map[string]any{"error": fmt.Sprintf("tool call request failed: %v", err)})

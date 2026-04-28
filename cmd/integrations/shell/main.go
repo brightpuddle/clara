@@ -52,7 +52,7 @@ func (s *Shell) CallTool(name string, args []byte) ([]byte, error) {
 }
 
 func (s *Shell) Run(command string) (string, error) {
-	cmd := exec.Command("sh", "-c", command)
+	cmd := exec.Command("zsh", "-c", command)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

@@ -48,7 +48,7 @@ check-deps:
 	fi
 
 ## build: compile the unified clara binary and all plugins
-build: build-core build-integrations build-intents
+build: build-core build-integrations
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" bin/clara
 
 ## proto: generate protobuf bindings for Go and Swift
@@ -74,15 +74,6 @@ build-integrations:
 		if [ -d "$$d" ]; then \
 			name=$$(basename "$$d"); \
 			go build -o bin/integrations/$$name ./$$d; \
-		fi; \
-	done
-
-build-intents:
-	mkdir -p bin/intents
-	for d in cmd/intents/*; do \
-		if [ -d "$$d" ]; then \
-			name=$$(basename "$$d"); \
-			go build -o bin/intents/$$name ./$$d; \
 		fi; \
 	done
 
@@ -124,9 +115,7 @@ install: build $(BRIDGE_APP_EXE)
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
 	
 	mkdir -p $(HOME)/.config/clara/integrations
-	mkdir -p $(HOME)/.config/clara/intents
 	if [ -d bin/integrations ]; then cp bin/integrations/* $(HOME)/.config/clara/integrations/; fi
-	if [ -d bin/intents ]; then cp bin/intents/* $(HOME)/.config/clara/intents/; fi
 
 	install -d "$(LAUNCH_AGENT_DIR)"
 	install -m 644 "$(LAUNCH_AGENT_FILE)" "$(LAUNCH_AGENT_PLIST)"
@@ -139,9 +128,7 @@ install-clara: build
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
 
 	mkdir -p $(HOME)/.config/clara/integrations
-	mkdir -p $(HOME)/.config/clara/intents
 	if [ -d bin/integrations ]; then cp bin/integrations/* $(HOME)/.config/clara/integrations/; fi
-	if [ -d bin/intents ]; then cp bin/intents/* $(HOME)/.config/clara/intents/; fi
 
 	install -d "$(LAUNCH_AGENT_DIR)"
 	install -m 644 "$(LAUNCH_AGENT_FILE)" "$(LAUNCH_AGENT_PLIST)"

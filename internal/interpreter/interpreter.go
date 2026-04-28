@@ -82,6 +82,10 @@ type RunOptions struct {
 	RunID string
 	// InitialMem optionally pre-seeds the mem map (e.g. for resuming a run).
 	InitialMem map[string]any
+	// Entrypoint is the name of the Starlark function to call (defaults to "main").
+	Entrypoint string
+	// HandlerArgs are the arguments to pass to the entrypoint function.
+	HandlerArgs any
 }
 
 // Execute runs intent starting from startState.

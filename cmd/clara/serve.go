@@ -136,12 +136,16 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
+		watchTasks: func(ctx context.Context) {
+			loader.watchTasks(ctx, cfg.TasksDir())
+		},
 	}, logger)
 }
 
 type daemonServiceHooks struct {
 	startControl    func(context.Context) error
 	startSupervisor func(context.Context) error
+	watchTasks      func(context.Context)
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
@@ -158,6 +162,12 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 			logger.Error().Err(err).Msg("supervisor error")
 		}
 	})
+
+	if hooks.watchTasks != nil {
+		wg.Go(func() {
+			hooks.watchTasks(ctx)
+		})
+	}
 
 	wg.Wait()
 	return nil
@@ -206,6 +216,7 @@ func buildHandler(
 			intents := sup.IntentInfos()
 			type taskEntry struct {
 				IntentID    string         `json:"intent_id"`
+				Path        string         `json:"path,omitempty"`
 				Description string         `json:"description,omitempty"`
 				Handler     string         `json:"handler"`
 				Mode        string         `json:"mode"`
@@ -221,6 +232,7 @@ func buildHandler(
 				if intent.Error != "" {
 					list = append(list, taskEntry{
 						IntentID:    intent.ID,
+						Path:        intent.Path,
 						Description: intent.Description,
 						Error:       intent.Error,
 					})
@@ -229,6 +241,7 @@ func buildHandler(
 				for _, task := range intent.Tasks {
 					list = append(list, taskEntry{
 						IntentID:    intent.ID,
+						Path:        intent.Path,
 						Description: intent.Description,
 						Handler:     task.Handler,
 						Mode:        task.Mode,
@@ -258,19 +271,30 @@ func buildHandler(
 			}
 			taskName, _ := req.Params["task"].(string)
 
+			// Support arguments in either top-level Args or Params["args"]
+			args := req.Args
+			if args == nil {
+				if a, ok := req.Params["args"].(map[string]any); ok {
+					args = a
+				}
+			}
+
 			// Dispatch by task mode: on-demand fires a single run; auto tasks
 			// (schedule/worker/event) activate the persistent loop.
 			isOnDemand := intentTaskIsOnDemand(intent, taskName)
 			if isOnDemand {
 				runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
-				go runIntentInBackground(ctx, intent, runID, taskName, req.Args, reg, db, log)
+				// Capture the latest event ID before spawning so the client
+				// can follow from exactly this point without a race.
+				lastEventID, _ := db.LatestRunEventID(ctx, "")
+				go runIntentInBackground(ctx, intent, runID, taskName, args, reg, db, log)
 				msg := "intent " + id + " started"
 				if taskName != "" {
 					msg = "intent " + id + " task " + taskName + " started"
 				}
 				writeResp(&ipc.Response{
 					Message: msg,
-					Data:    map[string]any{"run_id": runID},
+					Data:    map[string]any{"run_id": runID, "last_event_id": lastEventID},
 				})
 				return
 			}
@@ -384,14 +408,19 @@ func buildHandler(
 				return
 			}
 
-			args := map[string]any{}
-			if rawArgs, ok := req.Params["args"]; ok && rawArgs != nil {
-				parsedArgs, ok := rawArgs.(map[string]any)
-				if !ok {
-					writeResp(&ipc.Response{Error: "args parameter must be an object"})
-					return
+			args := req.Args
+			if args == nil {
+				if rawArgs, ok := req.Params["args"]; ok && rawArgs != nil {
+					parsedArgs, ok := rawArgs.(map[string]any)
+					if !ok {
+						writeResp(&ipc.Response{Error: "args parameter must be an object"})
+						return
+					}
+					args = parsedArgs
 				}
-				args = parsedArgs
+			}
+			if args == nil {
+				args = map[string]any{}
 			}
 
 			result, err := reg.Call(ctx, name, args)

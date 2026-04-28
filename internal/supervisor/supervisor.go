@@ -48,11 +48,12 @@ type IntentRunner func(
 ) error
 
 type IntentInfo struct {
-	ID          string
-	Description string
-	Active      bool
-	Tasks       []orchestrator.Task
-	Error       string
+	ID          string              `json:"id"`
+	Path        string              `json:"path,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Active      bool                `json:"active"`
+	Tasks       []orchestrator.Task `json:"tasks,omitempty"`
+	Error       string              `json:"error,omitempty"`
 }
 
 type managedIntent struct {
@@ -429,6 +430,7 @@ func (s *Supervisor) IntentInfos() []IntentInfo {
 	for id, managed := range s.intents {
 		infos = append(infos, IntentInfo{
 			ID:          id,
+			Path:        managed.path,
 			Description: managed.intent.Description,
 			Active:      managed.active,
 			Tasks:       managed.intent.Tasks,
@@ -437,6 +439,7 @@ func (s *Supervisor) IntentInfos() []IntentInfo {
 	for path, err := range s.failures {
 		infos = append(infos, IntentInfo{
 			ID:    filepath.Base(path),
+			Path:  path,
 			Error: err.Error(),
 		})
 	}
@@ -455,8 +458,8 @@ func (e *SupervisorValidationError) Error() string {
 
 // ValidateIntent checks if an intent is valid within the current registry context.
 func (s *Supervisor) ValidateIntent(intent *orchestrator.Intent) error {
-	// For native intents, we don't need to validate States
-	if intent.WorkflowKind() == orchestrator.WorkflowTypeNative {
+	// Starlark and native intents don't use the state machine States map.
+	if intent.WorkflowKind() != orchestrator.WorkflowTypeStateMachine {
 		return nil
 	}
 

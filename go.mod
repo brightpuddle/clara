@@ -22,6 +22,7 @@ require (
 	github.com/yuin/goldmark v1.7.17
 	go.abhg.dev/goldmark/frontmatter v0.3.0
 	go.abhg.dev/goldmark/wikilink v0.6.0
+	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/term v0.41.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11

@@ -83,10 +83,17 @@ func (b *Intent) Validate() error {
 				Message: "must not be empty for native workflows",
 			}
 		}
+	case WorkflowTypeStarlark:
+		if b.Script == "" {
+			return &ValidationError{
+				Field:   "script",
+				Message: "must not be empty for starlark workflows",
+			}
+		}
 	default:
 		return &ValidationError{
 			Field:   "workflow_type",
-			Message: "must be one of state_machine or native",
+			Message: "must be one of state_machine, native, or starlark",
 		}
 	}
 	return nil
@@ -95,6 +102,7 @@ func (b *Intent) Validate() error {
 const (
 	WorkflowTypeStateMachine = "state_machine"
 	WorkflowTypeNative       = "native"
+	WorkflowTypeStarlark     = "starlark"
 
 	IntentModeOnDemand = "on_demand"
 	IntentModeSchedule = "schedule"
@@ -155,6 +163,8 @@ func (b *Intent) WorkflowKind() string {
 	switch b.WorkflowType {
 	case WorkflowTypeNative:
 		return WorkflowTypeNative
+	case WorkflowTypeStarlark:
+		return WorkflowTypeStarlark
 	default:
 		return WorkflowTypeStateMachine
 	}

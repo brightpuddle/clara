@@ -16,8 +16,9 @@ import (
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
-	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 )
@@ -117,52 +118,109 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unexpected list response: %T", resp.Data)
 	}
 
-	var infos []supervisor.IntentInfo
+	type taskEntry struct {
+		IntentID    string         `json:"intent_id"`
+		Path        string         `json:"path,omitempty"`
+		Description string         `json:"description,omitempty"`
+		Handler     string         `json:"handler"`
+		Mode        string         `json:"mode"`
+		Schedule    string         `json:"schedule,omitempty"`
+		Interval    string         `json:"interval,omitempty"`
+		Trigger     string         `json:"trigger,omitempty"`
+		TriggerArgs map[string]any `json:"trigger_args,omitempty"`
+		Active      bool           `json:"active"`
+		Error       string         `json:"error,omitempty"`
+	}
+
+	var tasks []taskEntry
 	for _, item := range data {
-		var info supervisor.IntentInfo
+		var t taskEntry
 		b, _ := json.Marshal(item)
-		_ = json.Unmarshal(b, &info)
-		infos = append(infos, info)
+		_ = json.Unmarshal(b, &t)
+		tasks = append(tasks, t)
 	}
 
 	theme := tui.DetectTheme()
-	fmt.Println(theme.Magenta("ID"), strings.Repeat(" ", 18), theme.Magenta("STATUS"), " ", theme.Magenta("DESCRIPTION"))
-	fmt.Println(strings.Repeat("─", 80))
 
-	sort.Slice(infos, func(i, j int) bool {
-		return infos[i].ID < infos[j].ID
-	})
+	// Determine terminal width, defaulting to 80 if unavailable.
+	termWidth := 80
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		termWidth = w
+	}
 
-	for _, info := range infos {
-		status := theme.Dimmed("idle")
-		if info.Active {
-			status = theme.Green("active")
+	// Compute column widths from content.
+	idW, handlerW, statusW := len("ID"), len("HANDLER"), len("STATUS")
+	for _, t := range tasks {
+		if n := len(t.IntentID); n > idW {
+			idW = n
 		}
-		if info.Error != "" {
-			status = theme.Red("error")
-		}
-
-		desc := info.Description
-		if info.Error != "" {
-			desc = info.Error
-		}
-
-		fmt.Printf("%-20s  %-16s  %s\n", theme.Cyan(info.ID), status, desc)
-		if len(info.Tasks) > 0 {
-			maxHandler := 0
-			maxMode := 0
-			for _, t := range info.Tasks {
-				maxHandler = max(maxHandler, len(t.Handler))
-				maxMode = max(maxMode, len(t.Mode))
-			}
-			for _, t := range info.Tasks {
-				fmt.Printf("  %-*s  %-*s\n",
-					maxHandler, t.Handler,
-					maxMode, theme.Dimmed(string(t.Mode)),
-				)
-			}
+		if n := len(t.Handler); n > handlerW {
+			handlerW = n
 		}
 	}
+	// STATUS values are fixed: "idle", "active", "error" — statusW stays at header width.
+
+	// 3 separating spaces between 4 columns.
+	const colSep = 3
+	// TRIGGER column gets the remainder of the terminal width.
+	triggerW := max(termWidth-idW-handlerW-statusW-colSep*3, len("TRIGGER"))
+	totalW := idW + handlerW + statusW + triggerW + colSep*3
+
+	// Define styles for columns
+	idStyle := lipgloss.NewStyle().Width(idW)
+	handlerStyle := lipgloss.NewStyle().Width(handlerW).Foreground(theme.Secondary)
+	statusStyle := lipgloss.NewStyle().Width(statusW)
+	triggerStyle := lipgloss.NewStyle().Width(triggerW)
+
+	headerStyle := lipgloss.NewStyle().Foreground(theme.MagentaColor).Bold(true)
+
+	fmt.Printf("%s   %s   %s   %s\n",
+		headerStyle.Width(idW).Render("ID"),
+		headerStyle.Width(handlerW).Render("HANDLER"),
+		headerStyle.Width(statusW).Render("STATUS"),
+		headerStyle.Width(triggerW).Render("TRIGGER"))
+	fmt.Println(strings.Repeat("─", totalW))
+
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].IntentID != tasks[j].IntentID {
+			return tasks[i].IntentID < tasks[j].IntentID
+		}
+		return tasks[i].Handler < tasks[j].Handler
+	})
+
+	for _, t := range tasks {
+		status := "idle"
+		sStyle := statusStyle.Foreground(theme.Dim)
+		if t.Active {
+			status = "active"
+			sStyle = statusStyle.Foreground(theme.Success)
+		}
+		if t.Error != "" {
+			status = "error"
+			sStyle = statusStyle.Foreground(theme.Error)
+		}
+
+		trigger := "on_demand"
+		switch t.Mode {
+		case "schedule":
+			trigger = t.Schedule
+		case "worker":
+			if t.Interval != "" {
+				trigger = "@every " + t.Interval
+			} else {
+				trigger = "@every 1s"
+			}
+		case "event":
+			trigger = "event:" + t.Trigger
+		}
+
+		fmt.Printf("%s   %s   %s   %s\n",
+			idStyle.Render(t.IntentID),
+			handlerStyle.Render(t.Handler),
+			sStyle.Render(status),
+			triggerStyle.Render(trigger))
+	}
+
 	return nil
 }
 
@@ -186,20 +244,19 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var intentArgs map[string]any
 	if len(trailing) > 0 {
-		intentArgs := make(map[string]any)
-		for _, pair := range trailing {
-			parts := strings.SplitN(pair, "=", 2)
-			if len(parts) == 2 {
-				intentArgs[parts[0]] = parts[1]
-			}
+		parsed, err := parseToolCallArgs(trailing)
+		if err != nil {
+			return err
 		}
-		params["args"] = intentArgs
+		intentArgs = parsed
 	}
 
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodStart,
 		Params: params,
+		Args:   intentArgs,
 	})
 	if err != nil {
 		return err
@@ -213,7 +270,15 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 	fmt.Println(resp.Message)
 
 	if intentStartFollow || intentStartVerbose {
-		return followIntentEvents(cmd.Context(), intentID, intentStartVerbose)
+		var runID string
+		var lastEventID int64
+		if m, ok := resp.Data.(map[string]any); ok {
+			runID, _ = m["run_id"].(string)
+			if v, ok := m["last_event_id"].(float64); ok {
+				lastEventID = int64(v)
+			}
+		}
+		return followIntentEvents(cmd.Context(), intentID, runID, lastEventID, intentStartVerbose)
 	}
 
 	return nil
@@ -246,7 +311,7 @@ func runIntentLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	if intentLogsFollow {
-		return followIntentEvents(cmd.Context(), intentID, intentLogsVerbose)
+		return followIntentEvents(cmd.Context(), intentID, "", 0, intentLogsVerbose)
 	}
 
 	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
@@ -385,7 +450,13 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	}
 }
 
-func followIntentEvents(ctx context.Context, intentID string, verbose bool) error {
+// followIntentEvents streams run events to stdout until the run finishes or ctx
+// is cancelled. runID and lastEventID should come from the MethodStart response
+// so the baseline is captured before the goroutine begins (avoiding the race
+// where a fast run completes before the client opens the DB). When runID is
+// empty (e.g. plain "intent logs -f") we fall back to querying the latest ID
+// ourselves and follow without an exit condition.
+func followIntentEvents(ctx context.Context, intentID, runID string, lastEventID int64, verbose bool) error {
 	logger := buildLogger()
 	db, err := store.Open(cfg.DBPath(), logger)
 	if err != nil {
@@ -396,10 +467,12 @@ func followIntentEvents(ctx context.Context, intentID string, verbose bool) erro
 	theme := tui.DetectTheme()
 	printer := newIntentWatchPrinter(&theme, intentID == "", verbose)
 
-	// Determine starting point for event stream
-	lastEventID, err := db.LatestRunEventID(ctx, intentID)
-	if err != nil {
-		return errors.Wrap(err, "load latest run event id")
+	// If no baseline was supplied (legacy / logs -f path), query it now.
+	if runID == "" && lastEventID == 0 {
+		lastEventID, err = db.LatestRunEventID(ctx, intentID)
+		if err != nil {
+			return errors.Wrap(err, "load latest run event id")
+		}
 	}
 
 	fmt.Println(theme.Dimmed("Following events... (Ctrl-C to stop)"))
@@ -411,8 +484,15 @@ func followIntentEvents(ctx context.Context, intentID string, verbose bool) erro
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := flushRunEvents(ctx, db, printer, &lastEventID, ""); err != nil {
+			if err := flushRunEvents(ctx, db, printer, &lastEventID, runID); err != nil {
 				return err
+			}
+			// Exit once a specific run has reached a terminal state.
+			if runID != "" {
+				run, _, err := db.LoadRun(ctx, runID)
+				if err == nil && run.Status != "running" && run.Status != "waiting" {
+					return nil
+				}
 			}
 		}
 	}
