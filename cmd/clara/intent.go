@@ -324,6 +324,33 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	reg := registry.New(logger)
 	registerPermanentTUITools(reg, db, logger)
 
+	// Load core integrations if they exist in bin/integrations
+	coreIntegrations := []string{"fs", "shell", "db"}
+	for _, name := range coreIntegrations {
+		path := filepath.Join("bin", "integrations", name)
+		if _, err := os.Stat(path); err == nil {
+			loader := newPluginLoader(reg, nil, cfg, logger)
+			if err := loader.loadIntegrationAt(name, path); err != nil {
+				logger.Warn().Err(err).Str("name", name).Msg("failed to load core integration for one-off run")
+			}
+		}
+	}
+
+	// Load macos (ClaraBridge) if it exists
+	macosPaths := []string{
+		"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge",
+		"./build/ClaraBridge.app/Contents/MacOS/ClaraBridge",
+	}
+	for _, p := range macosPaths {
+		if _, err := os.Stat(p); err == nil {
+			loader := newPluginLoader(reg, nil, cfg, logger)
+			if err := loader.loadIntegrationAt("macos", p); err != nil {
+				logger.Warn().Err(err).Msg("failed to load macos integration for one-off run")
+			}
+			break
+		}
+	}
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 

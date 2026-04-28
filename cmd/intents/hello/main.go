@@ -9,7 +9,7 @@ import (
 
 type HelloIntent struct{}
 
-func (i *HelloIntent) Execute(name string, ctx contract.Context) error {
+func (i *HelloIntent) Execute(name string, args []byte, ctx contract.Context) error {
 	shell, err := ctx.Shell()
 	if err != nil {
 		return err

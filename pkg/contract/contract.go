@@ -47,7 +47,7 @@ type Context interface {
 
 // Intent is the interface for native Go intents.
 type Intent interface {
-	Execute(name string, ctx Context) error
+	Execute(name string, args []byte, ctx Context) error
 }
 
 // --- Base RPC Helpers ---
@@ -239,6 +239,7 @@ func (s *ContextRPCServer) FS(args EmptyArgs, resp *uint32) error {
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &FSIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
 	})
 	return nil
 }
@@ -312,6 +313,7 @@ func (s *ContextRPCServer) MacOS(args EmptyArgs, resp *uint32) error {
 
 type ExecuteArgs struct {
 	Name      string
+	Args      []byte
 	ContextID uint32
 }
 
@@ -320,13 +322,14 @@ type IntentRPC struct {
 	broker *plugin.MuxBroker
 }
 
-func (g *IntentRPC) Execute(name string, ctx Context) error {
+func (g *IntentRPC) Execute(name string, args []byte, ctx Context) error {
 	// Register the context implementation as a server so the plugin can call back
 	ctxID := g.broker.NextId()
 	go g.broker.AcceptAndServe(ctxID, &ContextRPCServer{Impl: ctx, broker: g.broker})
 
 	return g.client.Call("Plugin.Execute", ExecuteArgs{
 		Name:      name,
+		Args:      args,
 		ContextID: ctxID,
 	}, &struct{}{})
 }
@@ -345,7 +348,7 @@ func (s *IntentRPCServer) Execute(args ExecuteArgs, resp *struct{}) error {
 	defer conn.Close()
 
 	ctx := &ContextRPC{client: rpc.NewClient(conn), broker: s.broker}
-	return s.Impl.Execute(args.Name, ctx)
+	return s.Impl.Execute(args.Name, args.Args, ctx)
 }
 
 type IntentPlugin struct {

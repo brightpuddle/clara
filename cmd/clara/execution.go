@@ -81,24 +81,17 @@ func executeNativeRun(
 	}
 
 	// 3. Execute
-	name := "World" // Default for the PoC
-	if s, ok := args.(string); ok {
-		name = s
-	} else if m, ok := args.(map[string]any); ok {
-		if n, ok := m["name"].(string); ok {
-			name = n
-		}
-	}
+	argData, _ := json.Marshal(args)
 
 	appendRunEvent(ctx, db, log, interpreter.StepEvent{
 		RunID:    runID,
 		IntentID: intent.ID,
 		State:    "NATIVE",
 		Action:   "execute",
-		Args:     map[string]any{"name": name},
+		Args:     args,
 	})
 
-	err = nativeIntent.Execute(name, ctxProvider)
+	err = nativeIntent.Execute(entrypoint, argData, ctxProvider)
 	if err != nil {
 		appendRunEvent(ctx, db, log, interpreter.StepEvent{
 			RunID:    runID,
@@ -132,7 +125,7 @@ func (c *registryContext) Shell() (contract.ShellIntegration, error) {
 }
 
 func (c *registryContext) FS() (contract.FSIntegration, error) {
-	return nil, errors.New("FS integration not implemented in registry")
+	return &registryFS{ctx: c.ctx, reg: c.reg, log: c.log}, nil
 }
 
 func (c *registryContext) DB() (contract.DBIntegration, error) {
@@ -189,6 +182,57 @@ func (s *registryShell) Run(command string) (string, error) {
 	cmd := exec.Command("bash", "-c", command)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+type registryFS struct {
+	ctx context.Context
+	reg *registry.Registry
+	log zerolog.Logger
+}
+
+func (f *registryFS) Configure(config []byte) error { return nil }
+func (f *registryFS) Description() (string, error) {
+	return "Host-side registry fs integration", nil
+}
+func (f *registryFS) Tools() ([]byte, error) { return nil, nil }
+func (f *registryFS) CallTool(name string, args []byte) ([]byte, error) {
+	f.log.Debug().Str("tool", name).Msg("native intent requested fs tool call")
+	var params map[string]any
+	if err := json.Unmarshal(args, &params); err != nil {
+		return nil, err
+	}
+
+	res, err := f.reg.Call(f.ctx, "fs."+name, params)
+	if err != nil {
+		// Fallback for tools without fs. prefix
+		res, err = f.reg.Call(f.ctx, name, params)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return json.Marshal(res)
+}
+
+func (f *registryFS) ReadFile(path string) ([]byte, error) {
+	f.log.Debug().Str("path", path).Msg("native intent requested fs read_file")
+	res, err := f.reg.Call(f.ctx, "fs.read_file", map[string]any{"path": path})
+	if err != nil {
+		return nil, err
+	}
+	if s, ok := res.(string); ok {
+		return []byte(s), nil
+	}
+	return nil, fmt.Errorf("unexpected read_file result type: %T", res)
+}
+
+func (f *registryFS) WriteFile(path string, content []byte) error {
+	f.log.Debug().Str("path", path).Msg("native intent requested fs write_file")
+	_, err := f.reg.Call(f.ctx, "fs.write_file", map[string]any{
+		"path":    path,
+		"content": string(content),
+	})
+	return err
 }
 
 type registryDB struct {
@@ -540,6 +584,29 @@ func (m *registryMacOS) CallTool(name string, args []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(res)
+}
+
+func (m *registryMacOS) GetTheme() (string, error) {
+	m.log.Debug().Msg("native intent requested macos theme_get")
+	res, err := m.reg.Call(m.ctx, "macos.theme_get", map[string]any{})
+	if err != nil {
+		return "", err
+	}
+	
+	// Handle MCP-style response
+	if mcpRes, ok := res.(map[string]any); ok {
+		if structured, ok := mcpRes["structuredContent"].(map[string]any); ok {
+			if theme, ok := structured["theme"].(string); ok {
+				return theme, nil
+			}
+		}
+		// Fallback to direct map
+		if theme, ok := mcpRes["theme"].(string); ok {
+			return theme, nil
+		}
+	}
+	
+	return "", fmt.Errorf("unexpected theme_get result: %v", res)
 }
 
 func executeStateMachineRun(

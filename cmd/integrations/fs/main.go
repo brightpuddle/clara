@@ -89,6 +89,42 @@ func (p *FSPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	return json.Marshal(res.Content)
 }
 
+func (p *FSPlugin) ReadFile(path string) ([]byte, error) {
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "read_file"
+	req.Params.Arguments = map[string]any{"path": path}
+	res, err := handleReadFile(context.Background(), req)
+	if err != nil {
+		return nil, err
+	}
+	if res.IsError {
+		return nil, fmt.Errorf("read_file error")
+	}
+	if len(res.Content) == 1 {
+		if tc, ok := res.Content[0].(mcp.TextContent); ok {
+			return []byte(tc.Text), nil
+		}
+	}
+	return nil, fmt.Errorf("unexpected read_file result")
+}
+
+func (p *FSPlugin) WriteFile(path string, content []byte) error {
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "write_file"
+	req.Params.Arguments = map[string]any{
+		"path":    path,
+		"content": string(content),
+	}
+	res, err := handleWriteFile(context.Background(), req)
+	if err != nil {
+		return err
+	}
+	if res.IsError {
+		return fmt.Errorf("write_file error")
+	}
+	return nil
+}
+
 func main() {
 	impl := &FSPlugin{}
 	plugin.Serve(&plugin.ServeConfig{

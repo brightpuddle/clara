@@ -9,6 +9,7 @@ import (
 // MacOSIntegration is the interface for native macOS capabilities.
 type MacOSIntegration interface {
 	Integration
+	GetTheme() (string, error)
 }
 
 // --- RPC Wrappers ---
@@ -17,9 +18,21 @@ type MacOSIntegrationRPC struct {
 	IntegrationRPC
 }
 
+func (g *MacOSIntegrationRPC) GetTheme() (string, error) {
+	var resp string
+	err := g.Client.Call("Plugin.GetTheme", EmptyArgs{}, &resp)
+	return resp, err
+}
+
 type MacOSIntegrationRPCServer struct {
 	IntegrationRPCServer
 	Impl MacOSIntegration
+}
+
+func (s *MacOSIntegrationRPCServer) GetTheme(args EmptyArgs, resp *string) error {
+	var err error
+	*resp, err = s.Impl.GetTheme()
+	return err
 }
 
 func (s *MacOSIntegrationRPCServer) Configure(config []byte, resp *struct{}) error {

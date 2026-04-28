@@ -69,7 +69,7 @@ func runPrototype() {
 	// 3. Execute the Intent
 	fmt.Println("Clara: Executing 'hello' intent...")
 	ctx := &prototypeContext{shell: shell}
-	err = intent.Execute("World", ctx)
+	err = intent.Execute("World", nil, ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
