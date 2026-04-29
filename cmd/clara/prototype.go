@@ -110,3 +110,11 @@ func (c *prototypeContext) MacOS() (contract.MacOSIntegration, error) {
 func (c *prototypeContext) Web() (contract.WebIntegration, error) {
 	return nil, fmt.Errorf("Web not implemented in prototype")
 }
+
+func (c *prototypeContext) Tmux() (contract.TmuxIntegration, error) {
+	return nil, fmt.Errorf("Tmux not implemented in prototype")
+}
+
+func (c *prototypeContext) Taskwarrior() (contract.TaskwarriorIntegration, error) {
+	return nil, fmt.Errorf("Taskwarrior not implemented in prototype")
+}

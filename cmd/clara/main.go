@@ -84,6 +84,7 @@ func main() {
 }
 
 func loadConfig() error {
+	config.EnsureLoginShellEnv()
 	var err error
 	if cfgFile != "" {
 		cfg, err = config.Load(cfgFile)

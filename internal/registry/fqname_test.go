@@ -13,10 +13,12 @@ func TestGetFQToolName(t *testing.T) {
 		want   string
 	}{
 		{"clara-db", "query", "clara-db.query"},
-		{"clara-db", "db.search", "db.search"},
+		{"clara-db", "db.search", "clara-db.db.search"},
 		{"macos", "reminders_list", "macos.reminders_list"},
 		{"macos", "mail_search", "macos.mail_search"},
-		{"clara-search", "mail.search", "mail.search"},
+		{"clara-search", "mail.search", "clara-search.mail.search"},
+		{"tmux", "session.list", "tmux.session.list"},
+		{"taskwarrior", "pending.list", "taskwarrior.pending.list"},
 	}
 	
 	for _, tc := range cases {

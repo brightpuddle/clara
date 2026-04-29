@@ -22,9 +22,10 @@ deterministic workflows.
 - **Durable Life-State:** Persistence of task progress, history, and metadata.
 
 ## Core Features
-- **Native Go Intents:** Define managed, long-running, and event-driven tasks
-  using Go.
-- **MCP Tool Registry:** Unified access to built-in and external MCP servers.
+- **Starlark Intents:** Define managed, long-running, and event-driven tasks
+  using Starlark scripts (`.star` files). No compilation required.
+- **Integration Plugin Registry:** Unified tool access via native Go integration
+  plugins (go-plugin RPC/gRPC).
 - **Interactive TUI:** A lightweight "Heads-Up Display" for monitoring and human
   intervention.
 - **Daemon-Based:** Background service ensuring continuous execution and event

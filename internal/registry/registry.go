@@ -370,7 +370,7 @@ func (r *Registry) NamespaceDescription(name string) string {
 }
 
 func (r *Registry) GetFQToolName(serverName, toolName string) string {
-	if strings.Contains(toolName, ".") {
+	if strings.HasPrefix(toolName, serverName+".") {
 		return toolName
 	}
 	return serverName + "." + toolName

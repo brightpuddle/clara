@@ -15,6 +15,7 @@ build/
 .vscode/
 *.swp
 *.swo
+.pi-lens
 
 # macOS
 .DS_Store

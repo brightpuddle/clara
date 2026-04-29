@@ -30,10 +30,10 @@ itself is a reliable, repeatable, and inspectable workflow that runs anywhere.
 
 - **Reliability:** You shouldn't have to wonder if your file organizer "felt
   like" working today.
-- **Efficiency:** Running a native binary is orders of magnitude faster and
-  cheaper than prompting an LLM for every step.
-- **Inspectability:** You can diff, version, and improve your rulesets over
-  time using standard software engineering tools.
+- **Efficiency:** Running a deterministic script is orders of magnitude faster
+  and cheaper than prompting an LLM for every step.
+- **Inspectability:** You can diff, version, and improve your scripts over time
+  using standard software engineering tools.
 - **Durable State:** Clara manages long-running tasks that can wait for human
   input or external events without keeping a "hot" LLM context alive.
 
@@ -41,18 +41,26 @@ itself is a reliable, repeatable, and inspectable workflow that runs anywhere.
 
 Clara is built on three core pillars:
 
-1. **The Registry (MCP-First):** Clara is an aggregator for
-   [Model Context Protocol](https://modelcontextprotocol.io) servers. If a
-   capability exists (Filesystem, Chrome, Slack, Photos), it is delivered
-   through an MCP server. This keeps the core daemon focused on orchestration
-   and policy.
-2. **The Intents (Native Go):** High-level workflows are authored as Native Go
-   plugins. These are compiled binaries that define how tools should be used,
-   when they should trigger, and how they should handle state, communicating
-   with Clara via a high-performance RPC interface.
-3. **The Daemon:** A Go-based background service that manages MCP server
-   lifecycles, discovers native plugins, executes intents, and persists
-   state in a local SQLite store.
+1. **Integration Plugins (go-plugin):** Capabilities such as Filesystem, Chrome,
+   SQLite, LLM, and macOS-native APIs are delivered as standalone Go binaries
+   built with [`hashicorp/go-plugin`](https://github.com/hashicorp/go-plugin).
+   Each integration exposes a set of named tools to the daemon over a
+   net/RPC (or gRPC, for the Swift bridge) connection. Tools are registered into
+   a central **Registry** keyed by `namespace.tool_name`.
+2. **Starlark Intents (`.star` files):** High-level workflows are authored as
+   [Starlark](https://github.com/google/starlark-go) scripts. The daemon
+   discovers `.star` files in `~/.config/clara/tasks/`, hot-reloads them on
+   change, and executes them via a built-in Starlark interpreter. Scripts call
+   integration tools through namespace proxies (`fs.read_file(...)`,
+   `llm.complete(...)`, etc.) and can `clara.wait(...)` for external events,
+   enabling durable, resumable workflows.
+3. **The Daemon:** A Go-based background service that loads integration plugins,
+   watches the tasks directory for intent scripts, schedules and executes
+   intents, and persists run state in a local SQLite store.
+
+> **Note on MCP:** `mcp-go` is used *inside* integration plugins to describe and
+> dispatch individual tools. It is an implementation detail, not the transport
+> between the daemon and plugins (that transport is go-plugin RPC/gRPC).
 
 ## Getting Started
 
@@ -64,12 +72,22 @@ For a streamlined installation on macOS:
 curl -s https://raw.githubusercontent.com/brightpuddle/clara/main/scripts/install.sh | bash
 ```
 
-This installs the `clara` binary, the `ClaraBridge` (for native macOS
-integrations like Photos/Reminders), and the companion Chrome extension.
+This installs the `clara` binary, the built-in integration plugins, the
+`ClaraBridge` (for native macOS integrations like Photos/Reminders), and the
+companion Chrome extension.
 
 ### Your First Intent
 
-Native intents are authored in Go and compiled into plugins. Once installed in `~/.config/clara/intents/`, they are automatically discovered by the daemon.
+Intents are Starlark scripts (`.star` files). Place them in
+`~/.config/clara/tasks/` and the daemon picks them up automatically.
+
+```python
+# ~/.config/clara/tasks/hello.star
+
+def main():
+    result = shell.run(command="echo hello, world")
+    print(result)
+```
 
 Run an intent immediately:
 
@@ -80,26 +98,93 @@ clara intent logs hello
 
 ## Writing Intents
 
-Intents are more than just scripts; they are managed tasks. Clara supports
-several execution modes:
+Intents are Starlark scripts that call registered tools. They support several
+execution modes declared in a `clara.describe(...)` / `clara.task(...)` header:
 
 - **On-Demand:** Triggered manually via CLI or TUI.
-- **Scheduled:** Cron-style execution (e.g., `0 7 * * *` for your morning
-  brief).
+- **Scheduled:** Cron-style execution (e.g., `0 7 * * *` for a morning brief).
 - **Worker:** Fixed-interval loops (e.g., `1h` for a file sync).
-- **Event-Driven:** Reactive to MCP notifications (e.g., a file change or system event).
+- **Event-Driven:** Reactive to integration notifications (e.g., a file change).
+
+### Calling Tools
+
+Integration tools are available as Starlark namespace objects:
+
+```python
+def main():
+    # Filesystem
+    content = fs.read_file(path="/tmp/notes.txt")
+
+    # LLM
+    summary = llm.complete(prompt="Summarize: " + content)
+
+    # Write result back
+    fs.write_file(path="/tmp/summary.txt", content=summary)
+```
+
+Hyphens in tool names are mapped to underscores in Starlark
+(`note-search` → `note_search`).
+
+### Waiting for External Events
+
+Scripts can pause and resume durably using `clara.wait(...)`:
+
+```python
+def main():
+    response = clara.wait("user_confirmation", {"message": "Proceed?"})
+    if response["confirmed"]:
+        shell.run(command="make deploy")
+```
 
 ### Testing
 
-Native intents are tested using standard Go testing tools. This provides access to the full Go ecosystem for assertions, mocking, and coverage analysis.
+Clara re-executes intents from a recorded history on resume (deterministic
+replay). To test intent logic locally, run the intent directly and inspect
+the step log:
 
 ```bash
-go test ./...
+clara intent run my-intent --dry-run
+clara intent logs my-intent
+```
+
+## Writing Integrations
+
+Integrations are standalone Go binaries in `cmd/integrations/<name>/` that
+implement `contract.Integration` from `pkg/contract` and are served via
+`hashicorp/go-plugin`.
+
+```go
+type MyPlugin struct{}
+
+func (p *MyPlugin) Configure(config []byte) error { ... }
+func (p *MyPlugin) Description() (string, error)  { return "My integration", nil }
+func (p *MyPlugin) Tools() ([]byte, error)         { /* return []mcp.Tool as JSON */ }
+func (p *MyPlugin) CallTool(name string, args []byte) ([]byte, error) { ... }
+
+func main() {
+    plugin.Serve(&plugin.ServeConfig{
+        HandshakeConfig: contract.HandshakeConfig,
+        Plugins: map[string]plugin.Plugin{
+            "myintegration": &contract.GenericIntegrationPlugin{Impl: &MyPlugin{}},
+        },
+    })
+}
+```
+
+Install the compiled binary to `~/.config/clara/integrations/` and the daemon
+will load it automatically on startup (or on `clara plugin load myintegration`).
+
+Integration configuration is passed via `~/.config/clara/config.yaml`:
+
+```yaml
+integrations:
+  myintegration:
+    api_key: ${MY_API_KEY}
 ```
 
 ## The Ecosystem
 
-Clara ships with a variety of built-in and first-party MCP servers:
+Clara ships with a variety of built-in first-party integrations:
 
 - **`chrome`:** Full browser automation (click, fill, navigate) via a companion
   extension.
@@ -107,23 +192,39 @@ Clara ships with a variety of built-in and first-party MCP servers:
 - **`db`:** SQLite tool for persistent intent data.
 - **`llm`:** Multiplexed access to online providers (Gemini, etc.) and local
   models (via Ollama).
-- **`macos`:** Native macOS access (Photos, Reminders, Calendar, etc) via `ClaraBridge`.
+- **`macos`:** Native macOS access (Photos, Reminders, Calendar, etc.) via
+  `ClaraBridge` (Swift gRPC).
 - **`zk`:** Specialized Zettelkasten/Obsidian vault tools.
-- **`taskwarrior`:** Integration with the Taskwarrior CLI.
-- **`tmux`:** Integration with the tmux CLI for managing terminal sessions.
 - **`shell`:** Local command execution.
-- **`search`:** Unified search for mail, local files (`mdfind`), etc.
 - **`web`:** Internet search via DuckDuckGo.
-- **`webex`:** Webex messaging and search.
 
 ## Project Structure
 
-- `cmd/clara/`: The unified binary (CLI + Daemon).
-- `cmd/intents/`: Source code for native Go plugin intents.
-- `cmd/integrations/`: Source code for native Go plugin integrations.
-- `internal/mcpserver/`: Built-in MCP implementations.
-- `swift/`: Native macOS bridge.
-- `extension/`: Chrome extension source.
+```
+cmd/
+  clara/            # Unified binary (CLI + Daemon)
+  integrations/     # Built-in integration plugins (go-plugin RPC)
+    fs/             # Filesystem
+    db/             # SQLite
+    llm/            # LLM multiplexer
+    shell/          # Shell execution
+    web/            # Web search
+    chrome/         # Browser automation
+    zk/             # Zettelkasten vault
+internal/
+  config/           # Config loader (~/.config/clara/config.yaml)
+  orchestrator/     # Intent types, Starlark↔Go value helpers
+  registry/         # Unified tool registry (namespace.tool → callable)
+  interpreter/      # State machine executor + Starlark executor
+  supervisor/       # Intent lifecycle (scheduling, event dispatch)
+  store/            # SQLite persistence (runs, history, checkpoints)
+  tui/              # Interactive TUI (bubbletea)
+  ipc/              # Unix-socket IPC between CLI and daemon
+pkg/
+  contract/         # go-plugin RPC/gRPC contracts and handshake
+swift/              # ClaraBridge — Swift gRPC integration for macOS APIs
+extension/          # Chrome extension source
+```
 
 ---
 

@@ -44,6 +44,8 @@ type Context interface {
 	LLM() (LLMIntegration, error)
 	MacOS() (MacOSIntegration, error)
 	Web() (WebIntegration, error)
+	Tmux() (TmuxIntegration, error)
+	Taskwarrior() (TaskwarriorIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -227,6 +229,34 @@ func (g *ContextRPC) Web() (WebIntegration, error) {
 	return &WebIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
+func (g *ContextRPC) Tmux() (TmuxIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.Tmux", EmptyArgs{}, &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &TmuxIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
+}
+
+func (g *ContextRPC) Taskwarrior() (TaskwarriorIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.Taskwarrior", EmptyArgs{}, &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &TaskwarriorIntegrationRPC{
+		IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)},
+	}, nil
+}
+
 type ContextRPCServer struct {
 	Impl   Context
 	broker *plugin.MuxBroker
@@ -330,6 +360,32 @@ func (s *ContextRPCServer) Web(args EmptyArgs, resp *uint32) error {
 	}
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &WebIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) Tmux(args EmptyArgs, resp *uint32) error {
+	impl, err := s.Impl.Tmux()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &TmuxIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) Taskwarrior(args EmptyArgs, resp *uint32) error {
+	impl, err := s.Impl.Taskwarrior()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &TaskwarriorIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
 		Impl:                 impl,
 	})

@@ -5,22 +5,26 @@
 **Clara** (`github.com/brightpuddle/clara`) is an efficient, reliable agentic
 orchestrator. It is a background daemon written in Go that:
 
-1. Proxies and aggregates MCP (Model Context Protocol) servers into a unified
-   tool registry.
-2. Executes **Intents** authored as Native Go plugins at runtime.
+1. Loads **Integration plugins** (native Go binaries built with
+   `hashicorp/go-plugin`) that expose typed tools into a unified registry.
+2. Executes **Intents** authored as **Starlark scripts** (`.star` files) that
+   call registered tools.
 3. Persists operational state (runs, checkpoints, metadata) in an internal
    SQLite store.
-4. Treats every intent-visible capability as an MCP service.
-5. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, and
-   MCP gateway.
+4. Exposes a `cobra`-based CLI (`clara`) for daemon control, introspection, and
+   live intent management.
 
-**Architectural rule:** If a capability is available to intents, it must be
-delivered through MCP. Clara prioritizes the most reliable and efficient MCP
-services available, whether they are local or online.
+**Architectural rules:**
+- **Integrations expose tools; Starlark scripts consume them.** Integration
+  plugins (go-plugin RPC/gRPC) register tools into the registry; Starlark
+  intents call those tools via namespace proxies (`fs.read_file(...)`, etc.).
+- **MCP (`mcp-go`) is used internally** within integration plugins to describe
+  and dispatch tools, but it is *not* the transport between the daemon and
+  plugins — that transport is go-plugin net/RPC (or gRPC for the Swift bridge).
 
-- **Go 1.24+** for the daemon, CLI, and built-in MCP servers (supports macOS and
+- **Go 1.24+** for the daemon, CLI, and integration plugins (supports macOS and
   Linux).
-- **Swift 6.0+** for the standalone macOS MCP bridge (`swift/`).
+- **Swift 6.0+** for the standalone macOS gRPC bridge (`swift/`).
 - Go module: `github.com/brightpuddle/clara`
 
 ---
@@ -70,26 +74,35 @@ warnings or errors.
 
 ```
 cmd/
-  clara/            # Unified binary: daemon + CLI + built-in MCP launchers
+  clara/            # Unified binary: daemon + CLI
     main.go         # cobra root, shared helpers
     serve.go        # clara serve (daemon)
     agent.go        # clara agent {start,stop,status,logs}
     intent.go       # clara intent {list,run,trigger,...}
     tool.go         # clara tool {list,show,call}
-    mcp.go          # clara mcp {fs,db,...}
-    gateway.go      # clara gateway (aggregated MCP server)
-  intents/          # Native Go plugin intents
-  integrations/     # Native Go plugin integrations
+    plugin.go       # clara plugin {list,load,unload,reload}
+    plugins.go      # pluginLoader: integration discovery, .star hot-reload
+  integrations/     # Native Go integration plugins (go-plugin RPC)
+    fs/             # Filesystem tools
+    db/             # SQLite tools
+    llm/            # LLM multiplexer (Gemini, Ollama, etc.)
+    shell/          # Local shell execution
+    web/            # Web search (DuckDuckGo)
+    chrome/         # Browser automation
+    zk/             # Zettelkasten/Obsidian vault tools
 internal/
-  config/           # Config loader (config.yaml + os.ExpandEnv)
-  orchestrator/     # Intent, State, Transition types (core domain)
-  registry/         # MCP client management + unified tool registry
-  interpreter/      # State machine Execute loop (expr-lang conditions)
-  supervisor/       # Intent lifecycle management
-  mcpserver/        # Built-in MCP servers (fs/, db/, ollamaembeddings/)
+  config/           # Config loader (~/.config/clara/config.yaml + os.ExpandEnv)
+  orchestrator/     # Intent, State, Transition types + Starlark value helpers
+  registry/         # Unified tool registry (namespace → tool callables)
+  interpreter/      # State machine executor (expr-lang) + Starlark executor
+  supervisor/       # Intent lifecycle management (scheduling, events)
   store/            # Internal daemon persistence (SQLite)
   tui/              # Interactive TUI (bubbletea)
-swift/              # Standalone Swift MCP bridge (ClaraBridge)
+  ipc/              # Unix-socket IPC between CLI and daemon
+pkg/
+  contract/         # go-plugin RPC/gRPC contracts and handshake config
+swift/              # Standalone Swift gRPC integration bridge (ClaraBridge / macOS)
+extension/          # Chrome extension source
 ```
 
 ---
@@ -143,6 +156,8 @@ Order: standard library → third-party → internal
 - Use strongly-typed structs with JSON/YAML tags for serialization.
 - Avoid heavy reflection; prefer explicit wiring via function parameters and
   closures.
+- Integration plugins implement `contract.Integration` (from `pkg/contract`).
+- Starlark intents are plain `.star` files; no Go compilation is required.
 
 ---
 
@@ -182,8 +197,8 @@ log.Error().Err(err).Str("tool", toolName).Msg("tool call failed")
 - Log levels: `Trace`, `Debug`, `Info`, `Warn`, `Error`, `Fatal`.
 - Always include contextual fields (e.g., `intent_id`, `state`, `tool`) — not
   just a message string.
-- **MCP servers must never write to stdout** — stdout is reserved for the MCP
-  protocol. Use stderr for diagnostics when needed.
+- **Integration plugins must never write to stdout** — stdout is reserved for
+  the go-plugin RPC/gRPC framing. Use stderr for diagnostics when needed.
 - The daemon logs to a file by default (`~/.local/share/clara/clara.log`); use
   stderr for dev/foreground mode.
 
@@ -208,7 +223,7 @@ log.Error().Err(err).Str("tool", toolName).Msg("tool call failed")
 - Tests must not require network access or external services. Use interfaces and
   test doubles for MCP clients.
 - Focus coverage on: `internal/interpreter`, `internal/config`,
-  `internal/orchestrator`, `internal/registry`, `internal/mcpserver/*`.
+  `internal/orchestrator`, `internal/registry`, `cmd/integrations/*`.
 - Use `t.TempDir()`, `t.Setenv()`, etc. for test isolation.
 
 ```go
@@ -238,32 +253,36 @@ func TestLoad_BasicParsing(t *testing.T) {
 
 Key dependencies:
 
-| Purpose                      | Library                         |
-| ---------------------------- | ------------------------------- |
-| Structured logging           | `github.com/rs/zerolog`         |
-| Error handling (stacktraces) | `github.com/cockroachdb/errors` |
-| SQLite (CGO-free)            | `github.com/ncruces/go-sqlite3` |
-| State machine conditions     | `github.com/expr-lang/expr`     |
-| Native Go plugins            | `github.com/hashicorp/go-plugin`|
-| CLI                          | `github.com/spf13/cobra`        |
-| MCP client/server            | `github.com/mark3labs/mcp-go`   |
-| Structured concurrency       | `github.com/sourcegraph/conc`   |
-| YAML parsing                 | `gopkg.in/yaml.v3`              |
+| Purpose                          | Library                         |
+| -------------------------------- | ------------------------------- |
+| Structured logging               | `github.com/rs/zerolog`         |
+| Error handling (stacktraces)     | `github.com/cockroachdb/errors` |
+| SQLite (CGO-free)                | `github.com/ncruces/go-sqlite3` |
+| State machine conditions         | `github.com/expr-lang/expr`     |
+| Integration plugins (RPC/gRPC)   | `github.com/hashicorp/go-plugin`|
+| CLI                              | `github.com/spf13/cobra`        |
+| Tool spec & dispatch (internal)  | `github.com/mark3labs/mcp-go`   |
+| Starlark intent interpreter      | `go.starlark.net/starlark`      |
+| Structured concurrency           | `github.com/sourcegraph/conc`   |
+| YAML parsing                     | `gopkg.in/yaml.v3`              |
+| Filesystem watching (hot-reload) | `github.com/fsnotify/fsnotify`  |
 
 ---
 
 ## Architectural Principles
 
-- **Intent-visible services must be MCP services.** Do not add direct
-  daemon-only tools for intents.
+- **Integrations expose tools; Starlark scripts consume them.** To add a new
+  capability, create an integration plugin in `cmd/integrations/<name>/` that
+  implements `contract.Integration`, then call it from Starlark.
 - **The internal store is private.** Clara's SQLite DB is for orchestration
-  persistence only.
-- **Gateway mode preserves protocol isolation.** `clara gateway` and MCP stdio
-  commands must never write logs or human output to stdout.
-- **Prefer service composition.** New capabilities → new MCP server, not custom
-  transport paths.
+  persistence only; it is not exposed to integrations or intents.
+- **go-plugin is the integration transport.** The daemon communicates with
+  integration binaries via `hashicorp/go-plugin` (net/RPC or gRPC). Do not
+  bypass this with direct subprocess pipes or custom sockets.
+- **MCP (`mcp-go`) is used inside integration plugins** to describe and dispatch
+  tools, but it is not the daemon↔plugin transport.
 - **Keep docs in sync.** Feature and architectural changes must update
-  `README.md`.
+  `README.md` and `AGENTS.md`.
 
 ## Project Sources of Truth
 
