@@ -106,3 +106,7 @@ func (c *prototypeContext) LLM() (contract.LLMIntegration, error) {
 func (c *prototypeContext) MacOS() (contract.MacOSIntegration, error) {
 	return nil, fmt.Errorf("MacOS not implemented in prototype")
 }
+
+func (c *prototypeContext) Web() (contract.WebIntegration, error) {
+	return nil, fmt.Errorf("Web not implemented in prototype")
+}

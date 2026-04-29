@@ -43,6 +43,7 @@ type Context interface {
 	Zk() (ZkIntegration, error)
 	LLM() (LLMIntegration, error)
 	MacOS() (MacOSIntegration, error)
+	Web() (WebIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -213,6 +214,19 @@ func (g *ContextRPC) MacOS() (MacOSIntegration, error) {
 	return &MacOSIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
+func (g *ContextRPC) Web() (WebIntegration, error) {
+	var id uint32
+	err := g.client.Call("Plugin.Web", EmptyArgs{}, &id)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := g.broker.Dial(id)
+	if err != nil {
+		return nil, err
+	}
+	return &WebIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
+}
+
 type ContextRPCServer struct {
 	Impl   Context
 	broker *plugin.MuxBroker
@@ -303,6 +317,19 @@ func (s *ContextRPCServer) MacOS(args EmptyArgs, resp *uint32) error {
 	}
 	*resp = s.broker.NextId()
 	go s.broker.AcceptAndServe(*resp, &MacOSIntegrationRPCServer{
+		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
+		Impl:                 impl,
+	})
+	return nil
+}
+
+func (s *ContextRPCServer) Web(args EmptyArgs, resp *uint32) error {
+	impl, err := s.Impl.Web()
+	if err != nil {
+		return err
+	}
+	*resp = s.broker.NextId()
+	go s.broker.AcceptAndServe(*resp, &WebIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
 		Impl:                 impl,
 	})

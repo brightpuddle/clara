@@ -213,6 +213,7 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 			"chrome": &contract.ChromeIntegrationPlugin{},
 			"zk":     &contract.ZkIntegrationPlugin{},
 			"llm":    &contract.LLMIntegrationPlugin{},
+			"web":    &contract.WebIntegrationPlugin{},
 			"macos":  &contract.IntegrationGRPCPlugin{},
 		},
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC, plugin.ProtocolGRPC},
@@ -295,9 +296,7 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 		originalToolName := tool.Name
 
 		// Prefix the tool name with the integration name to namespace it
-		if !strings.HasPrefix(tool.Name, name+".") {
-			tool.Name = name + "." + tool.Name
-		}
+		tool.Name = l.reg.GetFQToolName(name, tool.Name)
 
 		l.reg.RegisterWithSpec(tool, func(ctx context.Context, args map[string]any) (any, error) {
 			argsBytes, err := json.Marshal(args)
