@@ -584,29 +584,6 @@ func buildDaemonLogger() zerolog.Logger {
 	return zerolog.New(writer).Level(level).With().Timestamp().Logger()
 }
 
-func filterTools(tools []registry.ToolInfo, filter string) []registry.ToolInfo {
-	filter = strings.TrimSpace(filter)
-	if filter == "" {
-		return tools
-	}
-
-	prefix := strings.TrimSuffix(filter, ".")
-	if prefix == "" {
-		return tools
-	}
-	if !strings.Contains(prefix, ".") {
-		prefix += "."
-	}
-
-	filtered := make([]registry.ToolInfo, 0, len(tools))
-	for _, tool := range tools {
-		if strings.HasPrefix(tool.Name, prefix) {
-			filtered = append(filtered, tool)
-		}
-	}
-	return filtered
-}
-
 func serializeToolInfo(info registry.ToolInfo) map[string]any {
 	entry := map[string]any{
 		"name":        info.Name,
