@@ -537,7 +537,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
     }
 
     @MainActor
-    func callTool(name: String, arguments: [String: Any]) async throws -> [String: Any] {
+    func callTool(name: String, arguments: [String: Any]) async throws -> Any {
         print("ClaraBridge: calling tool \(name) with args \(arguments)")
         switch name {
         case "clara_list_events":
@@ -583,7 +583,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             return try toolResult(["status": "deleted"])
         case "reminders_list":
             let items = try await listReminders(arguments)
-            return try toolResult(["items": items])
+            return try toolResult(items)
         case "reminders_default_list":
             let result = try await defaultReminderList()
             return try toolResult(result)
@@ -602,7 +602,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             return try toolResult(["status": "deleted"])
         case "events_list":
             let items = try await listEvents(arguments)
-            return try toolResult(["items": items.map(serializeEvent)])
+            return try toolResult(items.map(serializeEvent))
         case "notify_send":
             try await sendNotification(arguments)
             return try toolResult(["status": "sent"])
@@ -611,10 +611,10 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             return try toolResult(["status": "sent"])
         case "photos_album_assets":
             let items = try await listPhotoAlbumAssets(arguments)
-            return try toolResult(["items": items])
+            return try toolResult(items)
         case "photos_export_assets":
             let items = try await exportPhotoAssets(arguments)
-            return try toolResult(["items": items])
+            return try toolResult(items)
         case "photos_album_remove_assets":
             try await removePhotoAlbumAssets(arguments)
             return try toolResult(["status": "removed"])
@@ -627,7 +627,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             return try toolResult(["theme": getTheme()])
         case "mail_list_inbox":
             let items = try await mailListInbox(arguments)
-            return try toolResult(["items": items])
+            return try toolResult(items)
         case "mail_get_message":
             let result = try await mailGetMessage(arguments)
             return try toolResult(result)
@@ -651,7 +651,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             return try toolResult(["status": "deleted"])
         case "mail_get_mailboxes":
             let items = try await mailGetMailboxes(arguments)
-            return try toolResult(["items": items])
+            return try toolResult(items)
         default:
             throw MCPProtocolError.methodNotFound("unknown tool: \(name)")
         }
@@ -2038,18 +2038,8 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         throw MCPToolError("invalid ISO-8601 date: \(raw)")
     }
 
-    private func toolResult(_ value: Any) throws -> [String: Any] {
-        let jsonData = try JSONSerialization.data(withJSONObject: value)
-        let fallbackText = String(data: jsonData, encoding: .utf8) ?? "null"
-        return [
-            "content": [
-                [
-                    "type": "text",
-                    "text": fallbackText,
-                ],
-            ],
-            "structuredContent": value,
-        ]
+    private func toolResult(_ value: Any) throws -> Any {
+        return value
     }
 }
 
