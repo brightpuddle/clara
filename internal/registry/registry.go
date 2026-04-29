@@ -30,19 +30,6 @@ type ToolInfo struct {
 	Examples    []string
 }
 
-var namespaceDefaults = []struct {
-	prefix      string
-	namespace   string
-	description string
-}{
-	{"reminders_", "reminders", "Apple Reminders"},
-	{"theme_", "theme", "System Theme"},
-	{"photos_", "photos", "Apple Photos"},
-	{"notify_", "notify", "MacOS Notifications"},
-	{"mail_", "mail", "Apple Mail"},
-	{"events_", "calendar", "Apple Calendar"},
-}
-
 type NotificationHandler func(serverName, method string, params any)
 
 // Registry holds the set of available Tools.
@@ -54,7 +41,6 @@ type Registry struct {
 	namespaceDescriptions map[string]string
 	specs         map[string]mcp.Tool
 	examples      map[string][]string
-	serverTools   map[string][]string // namespace -> []toolNames
 	notifications []NotificationHandler
 	log           zerolog.Logger
 }
@@ -68,7 +54,6 @@ func New(log zerolog.Logger) *Registry {
 		namespaceDescriptions: make(map[string]string),
 		specs:          make(map[string]mcp.Tool),
 		examples:       make(map[string][]string),
-		serverTools:    make(map[string][]string),
 		log:            log,
 	}
 }
@@ -285,11 +270,13 @@ func (r *Registry) Namespaces() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	seen := make(map[string]struct{})
-	for _, d := range namespaceDefaults {
-		seen[d.namespace] = struct{}{}
-	}
 	// Include namespaces from tool names (e.g. "mail" from "mail.search")
 	for name := range r.tools {
+		if dot := strings.Index(name, "."); dot != -1 {
+			seen[name[:dot]] = struct{}{}
+		}
+	}
+	for name := range r.defaultTools {
 		if dot := strings.Index(name, "."); dot != -1 {
 			seen[name[:dot]] = struct{}{}
 		}
@@ -304,18 +291,13 @@ func (r *Registry) Namespaces() []string {
 }
 
 // IsKnownNamespace reports whether a namespace string is a registered server name,
-// a hardcoded default namespace, or a prefix derived from registered tools.
+// or a prefix derived from registered tools.
 func (r *Registry) IsKnownNamespace(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if name == "tui" {
 		return true
-	}
-	for _, d := range namespaceDefaults {
-		if d.namespace == name {
-			return true
-		}
 	}
 	prefix := name + "."
 	for t := range r.tools {
@@ -345,13 +327,6 @@ func (r *Registry) UnregisterNamespace(ns string) {
 	defer r.mu.Unlock()
 
 	delete(r.namespaceDescriptions, ns)
-
-	if tools, ok := r.serverTools[ns]; ok {
-		for _, toolName := range tools {
-			r.deleteToolLocked(toolName)
-		}
-		delete(r.serverTools, ns)
-	}
 
 	prefix := ns + "."
 	for toolName := range r.tools {
@@ -391,76 +366,13 @@ func (r *Registry) NamespaceDescription(name string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if desc, ok := r.namespaceDescriptions[name]; ok {
-		return desc
-	}
-
-	for _, d := range namespaceDefaults {
-		if d.namespace == name {
-			return d.description
-		}
-	}
-	return ""
+	return r.namespaceDescriptions[name]
 }
 
-// NamespaceMeta returns the parent server name and event-name prefix for a
-// sub-namespace (e.g. "reminders" → server="macos", prefix="reminders").
-// ok is false when name is not a registered sub-namespace.
-func (r *Registry) NamespaceMeta(ns string) (server, prefix string, ok bool) {
-	for _, d := range namespaceDefaults {
-		if d.namespace == ns {
-			// Currently, all hardcoded namespaces are assumed to be hosted by
-			// the "macos" bridge (ClaraBridge).
-			return "macos", strings.TrimSuffix(d.prefix, "_"), true
-		}
-	}
-	return "", "", false
-}
-
-// ServerNamespacePrefixes returns a map of namespace→prefix for every
-// sub-namespace that belongs to the given server. Used to determine which
-// event names are "claimed" by a sub-namespace and should be hidden from the
-// parent server's event listing.
-func (r *Registry) ServerNamespacePrefixes(serverName string) map[string]string {
-	result := make(map[string]string)
-	if serverName != "macos" {
-		return result
-	}
-
-	for _, d := range namespaceDefaults {
-		result[d.namespace] = strings.TrimSuffix(d.prefix, "_")
-	}
-	return result
-}
-
-func (r *Registry) getFQToolName(serverName, toolName string) string {
-	// SEP-986 Hardcoded defaults:
-	defaults := []struct {
-		prefix    string
-		namespace string
-	}{
-		{"reminders_", "reminders"},
-		{"theme_", "theme"},
-		{"photos_", "photos"},
-		{"notify_", "notify"},
-		{"mail_", "mail"},
-		{"events_", "calendar"},
-	}
-
-	for _, d := range defaults {
-		if strings.HasPrefix(toolName, d.prefix) {
-			return d.namespace + "." + strings.TrimPrefix(toolName, d.prefix)
-		}
-	}
-
+func (r *Registry) GetFQToolName(serverName, toolName string) string {
 	if strings.Contains(toolName, ".") {
 		return toolName
 	}
-
-	if strings.HasPrefix(toolName, serverName+"_") {
-		return serverName + "." + strings.TrimPrefix(toolName, serverName+"_")
-	}
-
 	return serverName + "." + toolName
 }
 
