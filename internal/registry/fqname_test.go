@@ -14,15 +14,15 @@ func TestGetFQToolName(t *testing.T) {
 	}{
 		{"clara-db", "query", "clara-db.query"},
 		{"clara-db", "db.search", "db.search"},
-		{"macos", "reminders_list", "reminders.list"},
-		{"macos", "mail_search", "mail.search"},
+		{"macos", "reminders_list", "macos.reminders_list"},
+		{"macos", "mail_search", "macos.mail_search"},
 		{"clara-search", "mail.search", "mail.search"},
 	}
 	
 	for _, tc := range cases {
-		got := r.getFQToolName(tc.server, tc.tool)
+		got := r.GetFQToolName(tc.server, tc.tool)
 		if got != tc.want {
-			t.Errorf("getFQToolName(%q, %q) = %q, want %q", tc.server, tc.tool, got, tc.want)
+			t.Errorf("GetFQToolName(%q, %q) = %q, want %q", tc.server, tc.tool, got, tc.want)
 		}
 	}
 }
