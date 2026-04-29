@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -357,27 +358,31 @@ func buildHandler(
 				return
 			}
 			// Filter out internal tools (clara_list_events is an implementation detail).
-			allTools := filterTools(reg.Tools(), filter)
-			visible := make([]registry.ToolInfo, 0, len(allTools))
-			for _, t := range allTools {
-				if !strings.HasSuffix(t.Name, ".clara_list_events") {
-					visible = append(visible, t)
-				}
-			}
-			result := make([]map[string]any, len(visible))
-			for i, tool := range visible {
-				result[i] = serializeToolInfo(tool)
-			}
-			// Collect unique server names from the visible tools and append
-			// their event tools so event streams appear alongside regular tools.
+			var allTools []map[string]any
+
 			seenServers := make(map[string]bool)
-			for _, t := range visible {
+			for _, t := range reg.Tools() {
+				if strings.HasSuffix(t.Name, ".clara_list_events") {
+					continue
+				}
+				allTools = append(allTools, serializeToolInfo(t))
 				if parts := strings.SplitN(t.Name, ".", 2); len(parts) == 2 {
 					seenServers[parts[0]] = true
 				}
 			}
+
+			// Add event tools for all known servers
 			for serverName := range seenServers {
-				result = append(result, listEventTools(ctx, reg, serverName)...)
+				allTools = append(allTools, listEventTools(ctx, reg, serverName)...)
+			}
+
+			// Now filter the combined list of tools and events
+			var result []map[string]any
+			for _, t := range allTools {
+				name, _ := t["name"].(string)
+				if filter == "" || strings.HasPrefix(name, filter) {
+					result = append(result, t)
+				}
 			}
 			writeResp(&ipc.Response{Data: result})
 
@@ -620,60 +625,51 @@ func serializeToolInfo(info registry.ToolInfo) map[string]any {
 }
 
 // listEventTools returns serialized event tool entries for the given namespace.
-//
-// Two cases are handled:
-//
-//  1. Direct server: "namespace.clara_list_events" exists (e.g. "fs"). All
-//     events are returned as "namespace.<eventName>", omitting any whose raw
-//     name is claimed by a sub-namespace prefix.
-//
-//  2. Sub-namespace: namespace is registered as a child of a parent server
-//     (e.g. "reminders" → server "macos", prefix "reminders"). Only events
-//     whose raw name starts with "<prefix>_" are included, and they are
-//     presented as "namespace.<suffix>" (e.g. "reminders.on_change").
 func listEventTools(ctx context.Context, reg *registry.Registry, namespace string) []map[string]any {
-	// Case 1: direct server owns its own clara_list_events.
+	// Direct server owns its own clara_list_events.
 	directTool := namespace + ".clara_list_events"
 	if _, ok := reg.Tool(directTool); ok {
-		subNSPrefixes := reg.ServerNamespacePrefixes(namespace)
-		return buildEventTools(ctx, reg, directTool, namespace, "", subNSPrefixes)
+		return buildEventTools(ctx, reg, directTool, namespace)
 	}
 
-	// Case 2: namespace is a sub-namespace mapped from a parent server.
-	parentServer, prefix, ok := reg.NamespaceMeta(namespace)
-	if !ok {
-		return nil
-	}
-	parentTool := parentServer + ".clara_list_events"
-	if _, ok := reg.Tool(parentTool); !ok {
-		return nil
-	}
-	return buildEventTools(ctx, reg, parentTool, namespace, prefix, nil)
+	return nil
 }
 
 // buildEventTools calls listTool and converts the results to event entries.
 // targetNS is the namespace prefix to use in the returned tool names.
-// prefixFilter, when non-empty, restricts results to events whose raw name
-// starts with "<prefixFilter>_" and strips that prefix from the display name.
-// subNSPrefixes maps sub-namespace → prefix and is used in the direct-server
-// case to omit events already claimed by a finer-grained namespace.
 func buildEventTools(
 	ctx context.Context,
 	reg *registry.Registry,
 	listTool string,
 	targetNS string,
-	prefixFilter string,
-	subNSPrefixes map[string]string,
 ) []map[string]any {
 	callCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	res, err := reg.Call(callCtx, listTool, nil)
+	res, err := reg.Call(callCtx, listTool, map[string]any{})
 	if err != nil {
 		return nil
 	}
-	events, ok := res.([]any)
-	if !ok {
+
+	var events []any
+	switch v := res.(type) {
+	case []any:
+		events = v
+	case map[string]any:
+		if sc, ok := v["structuredContent"].([]any); ok {
+			events = sc
+		} else if content, ok := v["content"].([]any); ok && len(content) > 0 {
+			if m, ok := content[0].(map[string]any); ok {
+				if text, ok := m["text"].(string); ok {
+					var parsed []any
+					if err := json.Unmarshal([]byte(text), &parsed); err == nil {
+						events = parsed
+					}
+				}
+			}
+		}
+	}
+	if len(events) == 0 {
 		return nil
 	}
 
@@ -688,27 +684,7 @@ func buildEventTools(
 			continue
 		}
 
-		var displayName string
-		if prefixFilter != "" {
-			// Sub-namespace mode: include only events matching "<prefix>_".
-			if !strings.HasPrefix(rawName, prefixFilter+"_") {
-				continue
-			}
-			displayName = targetNS + "." + strings.TrimPrefix(rawName, prefixFilter+"_")
-		} else {
-			// Direct-server mode: skip events claimed by a sub-namespace.
-			claimed := false
-			for _, p := range subNSPrefixes {
-				if strings.HasPrefix(rawName, p+"_") {
-					claimed = true
-					break
-				}
-			}
-			if claimed {
-				continue
-			}
-			displayName = targetNS + "." + rawName
-		}
+		displayName := targetNS + "." + rawName
 
 		entry := map[string]any{
 			"name":        displayName,
@@ -873,7 +849,7 @@ func registerPermanentTUITools(reg *registry.Registry, db *store.Store, logger z
 		if intentID != "" {
 			id, _ = db.GetUnansweredTUIPrompt(ctx, intentID, prompt)
 		}
-		
+
 		if id == 0 {
 			id, _ = db.SaveTUIContent(ctx, store.TUIContentItem{
 				RunID:    runID,
