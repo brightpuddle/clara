@@ -38,7 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let logger = ClaraLogger()
 
     func applicationDidFinishLaunching(_: Notification) {
-        NSApp.activate(ignoringOtherApps: true)
         startGRPCServer()
     }
 

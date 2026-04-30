@@ -10,6 +10,8 @@
     <string>1</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
+    <key>LSUIElement</key>
+    <true/>
     <key>NSRemindersFullAccessUsageDescription</key>
     <string>Clara needs Reminders access to manage tasks and automate workflows.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
