@@ -115,6 +115,6 @@ func (c *prototypeContext) Tmux() (contract.TmuxIntegration, error) {
 	return nil, fmt.Errorf("Tmux not implemented in prototype")
 }
 
-func (c *prototypeContext) Taskwarrior() (contract.TaskwarriorIntegration, error) {
-	return nil, fmt.Errorf("Taskwarrior not implemented in prototype")
+func (c *prototypeContext) Task() (contract.TaskIntegration, error) {
+	return nil, fmt.Errorf("Task not implemented in prototype")
 }

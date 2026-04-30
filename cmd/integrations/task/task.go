@@ -14,33 +14,33 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-const description = "Taskwarrior integration: manage tasks with CRUD, filtering, and due-task helpers."
+const description = "Task integration: manage tasks with CRUD, filtering, and due-task helpers."
 
 // taskRecord is the raw JSON map returned by `task export`.
 type taskRecord map[string]any
 
-// Taskwarrior implements contract.TaskwarriorIntegration.
-type Taskwarrior struct {
+// Task implements contract.TaskIntegration.
+type Task struct {
 	taskPath string
 }
 
-func newTaskwarrior() (*Taskwarrior, error) {
+func newTask() (*Task, error) {
 	path, err := exec.LookPath("task")
 	if err != nil {
 		return nil, errors.Wrap(err, "task binary not found on PATH")
 	}
-	return &Taskwarrior{taskPath: path}, nil
+	return &Task{taskPath: path}, nil
 }
 
-func (t *Taskwarrior) Configure(_ []byte) error { return nil }
+func (t *Task) Configure(_ []byte) error { return nil }
 
-func (t *Taskwarrior) Description() (string, error) { return description, nil }
+func (t *Task) Description() (string, error) { return description, nil }
 
-func (t *Taskwarrior) Tools() ([]byte, error) {
+func (t *Task) Tools() ([]byte, error) {
 	tools := []mcp.Tool{
 		mcp.NewTool(
 			"task.create",
-			mcp.WithDescription("Create a Taskwarrior task and return the created task."),
+			mcp.WithDescription("Create a Task task and return the created task."),
 			mcp.WithString("description", mcp.Required(), mcp.Description("Task description.")),
 			mcp.WithString("project", mcp.Description("Optional project name.")),
 			mcp.WithArray("tags", mcp.Description("Optional list of tags to assign.")),
@@ -51,11 +51,11 @@ func (t *Taskwarrior) Tools() ([]byte, error) {
 			mcp.WithString("priority", mcp.Description("Optional priority: H, M, or L.")),
 			mcp.WithString(
 				"due",
-				mcp.Description("Optional due timestamp in Taskwarrior or ISO-8601 format."),
+				mcp.Description("Optional due timestamp in Task or ISO-8601 format."),
 			),
 			mcp.WithString(
 				"wait",
-				mcp.Description("Optional wait timestamp in Taskwarrior or ISO-8601 format."),
+				mcp.Description("Optional wait timestamp in Task or ISO-8601 format."),
 			),
 			mcp.WithString(
 				"reminder_id",
@@ -185,7 +185,7 @@ type dueListArgs struct {
 	Before  string   `json:"before"`
 }
 
-func (t *Taskwarrior) CallTool(name string, args []byte) ([]byte, error) {
+func (t *Task) CallTool(name string, args []byte) ([]byte, error) {
 	switch name {
 	case "task.create":
 		var a taskCreateArgs
@@ -323,7 +323,7 @@ func (t *Taskwarrior) CallTool(name string, args []byte) ([]byte, error) {
 
 // --- Typed interface methods ---
 
-func (t *Taskwarrior) AddTask(params contract.AddTaskParams) (contract.Task, error) {
+func (t *Task) AddTask(params contract.AddTaskParams) (contract.Task, error) {
 	ctx := context.Background()
 
 	before, err := t.exportTasks(ctx, nil)
@@ -348,7 +348,7 @@ func (t *Taskwarrior) AddTask(params contract.AddTaskParams) (contract.Task, err
 	return taskRecordToTask(created), nil
 }
 
-func (t *Taskwarrior) GetTask(uuid string) (contract.Task, error) {
+func (t *Task) GetTask(uuid string) (contract.Task, error) {
 	rec, err := t.getRecord(context.Background(), uuid)
 	if err != nil {
 		return contract.Task{}, err
@@ -356,7 +356,7 @@ func (t *Taskwarrior) GetTask(uuid string) (contract.Task, error) {
 	return taskRecordToTask(rec), nil
 }
 
-func (t *Taskwarrior) UpdateTask(params contract.UpdateTaskParams) (contract.Task, error) {
+func (t *Task) UpdateTask(params contract.UpdateTaskParams) (contract.Task, error) {
 	ctx := context.Background()
 	current, err := t.getRecord(ctx, params.UUID)
 	if err != nil {
@@ -388,12 +388,12 @@ func (t *Taskwarrior) UpdateTask(params contract.UpdateTaskParams) (contract.Tas
 	return taskRecordToTask(rec), nil
 }
 
-func (t *Taskwarrior) DeleteTask(uuid string) error {
+func (t *Task) DeleteTask(uuid string) error {
 	_, err := t.run(context.Background(), uuid, "delete")
 	return err
 }
 
-func (t *Taskwarrior) ListTasks(filter contract.TaskFilter) ([]contract.Task, error) {
+func (t *Task) ListTasks(filter contract.TaskFilter) ([]contract.Task, error) {
 	tasks, err := t.exportTasks(context.Background(), buildFilters(filter))
 	if err != nil {
 		return nil, err
@@ -408,12 +408,12 @@ func (t *Taskwarrior) ListTasks(filter contract.TaskFilter) ([]contract.Task, er
 	return taskRecordsToTasks(tasks), nil
 }
 
-func (t *Taskwarrior) ListPending(filter contract.TaskFilter) ([]contract.Task, error) {
+func (t *Task) ListPending(filter contract.TaskFilter) ([]contract.Task, error) {
 	filter.Status = "pending"
 	return t.ListTasks(filter)
 }
 
-func (t *Taskwarrior) ListDue(filter contract.DueFilter) ([]contract.Task, error) {
+func (t *Task) ListDue(filter contract.DueFilter) ([]contract.Task, error) {
 	taskFilter := contract.TaskFilter{
 		Project: filter.Project,
 		Tags:    filter.Tags,
@@ -436,7 +436,7 @@ func (t *Taskwarrior) ListDue(filter contract.DueFilter) ([]contract.Task, error
 
 // --- Internal helpers ---
 
-func (t *Taskwarrior) getRecord(ctx context.Context, uuid string) (taskRecord, error) {
+func (t *Task) getRecord(ctx context.Context, uuid string) (taskRecord, error) {
 	records, err := t.exportTasks(ctx, []string{uuid})
 	if err != nil {
 		return nil, err
@@ -447,7 +447,7 @@ func (t *Taskwarrior) getRecord(ctx context.Context, uuid string) (taskRecord, e
 	return records[0], nil
 }
 
-func (t *Taskwarrior) exportTasks(ctx context.Context, filters []string) ([]taskRecord, error) {
+func (t *Task) exportTasks(ctx context.Context, filters []string) ([]taskRecord, error) {
 	args := append(append([]string{}, filters...), "export")
 	output, err := t.run(ctx, args...)
 	if err != nil {
@@ -471,7 +471,7 @@ func (t *Taskwarrior) exportTasks(ctx context.Context, filters []string) ([]task
 	return records, nil
 }
 
-func (t *Taskwarrior) run(ctx context.Context, args ...string) ([]byte, error) {
+func (t *Task) run(ctx context.Context, args ...string) ([]byte, error) {
 	base := []string{"rc.json.array=on", "rc.confirmation=no"}
 	cmd := exec.CommandContext(ctx, t.taskPath, append(base, args...)...)
 	out, err := cmd.CombinedOutput()
@@ -658,7 +658,7 @@ func filterUpdatedTasks(tasks []taskRecord, after time.Time) []taskRecord {
 	return out
 }
 
-// parseTaskTime parses timestamps in the formats Taskwarrior can emit.
+// parseTaskTime parses timestamps in the formats Task can emit.
 func parseTaskTime(raw string) (time.Time, error) {
 	for _, layout := range []string{
 		time.RFC3339,

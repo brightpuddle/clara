@@ -18,7 +18,7 @@ func TestGetFQToolName(t *testing.T) {
 		{"macos", "mail_search", "macos.mail_search"},
 		{"clara-search", "mail.search", "clara-search.mail.search"},
 		{"tmux", "session.list", "tmux.session.list"},
-		{"taskwarrior", "pending.list", "taskwarrior.pending.list"},
+		{"task", "pending.list", "task.pending.list"},
 	}
 	
 	for _, tc := range cases {

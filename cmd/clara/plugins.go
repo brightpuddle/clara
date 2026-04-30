@@ -216,7 +216,7 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 			"web":         &contract.WebIntegrationPlugin{},
 			"macos":       &contract.IntegrationGRPCPlugin{},
 			"tmux":        &contract.TmuxIntegrationPlugin{},
-			"taskwarrior": &contract.TaskwarriorIntegrationPlugin{},
+			"task": &contract.TaskIntegrationPlugin{},
 		},
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC, plugin.ProtocolGRPC},
 		Cmd:              exec.Command(path),

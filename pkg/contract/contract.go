@@ -45,7 +45,7 @@ type Context interface {
 	MacOS() (MacOSIntegration, error)
 	Web() (WebIntegration, error)
 	Tmux() (TmuxIntegration, error)
-	Taskwarrior() (TaskwarriorIntegration, error)
+	Task() (TaskIntegration, error)
 }
 
 // Intent is the interface for native Go intents.
@@ -242,9 +242,9 @@ func (g *ContextRPC) Tmux() (TmuxIntegration, error) {
 	return &TmuxIntegrationRPC{IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)}}, nil
 }
 
-func (g *ContextRPC) Taskwarrior() (TaskwarriorIntegration, error) {
+func (g *ContextRPC) Task() (TaskIntegration, error) {
 	var id uint32
-	err := g.client.Call("Plugin.Taskwarrior", EmptyArgs{}, &id)
+	err := g.client.Call("Plugin.Task", EmptyArgs{}, &id)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (g *ContextRPC) Taskwarrior() (TaskwarriorIntegration, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &TaskwarriorIntegrationRPC{
+	return &TaskIntegrationRPC{
 		IntegrationRPC: IntegrationRPC{Client: rpc.NewClient(conn)},
 	}, nil
 }
@@ -379,13 +379,13 @@ func (s *ContextRPCServer) Tmux(args EmptyArgs, resp *uint32) error {
 	return nil
 }
 
-func (s *ContextRPCServer) Taskwarrior(args EmptyArgs, resp *uint32) error {
-	impl, err := s.Impl.Taskwarrior()
+func (s *ContextRPCServer) Task(args EmptyArgs, resp *uint32) error {
+	impl, err := s.Impl.Task()
 	if err != nil {
 		return err
 	}
 	*resp = s.broker.NextId()
-	go s.broker.AcceptAndServe(*resp, &TaskwarriorIntegrationRPCServer{
+	go s.broker.AcceptAndServe(*resp, &TaskIntegrationRPCServer{
 		IntegrationRPCServer: IntegrationRPCServer{Impl: impl},
 		Impl:                 impl,
 	})

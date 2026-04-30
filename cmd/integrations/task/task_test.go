@@ -55,7 +55,7 @@ func mustReadLog(t *testing.T, logPath string) string {
 // ---------------------------------------------------------------------------
 
 func TestDescription(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	desc, err := tw.Description()
 	if err != nil {
 		t.Fatalf("Description() error: %v", err)
@@ -66,7 +66,7 @@ func TestDescription(t *testing.T) {
 }
 
 func TestTools_ValidJSON(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	raw, err := tw.Tools()
 	if err != nil {
 		t.Fatalf("Tools() error: %v", err)
@@ -81,7 +81,7 @@ func TestTools_ValidJSON(t *testing.T) {
 }
 
 func TestTools_ExpectedNames(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	raw, _ := tw.Tools()
 	var tools []map[string]any
 	_ = json.Unmarshal(raw, &tools)
@@ -338,7 +338,7 @@ func TestFilterUpdatedTasks(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCallTool_UnknownTool(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	_, err := tw.CallTool("does.not.exist", []byte("{}"))
 	if err == nil {
 		t.Fatal("expected error for unknown tool")
@@ -346,7 +346,7 @@ func TestCallTool_UnknownTool(t *testing.T) {
 }
 
 func TestCallTool_BadJSON(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	for _, tool := range []string{
 		"task.create", "task.get", "task.update", "task.delete",
 		"task.list", "pending.list", "due.list",
@@ -359,7 +359,7 @@ func TestCallTool_BadJSON(t *testing.T) {
 }
 
 func TestCallTool_MissingRequiredUUID(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	for _, tool := range []string{"task.get", "task.update", "task.delete"} {
 		_, err := tw.CallTool(tool, []byte(`{}`))
 		if err == nil {
@@ -369,7 +369,7 @@ func TestCallTool_MissingRequiredUUID(t *testing.T) {
 }
 
 func TestCallTool_MissingDescription(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	_, err := tw.CallTool("task.create", []byte(`{}`))
 	if err == nil {
 		t.Fatal("task.create with no description should error")
@@ -418,7 +418,7 @@ func TestUnavailableStub_AllMethodsReturnErr(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestConfigure_AlwaysNil(t *testing.T) {
-	tw := &Taskwarrior{taskPath: "/usr/bin/task"}
+	tw := &Task{taskPath: "/usr/bin/task"}
 	if err := tw.Configure(nil); err != nil {
 		t.Errorf("Configure(nil) = %v, want nil", err)
 	}
@@ -428,9 +428,9 @@ func TestConfigure_AlwaysNil(t *testing.T) {
 // Interface compliance
 // ---------------------------------------------------------------------------
 
-func TestTaskwarrior_ImplementsInterface(t *testing.T) {
-	var _ contract.TaskwarriorIntegration = (*Taskwarrior)(nil)
-	var _ contract.TaskwarriorIntegration = (*unavailableStub)(nil)
+func TestTask_ImplementsInterface(t *testing.T) {
+	var _ contract.TaskIntegration = (*Task)(nil)
+	var _ contract.TaskIntegration = (*unavailableStub)(nil)
 }
 
 // ---------------------------------------------------------------------------
@@ -447,9 +447,9 @@ func TestListDue_FiltersByBeforeTimestamp(t *testing.T) {
 	fakeTaskBinary(t, dir, twoTasksJSON)
 	t.Setenv("PATH", dir)
 
-	tw, err := newTaskwarrior()
+	tw, err := newTask()
 	if err != nil {
-		t.Fatalf("newTaskwarrior: %v", err)
+		t.Fatalf("newTask: %v", err)
 	}
 	tasks, err := tw.ListDue(contract.DueFilter{
 		Tags:   []string{"home"},
@@ -468,7 +468,7 @@ func TestListDue_FiltersPassedToTask(t *testing.T) {
 	_, logPath := fakeTaskBinary(t, dir, twoTasksJSON)
 	t.Setenv("PATH", dir)
 
-	tw, _ := newTaskwarrior()
+	tw, _ := newTask()
 	_, _ = tw.ListDue(contract.DueFilter{
 		Tags:   []string{"home"},
 		Before: "2026-03-14T00:00:00Z",
@@ -486,7 +486,7 @@ func TestUpdateTask_ModifyThenDone(t *testing.T) {
 	_, logPath := fakeTaskBinary(t, dir, exportJSON)
 	t.Setenv("PATH", dir)
 
-	tw, _ := newTaskwarrior()
+	tw, _ := newTask()
 	_, err := tw.UpdateTask(contract.UpdateTaskParams{
 		UUID:        "task-1",
 		Description: "new title",
@@ -522,7 +522,7 @@ esac
 	}
 	t.Setenv("PATH", dir)
 
-	tw, _ := newTaskwarrior()
+	tw, _ := newTask()
 	records, err := tw.exportTasks(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("exportTasks error: %v", err)
@@ -544,7 +544,7 @@ OUT
 	}
 	t.Setenv("PATH", dir)
 
-	tw, _ := newTaskwarrior()
+	tw, _ := newTask()
 	_, err := tw.exportTasks(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected parse error")
@@ -563,7 +563,7 @@ func TestListTasks_UpdatedAfterFilter(t *testing.T) {
 	fakeTaskBinary(t, dir, exportJSON)
 	t.Setenv("PATH", dir)
 
-	tw, _ := newTaskwarrior()
+	tw, _ := newTask()
 	tasks, err := tw.ListTasks(contract.TaskFilter{UpdatedAfter: "2026-03-14T00:00:00Z"})
 	if err != nil {
 		t.Fatalf("ListTasks error: %v", err)
@@ -575,7 +575,7 @@ func TestListTasks_UpdatedAfterFilter(t *testing.T) {
 
 func TestUnavailableWhenBinaryMissing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	_, err := newTaskwarrior()
+	_, err := newTask()
 	if err == nil {
 		t.Fatal("expected error when task binary is missing")
 	}
