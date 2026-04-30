@@ -24,6 +24,26 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// grpcPluginPaths lists known gRPC-based plugins and their candidate binary
+// paths in order of preference. The first path that exists is used.
+var grpcPluginPaths = map[string][]string{
+	"macos": {
+		"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge",
+		"./build/ClaraBridge.app/Contents/MacOS/ClaraBridge",
+	},
+}
+
+// resolveGRPCPluginPath returns the first existing binary path for a known
+// gRPC plugin, or ("", false) if the plugin is unknown or not installed.
+func resolveGRPCPluginPath(name string) (string, bool) {
+	for _, p := range grpcPluginPaths[name] {
+		if _, err := os.Stat(p); err == nil {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 // pluginLoader manages the discovery and loading of native Go plugins.
 type pluginLoader struct {
 	reg *registry.Registry
@@ -74,17 +94,12 @@ func (l *pluginLoader) loadAll() error {
 			Msg("failed to load integrations")
 	}
 
-	// Load ClaraBridge (macos) if present
-	macosPaths := []string{
-		"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge",
-		"./build/ClaraBridge.app/Contents/MacOS/ClaraBridge",
-	}
-	for _, p := range macosPaths {
-		if _, err := os.Stat(p); err == nil {
-			if err := l.loadIntegrationAt("macos", p); err != nil {
-				l.log.Error().Err(err).Msg("failed to load macos integration")
+	// Load gRPC plugins (e.g. ClaraBridge / macos) if present.
+	for pluginName := range grpcPluginPaths {
+		if p, ok := resolveGRPCPluginPath(pluginName); ok {
+			if err := l.loadIntegrationAt(pluginName, p); err != nil {
+				l.log.Error().Err(err).Str("name", pluginName).Msg("failed to load gRPC integration")
 			}
-			break
 		}
 	}
 
@@ -123,14 +138,21 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 	return nil
 }
 
-// Load loads a specific plugin by name from the standard integrations directory.
+// Load loads a specific plugin by name. It first checks the standard
+// integrations directory, then falls back to known gRPC plugin paths.
 func (l *pluginLoader) Load(name string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
 	path := filepath.Join(home, ".config", "clara", "integrations", name)
-	return l.loadIntegrationAt(name, path)
+	if _, err := os.Stat(path); err == nil {
+		return l.loadIntegrationAt(name, path)
+	}
+	if grpcPath, ok := resolveGRPCPluginPath(name); ok {
+		return l.loadIntegrationAt(name, grpcPath)
+	}
+	return fmt.Errorf("plugin %q not found", name)
 }
 
 // Unload kills a plugin client and unregisters its tools and intents.
@@ -168,19 +190,23 @@ func (l *pluginLoader) List() []map[string]any {
 	}
 	dir := filepath.Join(home, ".config", "clara", "integrations")
 	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return nil
 	}
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	seen := map[string]bool{}
 	var result []map[string]any
+
+	// Standard file-based plugins from the integrations directory.
 	for _, entry := range entries {
 		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		name := entry.Name()
+		seen[name] = true
 		_, loaded := l.clients[name]
 		status := "Unloaded"
 		if loaded {
@@ -191,6 +217,27 @@ func (l *pluginLoader) List() []map[string]any {
 			"status": status,
 		})
 	}
+
+	// gRPC plugins (e.g. macos / ClaraBridge) — include if installed or loaded.
+	for name := range grpcPluginPaths {
+		if seen[name] {
+			continue
+		}
+		_, loaded := l.clients[name]
+		_, installed := resolveGRPCPluginPath(name)
+		if !loaded && !installed {
+			continue
+		}
+		status := "Unloaded"
+		if loaded {
+			status = "Loaded"
+		}
+		result = append(result, map[string]any{
+			"name":   name,
+			"status": status,
+		})
+	}
+
 	return result
 }
 
