@@ -59,18 +59,6 @@ type RunState struct {
 	FinishedAt   sql.NullInt64
 }
 
-type RunEvent struct {
-	ID        int64
-	RunID     string
-	IntentID  string
-	State     string
-	Action    string
-	Args      any
-	Result    any
-	Error     string
-	CreatedAt int64
-}
-
 type ReplayHistoryEntry struct {
 	Sequence   int
 	RunID      string
@@ -151,6 +139,9 @@ func (s *Store) migrate() error {
 
 		CREATE INDEX IF NOT EXISTS idx_intent_runs_intent_id
 			ON intent_runs(intent_id);
+
+		CREATE INDEX IF NOT EXISTS idx_intent_runs_status
+			ON intent_runs(status);
 
 		CREATE TABLE IF NOT EXISTS intent_events (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -427,41 +418,9 @@ func (s *Store) InitRun(
 	return errors.Wrap(err, "init run")
 }
 
-func (s *Store) AppendRunEvent(ctx context.Context, event RunEvent) error {
-	argsJSON, err := jsonValue(event.Args)
-	if err != nil {
-		return errors.Wrap(err, "marshal event args")
-	}
-	resultJSON, err := jsonValue(event.Result)
-	if err != nil {
-		return errors.Wrap(err, "marshal event result")
-	}
-
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO intent_events (run_id, intent_id, state, action, args_json, result_json, error, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch())
-	`, event.RunID, event.IntentID, event.State, event.Action, argsJSON, resultJSON, event.Error)
-	return errors.Wrap(err, "append run event")
-}
-
 func (s *Store) FinishRun(ctx context.Context, runID, status, errorText string) error {
 	if status == "" {
 		status = "completed"
-	}
-
-	var (
-		intentID string
-		state    string
-	)
-	if err := s.db.QueryRowContext(
-		ctx,
-		`SELECT intent_id, state FROM intent_runs WHERE id = ?`,
-		runID,
-	).Scan(&intentID, &state); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return errors.Wrap(err, "load run before finish")
 	}
 
 	_, err := s.db.ExecContext(ctx, `
@@ -470,19 +429,7 @@ func (s *Store) FinishRun(ctx context.Context, runID, status, errorText string) 
 		    finished_at = unixepoch(), updated_at = unixepoch()
 		WHERE id = ?
 	`, status, errorText, runID)
-	if err != nil {
-		return errors.Wrap(err, "finish run")
-	}
-
-	resultJSON, err := jsonValue(map[string]any{"status": status})
-	if err != nil {
-		return errors.Wrap(err, "marshal finish status")
-	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO intent_events (run_id, intent_id, state, action, args_json, result_json, error, created_at)
-		VALUES (?, ?, ?, '', 'null', ?, ?, unixepoch())
-	`, runID, intentID, state, resultJSON, errorText)
-	return errors.Wrap(err, "append finish event")
+	return errors.Wrap(err, "finish run")
 }
 
 func (s *Store) MarkRunWaiting(ctx context.Context, runID, waitName string, waitArgs any) error {
@@ -540,7 +487,7 @@ func (s *Store) ActiveRunStates(ctx context.Context, intentID string) ([]RunStat
 	}
 	defer rows.Close()
 
-	var states []RunState
+	states := []RunState{}
 	for rows.Next() {
 		var (
 			state        RunState
@@ -742,98 +689,8 @@ func (s *Store) LoadReplayHistory(ctx context.Context, runID string) ([]ReplayHi
 	return history, nil
 }
 
-func (s *Store) RunEventsSince(
-	ctx context.Context,
-	sinceID int64,
-	intentID string,
-) ([]RunEvent, error) {
-	return s.runEventsSince(ctx, sinceID, intentID, "")
-}
 
-func (s *Store) RunEventsForRunSince(
-	ctx context.Context,
-	sinceID int64,
-	runID string,
-) ([]RunEvent, error) {
-	return s.runEventsSince(ctx, sinceID, "", runID)
-}
 
-func (s *Store) runEventsSince(
-	ctx context.Context,
-	sinceID int64,
-	intentID, runID string,
-) ([]RunEvent, error) {
-	query := `
-		SELECT id, run_id, intent_id, state, action, args_json, result_json, error, created_at
-		FROM intent_events
-		WHERE id > ?
-	`
-	args := []any{sinceID}
-	if intentID != "" {
-		query += ` AND intent_id = ?`
-		args = append(args, intentID)
-	}
-	if runID != "" {
-		query += ` AND run_id = ?`
-		args = append(args, runID)
-	}
-	query += ` ORDER BY id`
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, errors.Wrap(err, "query run events")
-	}
-	defer rows.Close()
-
-	var events []RunEvent
-	for rows.Next() {
-		var (
-			event      RunEvent
-			argsJSON   string
-			resultJSON string
-		)
-		if err := rows.Scan(
-			&event.ID,
-			&event.RunID,
-			&event.IntentID,
-			&event.State,
-			&event.Action,
-			&argsJSON,
-			&resultJSON,
-			&event.Error,
-			&event.CreatedAt,
-		); err != nil {
-			return nil, errors.Wrap(err, "scan run event")
-		}
-		if err := json.Unmarshal([]byte(argsJSON), &event.Args); err != nil {
-			return nil, errors.Wrap(err, "decode event args")
-		}
-		if err := json.Unmarshal([]byte(resultJSON), &event.Result); err != nil {
-			return nil, errors.Wrap(err, "decode event result")
-		}
-		events = append(events, event)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "run events rows error")
-	}
-	return events, nil
-}
-
-func (s *Store) LatestRunEventID(ctx context.Context, intentID string) (int64, error) {
-	query := `SELECT COALESCE(MAX(id), 0) FROM intent_events`
-	args := []any{}
-	if intentID != "" {
-		query += ` WHERE intent_id = ?`
-		args = append(args, intentID)
-	}
-	var id int64
-	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
-		return 0, errors.Wrap(err, "latest run event id")
-	}
-	return id, nil
-}
-
-// scanRows converts sql.Rows into a []map[string]any for easy JSON encoding.
 func scanRows(rows *sql.Rows) ([]map[string]any, error) {
 	cols, err := rows.Columns()
 	if err != nil {

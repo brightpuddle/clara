@@ -132,6 +132,11 @@ func (c *Config) LogPath() string {
 	return filepath.Join(c.DataDir, "clara.log")
 }
 
+// IntentLogsDir returns the directory where per-intent JSONL log files are written.
+func (c *Config) IntentLogsDir() string {
+	return filepath.Join(c.DataDir, "logs")
+}
+
 // LogLevelNormalized returns the log level string lowercased and trimmed.
 func (c *Config) LogLevelNormalized() string {
 	return strings.ToLower(strings.TrimSpace(c.LogLevel))

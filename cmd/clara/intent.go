@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -12,23 +15,27 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/tui"
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/term"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
 	intentLogsFollow   bool
 	intentLogsVerbose  bool
+	intentLogsTail     int
+	intentLogsClear    bool
 	intentRunVerbose   bool
 	intentStartFollow  bool
 	intentStartVerbose bool
+	intentStartTail    int
 	intentStartOutput  string
 )
 
@@ -72,10 +79,14 @@ var intentStopCmd = &cobra.Command{
 }
 
 var intentLogsCmd = &cobra.Command{
-	Use:   "logs [id]",
-	Short: "Show current state and recent events for an intent",
-	Long: `Show a snapshot of active runs and follow live execution events
-until interrupted (Ctrl-C).`,
+	Use:   "logs [id] [task]",
+	Short: "Show intent execution events",
+	Long: `Show structured events from intent log files.
+
+Without -f, all matching events are printed and the command exits.
+With -f, historical events are shown then new events are streamed until interrupted.
+Use --tail N to limit the initial output to the last N events.
+Use --clear to delete log files instead of reading them.`,
 	RunE:         runIntentLogs,
 	SilenceUsage: true,
 }
@@ -87,10 +98,16 @@ func init() {
 		BoolVarP(&intentLogsFollow, "follow", "f", false, "stream live events until interrupted")
 	intentLogsCmd.Flags().
 		BoolVarP(&intentLogsVerbose, "verbose", "v", false, "show full tool args/results")
+	intentLogsCmd.Flags().
+		IntVar(&intentLogsTail, "tail", 0, "show only the last N events")
+	intentLogsCmd.Flags().
+		BoolVar(&intentLogsClear, "clear", false, "delete intent log files")
 	intentStartCmd.Flags().
 		BoolVarP(&intentStartFollow, "follow", "f", false, "follow run output after starting")
 	intentStartCmd.Flags().
 		BoolVarP(&intentStartVerbose, "verbose", "v", false, "show full tool args/results")
+	intentStartCmd.Flags().
+		IntVar(&intentStartTail, "tail", 0, "show only the last N events when following")
 	intentStartCmd.Flags().
 		StringVarP(&intentStartOutput, "output", "o", "", "output format (json)")
 	intentCmd.AddCommand(
@@ -158,20 +175,15 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 			handlerW = n
 		}
 	}
-	// STATUS values are fixed: "idle", "active", "error" — statusW stays at header width.
 
-	// 3 separating spaces between 4 columns.
 	const colSep = 3
-	// TRIGGER column gets the remainder of the terminal width.
 	triggerW := max(termWidth-idW-handlerW-statusW-colSep*3, len("TRIGGER"))
 	totalW := idW + handlerW + statusW + triggerW + colSep*3
 
-	// Define styles for columns
 	idStyle := lipgloss.NewStyle().Width(idW)
 	handlerStyle := lipgloss.NewStyle().Width(handlerW).Foreground(theme.Secondary)
 	statusStyle := lipgloss.NewStyle().Width(statusW)
 	triggerStyle := lipgloss.NewStyle().Width(triggerW)
-
 	headerStyle := lipgloss.NewStyle().Foreground(theme.MagentaColor).Bold(true)
 
 	fmt.Printf("%s   %s   %s   %s\n",
@@ -269,16 +281,18 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(resp.Message)
 
-	if intentStartFollow || intentStartVerbose {
+	if intentStartFollow {
 		var runID string
-		var lastEventID int64
+		var startedAt time.Time
 		if m, ok := resp.Data.(map[string]any); ok {
 			runID, _ = m["run_id"].(string)
-			if v, ok := m["last_event_id"].(float64); ok {
-				lastEventID = int64(v)
+			if s, ok := m["started_at"].(string); ok {
+				startedAt, _ = time.Parse(time.RFC3339Nano, s)
 			}
 		}
-		return followIntentEvents(cmd.Context(), intentID, runID, lastEventID, intentStartVerbose)
+		logPath := filepath.Join(cfg.IntentLogsDir(), intentID+".log")
+		filter := intentlog.Filter{RunID: runID, Since: startedAt}
+		return followSingleIntentLog(cmd.Context(), logPath, runID, filter, intentStartTail, intentStartVerbose, cfg.DBPath())
 	}
 
 	return nil
@@ -306,50 +320,217 @@ func runIntentStop(cmd *cobra.Command, args []string) error {
 
 func runIntentLogs(cmd *cobra.Command, args []string) error {
 	intentID := ""
-	if len(args) == 1 {
+	taskName := ""
+	if len(args) >= 1 {
 		intentID = args[0]
 	}
-
-	if intentLogsFollow {
-		return followIntentEvents(cmd.Context(), intentID, "", 0, intentLogsVerbose)
+	if len(args) >= 2 {
+		taskName = args[1]
 	}
 
-	resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
-		Method: ipc.MethodStatus,
-		Params: map[string]any{"id": intentID},
-	})
-	if err != nil {
-		return err
-	}
+	logsDir := cfg.IntentLogsDir()
+	filter := intentlog.Filter{Entrypoint: taskName}
 
-	if wantJSON() {
-		prettyPrint(resp.Data)
+	// --clear: truncate log files and exit.
+	if intentLogsClear {
+		if err := intentlog.ClearEvents(logsDir, intentID); err != nil {
+			return err
+		}
+		fmt.Println("Intent events cleared.")
 		return nil
-	}
-
-	states, ok := resp.Data.([]any)
-	if !ok {
-		return fmt.Errorf("unexpected status response: %T", resp.Data)
 	}
 
 	theme := tui.DetectTheme()
-	printer := newIntentWatchPrinter(&theme, true, intentLogsVerbose)
+	printer := newIntentWatchPrinter(&theme, intentID == "", intentLogsVerbose)
 
-	if len(states) == 0 {
-		fmt.Println(theme.Dimmed("No active runs."))
+	// Collect historical events.
+	var (
+		events []intentlog.Event
+		err    error
+	)
+	if intentID != "" {
+		logPath := filepath.Join(logsDir, intentID+".log")
+		events, err = intentlog.ReadEvents(logPath, filter, intentLogsTail)
+	} else {
+		events, err = intentlog.MergeEvents(logsDir, filter, intentLogsTail)
+	}
+	if err != nil {
+		return errors.Wrap(err, "read intent events")
+	}
+
+	if len(events) == 0 && !intentLogsFollow {
+		fmt.Println(theme.Dimmed("No events found."))
 		return nil
 	}
 
-	fmt.Println(theme.Dimmed("Active runs"))
-	for _, s := range states {
-		var state store.RunState
-		b, _ := json.Marshal(s)
-		_ = json.Unmarshal(b, &state)
-		printer.printStateSnapshot(state)
+	for _, event := range events {
+		printer.printEvent(event)
 	}
-	printer.printRule()
 
+	if !intentLogsFollow {
+		return nil
+	}
+
+	// Follow mode: stream new events until interrupted.
+	if intentID != "" {
+		// Single-intent follow: use tail -F for efficient inode-following.
+		logPath := filepath.Join(logsDir, intentID+".log")
+		return followSingleIntentLog(cmd.Context(), logPath, "", filter, 0, intentLogsVerbose, "")
+	}
+
+	// Cross-intent follow: poll all *.log files with byte-offset cursors.
+	return followAllIntentLogs(cmd.Context(), logsDir, filter, intentLogsVerbose)
+}
+
+// followSingleIntentLog follows a single intent log file using tail -F.
+// If runID is set, it exits when that run reaches a terminal state (checked via DB).
+// tail controls how many initial events to show (0 = already shown by caller; we skip re-printing).
+func followSingleIntentLog(ctx context.Context, logPath, runID string, filter intentlog.Filter, tail int, verbose bool, dbPath string) error {
+	theme := tui.DetectTheme()
+	printer := newIntentWatchPrinter(&theme, false, verbose)
+
+	// Print historical tail if requested (only used from runOneOff/inline follow).
+	if tail > 0 {
+		events, err := intentlog.ReadEvents(logPath, filter, tail)
+		if err != nil {
+			return err
+		}
+		for _, e := range events {
+			printer.printEvent(e)
+		}
+	}
+
+	fmt.Println(theme.Dimmed("Following events... (Ctrl-C to stop)"))
+
+	tailArgs := []string{"-n", "0", "-F", logPath}
+	cmd := exec.CommandContext(ctx, "tail", tailArgs...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return errors.Wrapf(err, "start tail %s", logPath)
+	}
+
+	// If we need to watch a specific runID for completion, do so in background.
+	done := make(chan struct{})
+	if runID != "" && dbPath != "" {
+		go func() {
+			defer close(done)
+			logger := buildLogger()
+			db, err := store.Open(dbPath, logger)
+			if err != nil {
+				return
+			}
+			defer db.Close()
+			ticker := time.NewTicker(300 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					run, _, err := db.LoadRun(ctx, runID)
+					if err == nil && run.Status != "running" && run.Status != "waiting" {
+						return
+					}
+				}
+			}
+		}()
+	} else {
+		close(done)
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanDone := make(chan struct{})
+	go func() {
+		defer close(scanDone)
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			var e intentlog.Event
+			if err := json.Unmarshal(line, &e); err != nil {
+				continue
+			}
+			if filter.Matches(e) {
+				printer.printEvent(e)
+			}
+		}
+	}()
+
+	// Exit when the run finishes or the context is cancelled.
+	select {
+	case <-done:
+		// Give the scanner a moment to flush any final events.
+		time.Sleep(500 * time.Millisecond)
+	case <-ctx.Done():
+	}
+
+	_ = cmd.Process.Signal(os.Interrupt)
+	<-scanDone
+	_ = cmd.Wait()
 	return nil
+}
+
+// followAllIntentLogs polls all *.log files in dir with byte-offset cursors.
+// This is used for `clara intent logs -f` (no intentID filter).
+func followAllIntentLogs(ctx context.Context, dir string, filter intentlog.Filter, verbose bool) error {
+	theme := tui.DetectTheme()
+	printer := newIntentWatchPrinter(&theme, true, verbose)
+
+	fmt.Println(theme.Dimmed("Following events... (Ctrl-C to stop)"))
+
+	// offsets tracks the byte offset we've read up to for each file.
+	offsets := map[string]int64{}
+
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			paths, _ := filepath.Glob(filepath.Join(dir, "*.log"))
+			for _, path := range paths {
+				if err := flushFileEvents(path, filter, printer, offsets); err != nil {
+					// Non-fatal; file may have been truncated or rotated.
+					offsets[path] = 0
+				}
+			}
+		}
+	}
+}
+
+// flushFileEvents reads new lines from path starting at offsets[path],
+// prints matching events, and updates the offset.
+func flushFileEvents(path string, filter intentlog.Filter, printer *intentWatchPrinter, offsets map[string]int64) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	offset := offsets[path]
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		var e intentlog.Event
+		if err := json.Unmarshal(line, &e); err != nil {
+			continue
+		}
+		if filter.Matches(e) {
+			printer.printEvent(e)
+		}
+	}
+	pos, _ := f.Seek(0, io.SeekCurrent)
+	offsets[path] = pos
+	return scanner.Err()
 }
 
 func runOneOff(ctx context.Context, path string, verbose bool) error {
@@ -360,21 +541,24 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	}
 	defer db.Close()
 
-	// 1. Load the intent
+	ilog, err := intentlog.New(cfg.IntentLogsDir())
+	if err != nil {
+		return errors.Wrap(err, "open intent log dir")
+	}
+	defer ilog.Close()
+
+	// Load the intent.
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
 	}
-	
-	// For runOneOff, we assume it's a native plugin if it's executable
-	// and doesn't look like YAML/JSON.
+
 	intent := &orchestrator.Intent{
 		ID:           strings.TrimSuffix(filepath.Base(absPath), filepath.Ext(absPath)),
 		WorkflowType: orchestrator.WorkflowTypeNative,
 		Script:       absPath,
 	}
-	
-	// If it's a YAML/JSON file, try parsing it as a state machine
+
 	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".json") {
 		data, err := os.ReadFile(absPath)
 		if err != nil {
@@ -389,19 +573,17 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	reg := registry.New(logger)
 	registerPermanentTUITools(reg, db, logger)
 
-	// Load core integrations if they exist in bin/integrations
 	coreIntegrations := []string{"fs", "shell", "db"}
 	for _, name := range coreIntegrations {
-		path := filepath.Join("bin", "integrations", name)
-		if _, err := os.Stat(path); err == nil {
+		p := filepath.Join("bin", "integrations", name)
+		if _, err := os.Stat(p); err == nil {
 			loader := newPluginLoader(reg, nil, cfg, logger)
-			if err := loader.loadIntegrationAt(name, path); err != nil {
+			if err := loader.loadIntegrationAt(name, p); err != nil {
 				logger.Warn().Err(err).Str("name", name).Msg("failed to load core integration for one-off run")
 			}
 		}
 	}
 
-	// Load macos (ClaraBridge) if it exists
 	macosPaths := []string{
 		"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge",
 		"./build/ClaraBridge.app/Contents/MacOS/ClaraBridge",
@@ -420,104 +602,16 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	defer cancel()
 
 	runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
-	theme := tui.DetectTheme()
-	printer := newIntentWatchPrinter(&theme, true, verbose)
+	startedAt := time.Now()
 
-	lastEventID, err := db.LatestRunEventID(ctx, "")
-	if err != nil {
-		return errors.Wrap(err, "load latest run event id")
-	}
+	go runIntentInBackground(ctx, intent, runID, "main", nil, reg, db, ilog, logger)
 
-	go runIntentInBackground(ctx, intent, runID, "main", nil, reg, db, logger)
-
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := flushRunEvents(ctx, db, printer, &lastEventID, runID); err != nil {
-				return err
-			}
-			
-			// Check if run finished
-			run, _, err := db.LoadRun(ctx, runID)
-			if err == nil && run.Status != "running" && run.Status != "waiting" {
-				return nil
-			}
-		}
-	}
+	logPath := ilog.FilePath(intent.ID)
+	filter := intentlog.Filter{RunID: runID, Since: startedAt}
+	return followSingleIntentLog(ctx, logPath, runID, filter, 0, verbose, cfg.DBPath())
 }
 
-// followIntentEvents streams run events to stdout until the run finishes or ctx
-// is cancelled. runID and lastEventID should come from the MethodStart response
-// so the baseline is captured before the goroutine begins (avoiding the race
-// where a fast run completes before the client opens the DB). When runID is
-// empty (e.g. plain "intent logs -f") we fall back to querying the latest ID
-// ourselves and follow without an exit condition.
-func followIntentEvents(ctx context.Context, intentID, runID string, lastEventID int64, verbose bool) error {
-	logger := buildLogger()
-	db, err := store.Open(cfg.DBPath(), logger)
-	if err != nil {
-		return errors.Wrap(err, "open database")
-	}
-	defer db.Close()
-
-	theme := tui.DetectTheme()
-	printer := newIntentWatchPrinter(&theme, intentID == "", verbose)
-
-	// If no baseline was supplied (legacy / logs -f path), query it now.
-	if runID == "" && lastEventID == 0 {
-		lastEventID, err = db.LatestRunEventID(ctx, intentID)
-		if err != nil {
-			return errors.Wrap(err, "load latest run event id")
-		}
-	}
-
-	fmt.Println(theme.Dimmed("Following events... (Ctrl-C to stop)"))
-
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := flushRunEvents(ctx, db, printer, &lastEventID, runID); err != nil {
-				return err
-			}
-			// Exit once a specific run has reached a terminal state.
-			if runID != "" {
-				run, _, err := db.LoadRun(ctx, runID)
-				if err == nil && run.Status != "running" && run.Status != "waiting" {
-					return nil
-				}
-			}
-		}
-	}
-}
-
-func flushRunEvents(
-	ctx context.Context,
-	db *store.Store,
-	printer *intentWatchPrinter,
-	lastID *int64,
-	runID string,
-) error {
-	events, err := db.RunEventsSince(ctx, *lastID, "")
-	if err != nil {
-		return errors.Wrap(err, "load run events")
-	}
-	for _, event := range events {
-		if runID == "" || event.RunID == runID {
-			printer.printEvent(event)
-		}
-		*lastID = event.ID
-	}
-	return nil
-}
-
+// intentWatchPrinter formats intentlog.Event values for terminal display.
 type intentWatchPrinter struct {
 	theme     *tui.Theme
 	showID    bool
@@ -542,21 +636,12 @@ func (p *intentWatchPrinter) paintIntentID(id string) string {
 	return p.theme.Cyan(id)
 }
 
-func (p *intentWatchPrinter) printStateSnapshot(state store.RunState) {
-	header := []string{p.theme.Dimmed(formatUnixTime(state.UpdatedAt))}
-	if p.showID {
-		header = append(header, p.paintIntentID(state.IntentID))
-	}
-	header = append(header, p.theme.Magenta(state.State))
-	fmt.Println(strings.Join(header, "  "))
-	fmt.Printf("  %s %s\n", p.theme.Dimmed("run:"), state.RunID)
-	fmt.Printf("  %s %s\n", p.theme.Dimmed("status:"), state.Status)
-}
+func (p *intentWatchPrinter) printEvent(event intentlog.Event) {
+	ts := event.Time.Format("3:04:05PM")
 
-func (p *intentWatchPrinter) printEvent(event store.RunEvent) {
 	if event.Action == "print" {
 		p.printRule()
-		header := []string{p.theme.Dimmed(formatUnixTime(event.CreatedAt))}
+		header := []string{p.theme.Dimmed(ts)}
 		if p.showID {
 			header = append(header, p.paintIntentID(event.IntentID))
 		}
@@ -570,7 +655,7 @@ func (p *intentWatchPrinter) printEvent(event store.RunEvent) {
 	}
 
 	p.printRule()
-	header := []string{p.theme.Dimmed(formatUnixTime(event.CreatedAt))}
+	header := []string{p.theme.Dimmed(ts)}
 	if p.showID {
 		header = append(header, p.paintIntentID(event.IntentID))
 	}
@@ -584,7 +669,9 @@ func (p *intentWatchPrinter) printEvent(event store.RunEvent) {
 
 	fmt.Println(strings.Join(header, "  "))
 	fmt.Printf("  %s %s\n", p.theme.Dimmed("run:"), event.RunID)
-	fmt.Printf("  %s %s (%s)\n", p.theme.Dimmed("action:"), event.Action, event.State)
+	if event.Action != "" {
+		fmt.Printf("  %s %s (%s)\n", p.theme.Dimmed("action:"), event.Action, event.State)
+	}
 
 	if p.verbose {
 		if args, ok := event.Args.(map[string]any); ok && len(args) > 0 {
@@ -597,10 +684,6 @@ func (p *intentWatchPrinter) printEvent(event store.RunEvent) {
 	} else if p.verbose && event.Result != nil {
 		fmt.Printf("  %s %v\n", p.theme.Green("result:"), event.Result)
 	}
-}
-
-func formatUnixTime(t int64) string {
-	return time.Unix(0, t).Format("3:04:05PM")
 }
 
 func formatJSONArgs(args map[string]any) string {

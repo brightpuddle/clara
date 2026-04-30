@@ -497,13 +497,14 @@ func (rt *starlarkRuntime) emitStep(action string, args, result any, errText str
 		return
 	}
 	rt.onStep(rt.ctx, StepEvent{
-		RunID:    rt.runID,
-		IntentID: rt.intentID,
-		State:    starlarkScriptState,
-		Action:   action,
-		Args:     args,
-		Result:   result,
-		Error:    errText,
+		RunID:      rt.runID,
+		IntentID:   rt.intentID,
+		Entrypoint: rt.entrypoint,
+		State:      starlarkScriptState,
+		Action:     action,
+		Args:       args,
+		Result:     result,
+		Error:      errText,
 	})
 }
 

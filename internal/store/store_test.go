@@ -131,22 +131,12 @@ func TestStore_SaveRunState_Upsert(t *testing.T) {
 	}
 }
 
-func TestStore_RunEventsAndActiveStates(t *testing.T) {
+func TestStore_ActiveStatesAndFinishRun(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
 	if err := s.SaveRunState(ctx, "run-3", "intent-3", "WAIT", map[string]any{"waiting": true}); err != nil {
 		t.Fatalf("SaveRunState: %v", err)
-	}
-	if err := s.AppendRunEvent(ctx, store.RunEvent{
-		RunID:    "run-3",
-		IntentID: "intent-3",
-		State:    "WAIT",
-		Action:   "prompt.user",
-		Args:     map[string]any{"message": "hello"},
-		Result:   map[string]any{"waiting": true},
-	}); err != nil {
-		t.Fatalf("AppendRunEvent: %v", err)
 	}
 
 	states, err := s.ActiveRunStates(ctx, "intent-3")
@@ -157,24 +147,10 @@ func TestStore_RunEventsAndActiveStates(t *testing.T) {
 		t.Fatalf("unexpected active states: %#v", states)
 	}
 
-	events, err := s.RunEventsSince(ctx, 0, "intent-3")
-	if err != nil {
-		t.Fatalf("RunEventsSince: %v", err)
-	}
-	if len(events) != 1 || events[0].Action != "prompt.user" {
-		t.Fatalf("unexpected events: %#v", events)
-	}
-
 	if err := s.FinishRun(ctx, "run-3", "completed", ""); err != nil {
 		t.Fatalf("FinishRun: %v", err)
 	}
-	events, err = s.RunEventsSince(ctx, 0, "intent-3")
-	if err != nil {
-		t.Fatalf("RunEventsSince after finish: %v", err)
-	}
-	if len(events) != 2 || events[1].Result == nil {
-		t.Fatalf("unexpected finish events: %#v", events)
-	}
+
 	states, err = s.ActiveRunStates(ctx, "intent-3")
 	if err != nil {
 		t.Fatalf("ActiveRunStates after finish: %v", err)

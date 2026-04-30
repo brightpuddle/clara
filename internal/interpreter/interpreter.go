@@ -31,13 +31,14 @@ type WaitFunc func(ctx context.Context, stateName string, mem map[string]any) (a
 type StateChangeFunc func(ctx context.Context, runID, intentID, stateName string, mem map[string]any)
 
 type StepEvent struct {
-	RunID    string
-	IntentID string
-	State    string
-	Action   string
-	Args     any
-	Result   any
-	Error    string
+	RunID      string
+	IntentID   string
+	Entrypoint string
+	State      string
+	Action     string
+	Args       any
+	Result     any
+	Error      string
 }
 
 type StepFunc func(ctx context.Context, event StepEvent)

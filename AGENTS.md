@@ -141,7 +141,7 @@ Order: standard library → third-party → internal
 
 - **Files:** `snake_case.go` (e.g., `mcp_server.go`).
 - **Packages:** short, lowercase, no underscores (e.g., `config`,
-  `orchestrator`, `mcpserver`).
+  `orchestrator`, `registry`).
 - **Exported identifiers:** `CamelCase` (e.g., `Intent`, `Validate`,
   `NewRegistry`).
 - **Unexported identifiers:** `lowerCamelCase` (e.g., `loadConfig`,

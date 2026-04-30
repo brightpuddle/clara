@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/config"
+	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
@@ -83,6 +84,12 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	}
 	defer db.Close()
 
+	ilog, err := intentlog.New(cfg.IntentLogsDir())
+	if err != nil {
+		return errors.Wrap(err, "open intent log dir")
+	}
+	defer ilog.Close()
+
 	reg := registry.New(logger)
 
 	registerPermanentTUITools(reg, db, logger)
@@ -110,7 +117,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		); err != nil {
 			return errors.Wrap(err, "initialize intent run")
 		}
-		return executeIntentRun(runCtx, intent, runID, entrypoint, args, reg, db, logger)
+		return executeIntentRun(runCtx, intent, runID, entrypoint, args, reg, ilog, logger)
 	}, logger).
 		WithOnRunFinished(func(ctx context.Context, runID, intentID, status, errorText string) {
 			if status == "waiting" {
@@ -126,7 +133,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Error().Err(err).Msg("failed to load native plugins")
 	}
 
-	handler := buildHandler(reg, sup, db, loader, logger, shutdown)
+	handler := buildHandler(reg, sup, db, ilog, loader, logger, shutdown)
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 	if err != nil {
 		return errors.Wrap(err, "create control socket server")
@@ -178,6 +185,7 @@ func buildHandler(
 	reg *registry.Registry,
 	sup *supervisor.Supervisor,
 	db *store.Store,
+	ilog *intentlog.Logger,
 	loader *pluginLoader,
 	log zerolog.Logger,
 	shutdown func(),
@@ -197,6 +205,19 @@ func buildHandler(
 			writeResp(&ipc.Response{Message: "shutdown initiated"})
 
 		case ipc.MethodStatus:
+			// If an id is provided (even if empty string), return the active run states.
+			// This is used by 'clara intent logs'.
+			if id, ok := req.Params["id"].(string); ok {
+				states, err := db.ActiveRunStates(ctx, id)
+				if err != nil {
+					writeResp(&ipc.Response{Error: err.Error()})
+					return
+				}
+				writeResp(&ipc.Response{Data: states})
+				return
+			}
+
+			// Otherwise return general agent status.
 			intents := sup.IntentInfos()
 			active := 0
 			for _, intent := range intents {
@@ -285,17 +306,15 @@ func buildHandler(
 			isOnDemand := intentTaskIsOnDemand(intent, taskName)
 			if isOnDemand {
 				runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
-				// Capture the latest event ID before spawning so the client
-				// can follow from exactly this point without a race.
-				lastEventID, _ := db.LatestRunEventID(ctx, "")
-				go runIntentInBackground(ctx, intent, runID, taskName, args, reg, db, log)
+				startedAt := time.Now()
+				go runIntentInBackground(ctx, intent, runID, taskName, args, reg, db, ilog, log)
 				msg := "intent " + id + " started"
 				if taskName != "" {
 					msg = "intent " + id + " task " + taskName + " started"
 				}
 				writeResp(&ipc.Response{
 					Message: msg,
-					Data:    map[string]any{"run_id": runID, "last_event_id": lastEventID},
+					Data:    map[string]any{"run_id": runID, "started_at": startedAt.Format(time.RFC3339Nano)},
 				})
 				return
 			}

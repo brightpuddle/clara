@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"time"
 
+	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
@@ -17,14 +19,14 @@ func executeIntentRun(
 	entrypoint string,
 	args any,
 	reg *registry.Registry,
-	db *store.Store,
+	ilog *intentlog.Logger,
 	log zerolog.Logger,
 ) error {
 	switch intent.WorkflowKind() {
 	case orchestrator.WorkflowTypeStarlark:
-		return executeStarlarkRun(ctx, intent, runID, entrypoint, args, reg, db, log)
+		return executeStarlarkRun(ctx, intent, runID, entrypoint, args, reg, ilog, log)
 	default:
-		return executeStateMachineRun(ctx, intent, runID, reg, db, log)
+		return executeStateMachineRun(ctx, intent, runID, reg, ilog, log)
 	}
 }
 
@@ -35,12 +37,12 @@ func executeStarlarkRun(
 	entrypoint string,
 	args any,
 	reg *registry.Registry,
-	db *store.Store,
+	ilog *intentlog.Logger,
 	log zerolog.Logger,
 ) error {
 	it := interpreter.NewStarlark(reg, log).
 		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-			appendRunEvent(ctx, db, log, event)
+			appendRunEvent(ilog, log, event)
 		})
 	return it.Execute(ctx, intent, "", interpreter.RunOptions{
 		RunID:       runID,
@@ -54,11 +56,11 @@ func executeStateMachineRun(
 	intent *orchestrator.Intent,
 	runID string,
 	reg *registry.Registry,
-	db *store.Store,
+	ilog *intentlog.Logger,
 	log zerolog.Logger,
 ) error {
 	it := interpreter.New(reg, log).WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-		appendRunEvent(ctx, db, log, event)
+		appendRunEvent(ilog, log, event)
 	})
 	return it.Execute(ctx, intent, intent.InitialState, interpreter.RunOptions{RunID: runID})
 }
@@ -71,6 +73,7 @@ func runIntentInBackground(
 	args any,
 	reg *registry.Registry,
 	db *store.Store,
+	ilog *intentlog.Logger,
 	log zerolog.Logger,
 ) {
 	var mem map[string]any
@@ -92,7 +95,7 @@ func runIntentInBackground(
 		return
 	}
 
-	err := executeIntentRun(ctx, intent, runID, entrypoint, args, reg, db, log)
+	err := executeIntentRun(ctx, intent, runID, entrypoint, args, reg, ilog, log)
 	if err != nil {
 		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "failed", err.Error()); finishErr != nil {
 			log.Warn().
@@ -100,6 +103,7 @@ func runIntentInBackground(
 				Str("run_id", runID).
 				Msg("failed to persist run failure")
 		}
+		appendFinishEvent(ilog, log, runID, intent.ID, entrypoint, "failed", err.Error())
 		return
 	}
 
@@ -109,6 +113,7 @@ func runIntentInBackground(
 			Str("run_id", runID).
 			Msg("failed to persist run completion")
 	}
+	appendFinishEvent(ilog, log, runID, intent.ID, entrypoint, "completed", "")
 }
 
 func initialRunState(intent *orchestrator.Intent) string {
@@ -119,21 +124,40 @@ func initialRunState(intent *orchestrator.Intent) string {
 }
 
 func appendRunEvent(
-	ctx context.Context,
-	db *store.Store,
+	ilog *intentlog.Logger,
 	log zerolog.Logger,
 	event interpreter.StepEvent,
 ) {
-	if err := db.AppendRunEvent(ctx, store.RunEvent{
-		RunID:    event.RunID,
-		IntentID: event.IntentID,
-		State:    event.State,
-		Action:   event.Action,
-		Args:     event.Args,
-		Result:   event.Result,
-		Error:    event.Error,
+	if err := ilog.Append(intentlog.Event{
+		Time:       time.Now(),
+		RunID:      event.RunID,
+		IntentID:   event.IntentID,
+		Entrypoint: event.Entrypoint,
+		State:      event.State,
+		Action:     event.Action,
+		Args:       event.Args,
+		Result:     event.Result,
+		Error:      event.Error,
 	}); err != nil {
-		log.Warn().Err(err).Str("run_id", event.RunID).Msg("failed to persist run event")
+		log.Warn().Err(err).Str("run_id", event.RunID).Msg("failed to write intent event")
+	}
+}
+
+func appendFinishEvent(
+	ilog *intentlog.Logger,
+	log zerolog.Logger,
+	runID, intentID, entrypoint, status, errorText string,
+) {
+	if err := ilog.Append(intentlog.Event{
+		Time:       time.Now(),
+		RunID:      runID,
+		IntentID:   intentID,
+		Entrypoint: entrypoint,
+		Action:     "finish",
+		Result:     map[string]any{"status": status},
+		Error:      errorText,
+	}); err != nil {
+		log.Warn().Err(err).Str("run_id", runID).Msg("failed to write finish event")
 	}
 }
 

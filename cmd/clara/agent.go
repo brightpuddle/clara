@@ -65,6 +65,7 @@ var agentStatusCmd = &cobra.Command{
 
 var (
 	agentLogsFollow bool
+	agentLogsClear  bool
 	agentLogsCmd    = &cobra.Command{
 		Use:          "logs",
 		Short:        "Show recent daemon logs",
@@ -75,6 +76,7 @@ var (
 
 func init() {
 	agentLogsCmd.Flags().BoolVarP(&agentLogsFollow, "follow", "f", false, "follow log output")
+	agentLogsCmd.Flags().BoolVar(&agentLogsClear, "clear", false, "clear agent log file")
 	agentCmd.AddCommand(agentStartCmd, agentStopCmd, agentStatusCmd, agentLogsCmd)
 }
 
@@ -213,6 +215,13 @@ func runAgentStatus(cmd *cobra.Command, args []string) error {
 }
 
 func runAgentLogs(cmd *cobra.Command, args []string) error {
+	if agentLogsClear {
+		if err := os.Truncate(cfg.LogPath(), 0); err != nil && !os.IsNotExist(err) {
+			return errors.Wrap(err, "clear agent log")
+		}
+		fmt.Println("Agent log cleared.")
+		return nil
+	}
 	if agentLogsFollow {
 		return followAgentLog(cmd.Context(), cfg.LogPath(), watchLogTailLines)
 	}
