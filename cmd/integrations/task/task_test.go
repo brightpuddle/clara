@@ -92,8 +92,13 @@ func TestTools_ExpectedNames(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"task.create", "task.get", "task.update", "task.delete",
-		"task.list", "pending.list", "due.list",
+		"create",
+		"get",
+		"update",
+		"delete",
+		"list",
+		"pending.list",
+		"due.list",
 	} {
 		if !names[want] {
 			t.Errorf("expected tool %q to be registered", want)

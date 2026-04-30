@@ -39,7 +39,7 @@ func (t *Task) Description() (string, error) { return description, nil }
 func (t *Task) Tools() ([]byte, error) {
 	tools := []mcp.Tool{
 		mcp.NewTool(
-			"task.create",
+			"create",
 			mcp.WithDescription("Create a Task task and return the created task."),
 			mcp.WithString("description", mcp.Required(), mcp.Description("Task description.")),
 			mcp.WithString("project", mcp.Description("Optional project name.")),
@@ -63,12 +63,12 @@ func (t *Task) Tools() ([]byte, error) {
 			),
 		),
 		mcp.NewTool(
-			"task.get",
+			"get",
 			mcp.WithDescription("Fetch a single task by UUID."),
 			mcp.WithString("uuid", mcp.Required(), mcp.Description("Task UUID.")),
 		),
 		mcp.NewTool(
-			"task.update",
+			"update",
 			mcp.WithDescription("Update fields on an existing task and return the updated task."),
 			mcp.WithString("uuid", mcp.Required(), mcp.Description("Task UUID.")),
 			mcp.WithString("description", mcp.Description("Updated task description.")),
@@ -99,12 +99,12 @@ func (t *Task) Tools() ([]byte, error) {
 			),
 		),
 		mcp.NewTool(
-			"task.delete",
+			"delete",
 			mcp.WithDescription("Delete a task by UUID."),
 			mcp.WithString("uuid", mcp.Required(), mcp.Description("Task UUID.")),
 		),
 		mcp.NewTool(
-			"task.list",
+			"list",
 			mcp.WithDescription("List tasks filtered by project, tags, status, and time."),
 			mcp.WithString("project", mcp.Description("Optional project name filter.")),
 			mcp.WithArray("tags", mcp.Description("Optional list of required tags.")),
