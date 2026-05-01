@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 )
+
+// thinkTagRe strips <think>...</think> blocks that some models (e.g. Qwen3)
+// emit at the start of their content when thinking mode is active.
+var thinkTagRe = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
 
 type Config struct {
 	Categories map[string][]ModelConfig  `json:"categories"`
@@ -54,9 +59,14 @@ func (p *LLMPlugin) Tools() ([]byte, error) {
 				mcp.Required(),
 				mcp.Description("Category of LLM to use (e.g. fast, reasoning, local)"),
 			),
+			mcp.WithString(
+				"message",
+				mcp.Description(
+					"Single user message string (convenience alternative to messages array)",
+				),
+			),
 			mcp.WithArray(
 				"messages",
-				mcp.Required(),
 				mcp.Description("Conversation history as an array of {role, content} objects"),
 			),
 			mcp.WithNumber("temperature", mcp.Description("Sampling temperature")),
@@ -70,9 +80,14 @@ func (p *LLMPlugin) Tools() ([]byte, error) {
 				mcp.Required(),
 				mcp.Description("Category of LLM to use (e.g. vision)"),
 			),
+			mcp.WithString(
+				"message",
+				mcp.Description(
+					"Single user message string (convenience alternative to messages array)",
+				),
+			),
 			mcp.WithArray(
 				"messages",
-				mcp.Required(),
 				mcp.Description("Conversation history as an array of {role, content} objects"),
 			),
 			mcp.WithString(
@@ -102,12 +117,16 @@ func (p *LLMPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	case "generate":
 		var req struct {
 			Category    string             `json:"category"`
+			Message     string             `json:"message"`
 			Messages    []contract.Message `json:"messages"`
 			Temperature float32            `json:"temperature"`
 			MaxTokens   int                `json:"max_tokens"`
 		}
 		if err := json.Unmarshal(args, &req); err != nil {
 			return nil, err
+		}
+		if req.Message != "" && len(req.Messages) == 0 {
+			req.Messages = []contract.Message{{Role: "user", Content: req.Message}}
 		}
 		resp, err := p.Generate(req.Category, contract.GenerateRequest{
 			Messages:    req.Messages,
@@ -122,6 +141,7 @@ func (p *LLMPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	case "generate_vision":
 		var req struct {
 			Category    string             `json:"category"`
+			Message     string             `json:"message"`
 			Messages    []contract.Message `json:"messages"`
 			ImageURL    string             `json:"image_url"`
 			ImageBase64 string             `json:"image_base64"`
@@ -130,6 +150,9 @@ func (p *LLMPlugin) CallTool(name string, args []byte) ([]byte, error) {
 		}
 		if err := json.Unmarshal(args, &req); err != nil {
 			return nil, err
+		}
+		if req.Message != "" && len(req.Messages) == 0 {
+			req.Messages = []contract.Message{{Role: "user", Content: req.Message}}
 		}
 		resp, err := p.GenerateVision(req.Category, contract.VisionRequest{
 			Messages:    req.Messages,
@@ -645,13 +668,27 @@ func (p *LLMPlugin) callOllamaGenerate(
 	}
 
 	var ollamaResp struct {
-		Message contract.Message `json:"message"`
+		Message struct {
+			Role     string `json:"role"`
+			Content  string `json:"content"`
+			Thinking string `json:"thinking"` // populated by thinking models (e.g. Qwen3)
+		} `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
 		return contract.GenerateResponse{}, errors.Wrap(err, "decode ollama response")
 	}
 
-	return contract.GenerateResponse{Message: ollamaResp.Message}, nil
+	content := ollamaResp.Message.Content
+	// Some thinking models embed <think>...</think> blocks in the content field
+	// rather than (or in addition to) the dedicated thinking field.
+	content = strings.TrimSpace(thinkTagRe.ReplaceAllString(content, ""))
+
+	return contract.GenerateResponse{
+		Message: contract.Message{
+			Role:    ollamaResp.Message.Role,
+			Content: content,
+		},
+	}, nil
 }
 
 func (p *LLMPlugin) callOllamaVision(
@@ -718,13 +755,24 @@ func (p *LLMPlugin) callOllamaVision(
 	}
 
 	var ollamaResp struct {
-		Message contract.Message `json:"message"`
+		Message struct {
+			Role     string `json:"role"`
+			Content  string `json:"content"`
+			Thinking string `json:"thinking"`
+		} `json:"message"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
 		return contract.GenerateResponse{}, errors.Wrap(err, "decode ollama response")
 	}
 
-	return contract.GenerateResponse{Message: ollamaResp.Message}, nil
+	content := strings.TrimSpace(thinkTagRe.ReplaceAllString(ollamaResp.Message.Content, ""))
+
+	return contract.GenerateResponse{
+		Message: contract.Message{
+			Role:    ollamaResp.Message.Role,
+			Content: content,
+		},
+	}, nil
 }
 
 func (p *LLMPlugin) callOllamaEmbed(

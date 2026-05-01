@@ -87,6 +87,78 @@ integrations:
   # Chrome browser automation
   # chrome: {}
 
+  # LLM multiplexer — routes llm.generate / llm.embed calls to providers.
+  #
+  # Each category maps to an ordered list of models; Clara tries them in
+  # order and falls back to the next on error.  Provider names must match
+  # a key under `providers`.
+  #
+  # Built-in provider names: ollama | gemini | openai
+  # Any openai-compatible API (LM Studio, vLLM, …) can use provider: openai
+  # with a custom base_url.
+  #
+  # Starlark usage:
+  #   result = llm.generate({"category": "fast", "message": "Hello!"})
+  #   print(result["message"]["content"])
+  #
+  #   # Multi-turn:
+  #   result = llm.generate({
+  #     "category": "reasoning",
+  #     "messages": [
+  #       {"role": "system", "content": "You are a concise assistant."},
+  #       {"role": "user",   "content": "Explain goroutines in one sentence."},
+  #     ],
+  #   })
+  #
+  # llm:
+  #   providers:
+  #     # Local Ollama instance (no API key required)
+  #     ollama:
+  #       base_url: http://localhost:11434
+  #
+  #     # Google Gemini
+  #     gemini:
+  #       api_key: "${GEMINI_API_KEY}"
+  #
+  #     # OpenAI (or any OpenAI-compatible endpoint)
+  #     openai:
+  #       base_url: https://api.openai.com/v1
+  #       key: "${OPENAI_API_KEY}"
+  #
+  #     # LM Studio example (openai-compatible)
+  #     lmstudio:
+  #       base_url: http://localhost:1234/v1
+  #
+  #   categories:
+  #     # Quick tasks: try Gemini Flash first, fall back to local Ollama
+  #     fast:
+  #       - provider: gemini
+  #         model: gemini-2.0-flash
+  #       - provider: ollama
+  #         model: qwen3:8b
+  #
+  #     # Heavy reasoning tasks
+  #     reasoning:
+  #       - provider: gemini
+  #         model: gemini-2.5-pro
+  #       - provider: openai
+  #         model: o4-mini
+  #
+  #     # Fully local — no network calls
+  #     local:
+  #       - provider: ollama
+  #         model: qwen3-coder
+  #
+  #     # Vision tasks
+  #     vision:
+  #       - provider: gemini
+  #         model: gemini-2.0-flash
+  #
+  #     # Embeddings
+  #     embeddings:
+  #       - provider: ollama
+  #         model: nomic-embed-text
+
 # ── Starlark lib/ convention ───────────────────────────────────────────────────
 # Place shared Starlark modules under ~/.config/clara/tasks/lib/ so any intent
 # can load them with:
