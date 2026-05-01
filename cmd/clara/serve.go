@@ -11,6 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	dbbuiltin "github.com/brightpuddle/clara/internal/builtin/db"
+	fsbuiltin "github.com/brightpuddle/clara/internal/builtin/fs"
+	shellbuiltin "github.com/brightpuddle/clara/internal/builtin/shell"
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
@@ -91,6 +94,23 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	defer ilog.Close()
 
 	reg := registry.New(logger)
+
+	// Register built-in tools directly (no subprocess).
+	builtinCfg := func(key string) map[string]any {
+		if cfg.Integrations != nil {
+			return cfg.Integrations[key]
+		}
+		return nil
+	}
+	if err := shellbuiltin.Register(daemonCtx, builtinCfg("shell"), reg, logger); err != nil {
+		logger.Error().Err(err).Msg("failed to register shell builtin")
+	}
+	if err := fsbuiltin.Register(daemonCtx, builtinCfg("fs"), reg, logger); err != nil {
+		logger.Error().Err(err).Msg("failed to register fs builtin")
+	}
+	if err := dbbuiltin.Register(daemonCtx, builtinCfg("db"), reg, logger); err != nil {
+		logger.Error().Err(err).Msg("failed to register db builtin")
+	}
 
 	registerPermanentTUITools(reg, db, logger)
 

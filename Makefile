@@ -69,6 +69,7 @@ build-core:
 	go build -ldflags="-extldflags '-Wl,-sectcreate,__TEXT,__info_plist,cmd/clara/Info.plist'" -o bin/clara ./cmd/clara
 
 build-integrations:
+	# Note: shell, fs, and db are now built-in (Phase 2) - no plugin binaries.
 	mkdir -p bin/integrations
 	for d in cmd/integrations/*; do \
 		if [ -d "$$d" ]; then \
