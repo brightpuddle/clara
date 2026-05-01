@@ -98,7 +98,10 @@ func (l *pluginLoader) loadAll() error {
 	for pluginName := range grpcPluginPaths {
 		if p, ok := resolveGRPCPluginPath(pluginName); ok {
 			if err := l.loadIntegrationAt(pluginName, p); err != nil {
-				l.log.Error().Err(err).Str("name", pluginName).Msg("failed to load gRPC integration")
+				l.log.Error().
+					Err(err).
+					Str("name", pluginName).
+					Msg("failed to load gRPC integration")
 			}
 		}
 	}

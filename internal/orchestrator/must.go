@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+
 	"go.starlark.net/starlark"
 )
 
@@ -36,7 +37,12 @@ func (m *mustModule) AttrNames() []string {
 	return []string{"eq", "neq", "true", "false", "fails"}
 }
 
-func mustEq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustEq(
+	thread *starlark.Thread,
+	b *starlark.Builtin,
+	args starlark.Tuple,
+	kwargs []starlark.Tuple,
+) (starlark.Value, error) {
 	var x, y starlark.Value
 	if err := starlark.UnpackArgs("eq", args, kwargs, "x", &x, "y", &y); err != nil {
 		return nil, err
@@ -49,7 +55,12 @@ func mustEq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, k
 	return starlark.None, nil
 }
 
-func mustNeq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustNeq(
+	thread *starlark.Thread,
+	b *starlark.Builtin,
+	args starlark.Tuple,
+	kwargs []starlark.Tuple,
+) (starlark.Value, error) {
 	var x, y starlark.Value
 	if err := starlark.UnpackArgs("neq", args, kwargs, "x", &x, "y", &y); err != nil {
 		return nil, err
@@ -62,7 +73,12 @@ func mustNeq(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, 
 	return starlark.None, nil
 }
 
-func mustTrue(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustTrue(
+	thread *starlark.Thread,
+	b *starlark.Builtin,
+	args starlark.Tuple,
+	kwargs []starlark.Tuple,
+) (starlark.Value, error) {
 	var cond starlark.Value
 	if err := starlark.UnpackArgs("true", args, kwargs, "cond", &cond); err != nil {
 		return nil, err
@@ -73,7 +89,12 @@ func mustTrue(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple,
 	return starlark.None, nil
 }
 
-func mustFalse(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustFalse(
+	thread *starlark.Thread,
+	b *starlark.Builtin,
+	args starlark.Tuple,
+	kwargs []starlark.Tuple,
+) (starlark.Value, error) {
 	var cond starlark.Value
 	if err := starlark.UnpackArgs("false", args, kwargs, "cond", &cond); err != nil {
 		return nil, err
@@ -84,7 +105,12 @@ func mustFalse(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple
 	return starlark.None, nil
 }
 
-func mustFails(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func mustFails(
+	thread *starlark.Thread,
+	b *starlark.Builtin,
+	args starlark.Tuple,
+	kwargs []starlark.Tuple,
+) (starlark.Value, error) {
 	var f starlark.Callable
 	if err := starlark.UnpackArgs("fails", args, kwargs, "f", &f); err != nil {
 		return nil, err

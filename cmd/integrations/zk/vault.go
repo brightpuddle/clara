@@ -357,7 +357,12 @@ func (v *Vault) removeNoteLocked(path string) {
 	}
 }
 
-func (v *Vault) walkVault(root string, depth int, visited map[string]struct{}, visit func(string) error) error {
+func (v *Vault) walkVault(
+	root string,
+	depth int,
+	visited map[string]struct{},
+	visit func(string) error,
+) error {
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return errors.Wrapf(err, "resolve path %q", root)

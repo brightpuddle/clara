@@ -12,7 +12,7 @@ import (
 
 func TestStarlarkInterpreter_ParameterDefaults(t *testing.T) {
 	reg := registry.New(zerolog.Nop())
-	
+
 	var printed []string
 	it := interpreter.NewStarlark(reg, zerolog.Nop()).
 		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {

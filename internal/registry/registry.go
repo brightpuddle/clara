@@ -315,9 +315,6 @@ func (r *Registry) IsKnownNamespace(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if name == "tui" {
-		return true
-	}
 	prefix := name + "."
 	for t := range r.tools {
 		if strings.HasPrefix(t, prefix) {

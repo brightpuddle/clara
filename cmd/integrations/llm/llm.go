@@ -14,7 +14,7 @@ import (
 )
 
 type Config struct {
-	Categories map[string][]ModelConfig `json:"categories"`
+	Categories map[string][]ModelConfig  `json:"categories"`
 	Providers  map[string]ProviderConfig `json:"providers"`
 }
 
@@ -46,25 +46,51 @@ func (p *LLMPlugin) Description() (string, error) {
 
 func (p *LLMPlugin) Tools() ([]byte, error) {
 	tools := []mcp.Tool{
-		mcp.NewTool("generate",
+		mcp.NewTool(
+			"generate",
 			mcp.WithDescription("Get a generation from an LLM category (fast, reasoning, local)"),
-			mcp.WithString("category", mcp.Required(), mcp.Description("Category of LLM to use (e.g. fast, reasoning, local)")),
-			mcp.WithArray("messages", mcp.Required(), mcp.Description("Conversation history as an array of {role, content} objects")),
+			mcp.WithString(
+				"category",
+				mcp.Required(),
+				mcp.Description("Category of LLM to use (e.g. fast, reasoning, local)"),
+			),
+			mcp.WithArray(
+				"messages",
+				mcp.Required(),
+				mcp.Description("Conversation history as an array of {role, content} objects"),
+			),
 			mcp.WithNumber("temperature", mcp.Description("Sampling temperature")),
 			mcp.WithNumber("max_tokens", mcp.Description("Maximum tokens to generate")),
 		),
-		mcp.NewTool("generate_vision",
+		mcp.NewTool(
+			"generate_vision",
 			mcp.WithDescription("Get a vision-based generation from an LLM category (vision)"),
-			mcp.WithString("category", mcp.Required(), mcp.Description("Category of LLM to use (e.g. vision)")),
-			mcp.WithArray("messages", mcp.Required(), mcp.Description("Conversation history as an array of {role, content} objects")),
-			mcp.WithString("image_url", mcp.Description("URL or data:image/... of the image to analyze")),
+			mcp.WithString(
+				"category",
+				mcp.Required(),
+				mcp.Description("Category of LLM to use (e.g. vision)"),
+			),
+			mcp.WithArray(
+				"messages",
+				mcp.Required(),
+				mcp.Description("Conversation history as an array of {role, content} objects"),
+			),
+			mcp.WithString(
+				"image_url",
+				mcp.Description("URL or data:image/... of the image to analyze"),
+			),
 			mcp.WithString("image_base64", mcp.Description("Raw base64 data of the image")),
 			mcp.WithNumber("temperature", mcp.Description("Sampling temperature")),
 			mcp.WithNumber("max_tokens", mcp.Description("Maximum tokens to generate")),
 		),
-		mcp.NewTool("embed",
+		mcp.NewTool(
+			"embed",
 			mcp.WithDescription("Get embeddings for one or more strings"),
-			mcp.WithString("category", mcp.Required(), mcp.Description("Category of LLM to use (e.g. embeddings)")),
+			mcp.WithString(
+				"category",
+				mcp.Required(),
+				mcp.Description("Category of LLM to use (e.g. embeddings)"),
+			),
 			mcp.WithArray("input", mcp.Required(), mcp.Description("Array of strings to embed")),
 		),
 	}
@@ -75,10 +101,10 @@ func (p *LLMPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	switch name {
 	case "generate":
 		var req struct {
-			Category    string                     `json:"category"`
-			Messages    []contract.Message         `json:"messages"`
-			Temperature float32                    `json:"temperature"`
-			MaxTokens   int                        `json:"max_tokens"`
+			Category    string             `json:"category"`
+			Messages    []contract.Message `json:"messages"`
+			Temperature float32            `json:"temperature"`
+			MaxTokens   int                `json:"max_tokens"`
 		}
 		if err := json.Unmarshal(args, &req); err != nil {
 			return nil, err
@@ -95,12 +121,12 @@ func (p *LLMPlugin) CallTool(name string, args []byte) ([]byte, error) {
 
 	case "generate_vision":
 		var req struct {
-			Category    string                     `json:"category"`
-			Messages    []contract.Message         `json:"messages"`
-			ImageURL    string                     `json:"image_url"`
-			ImageBase64 string                     `json:"image_base64"`
-			Temperature float32                    `json:"temperature"`
-			MaxTokens   int                        `json:"max_tokens"`
+			Category    string             `json:"category"`
+			Messages    []contract.Message `json:"messages"`
+			ImageURL    string             `json:"image_url"`
+			ImageBase64 string             `json:"image_base64"`
+			Temperature float32            `json:"temperature"`
+			MaxTokens   int                `json:"max_tokens"`
 		}
 		if err := json.Unmarshal(args, &req); err != nil {
 			return nil, err
@@ -136,10 +162,16 @@ func (p *LLMPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	}
 }
 
-func (p *LLMPlugin) Generate(category string, req contract.GenerateRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) Generate(
+	category string,
+	req contract.GenerateRequest,
+) (contract.GenerateResponse, error) {
 	models, ok := p.config.Categories[category]
 	if !ok || len(models) == 0 {
-		return contract.GenerateResponse{}, fmt.Errorf("no models configured for category: %s", category)
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"no models configured for category: %s",
+			category,
+		)
 	}
 
 	// Try each model in the category
@@ -158,13 +190,23 @@ func (p *LLMPlugin) Generate(category string, req contract.GenerateRequest) (con
 		lastErr = err
 	}
 
-	return contract.GenerateResponse{}, errors.Wrapf(lastErr, "failed to generate via any model in category %s", category)
+	return contract.GenerateResponse{}, errors.Wrapf(
+		lastErr,
+		"failed to generate via any model in category %s",
+		category,
+	)
 }
 
-func (p *LLMPlugin) GenerateVision(category string, req contract.VisionRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) GenerateVision(
+	category string,
+	req contract.VisionRequest,
+) (contract.GenerateResponse, error) {
 	models, ok := p.config.Categories[category]
 	if !ok || len(models) == 0 {
-		return contract.GenerateResponse{}, fmt.Errorf("no models configured for category: %s", category)
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"no models configured for category: %s",
+			category,
+		)
 	}
 
 	// Try each model in the category
@@ -183,7 +225,11 @@ func (p *LLMPlugin) GenerateVision(category string, req contract.VisionRequest) 
 		lastErr = err
 	}
 
-	return contract.GenerateResponse{}, errors.Wrapf(lastErr, "failed to generate vision via any model in category %s", category)
+	return contract.GenerateResponse{}, errors.Wrapf(
+		lastErr,
+		"failed to generate vision via any model in category %s",
+		category,
+	)
 }
 
 func (p *LLMPlugin) Embed(category string, input []string) ([][]float32, error) {
@@ -211,7 +257,12 @@ func (p *LLMPlugin) Embed(category string, input []string) ([][]float32, error) 
 	return nil, errors.Wrapf(lastErr, "failed to embed via any model in category %s", category)
 }
 
-func (p *LLMPlugin) callProviderGenerate(providerName string, cfg ProviderConfig, model string, req contract.GenerateRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callProviderGenerate(
+	providerName string,
+	cfg ProviderConfig,
+	model string,
+	req contract.GenerateRequest,
+) (contract.GenerateResponse, error) {
 	switch providerName {
 	case "gemini":
 		return p.callGeminiGenerate(cfg, model, req)
@@ -224,7 +275,12 @@ func (p *LLMPlugin) callProviderGenerate(providerName string, cfg ProviderConfig
 	}
 }
 
-func (p *LLMPlugin) callProviderVision(providerName string, cfg ProviderConfig, model string, req contract.VisionRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callProviderVision(
+	providerName string,
+	cfg ProviderConfig,
+	model string,
+	req contract.VisionRequest,
+) (contract.GenerateResponse, error) {
 	switch providerName {
 	case "gemini":
 		return p.callGeminiVision(cfg, model, req)
@@ -234,11 +290,19 @@ func (p *LLMPlugin) callProviderVision(providerName string, cfg ProviderConfig, 
 	case "openai":
 		return p.callOpenAIVision(cfg, model, req)
 	default:
-		return contract.GenerateResponse{}, fmt.Errorf("unsupported provider for vision: %s", providerName)
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"unsupported provider for vision: %s",
+			providerName,
+		)
 	}
 }
 
-func (p *LLMPlugin) callProviderEmbed(providerName string, cfg ProviderConfig, model string, input []string) ([][]float32, error) {
+func (p *LLMPlugin) callProviderEmbed(
+	providerName string,
+	cfg ProviderConfig,
+	model string,
+	input []string,
+) ([][]float32, error) {
 	switch providerName {
 	case "gemini":
 		return p.callGeminiEmbed(cfg, model, input)
@@ -253,12 +317,20 @@ func (p *LLMPlugin) callProviderEmbed(providerName string, cfg ProviderConfig, m
 
 // --- Gemini Implementation ---
 
-func (p *LLMPlugin) callGeminiGenerate(cfg ProviderConfig, model string, req contract.GenerateRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callGeminiGenerate(
+	cfg ProviderConfig,
+	model string,
+	req contract.GenerateRequest,
+) (contract.GenerateResponse, error) {
 	if cfg.APIKey == "" {
 		return contract.GenerateResponse{}, fmt.Errorf("gemini api_key not configured")
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, cfg.APIKey)
+	url := fmt.Sprintf(
+		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
+		model,
+		cfg.APIKey,
+	)
 
 	type Part struct {
 		Text string `json:"text,omitempty"`
@@ -270,7 +342,7 @@ func (p *LLMPlugin) callGeminiGenerate(cfg ProviderConfig, model string, req con
 	type GeminiReq struct {
 		Contents         []Content `json:"contents"`
 		GenerationConfig struct {
-			Temperature float32 `json:"temperature,omitempty"`
+			Temperature     float32 `json:"temperature,omitempty"`
 			MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
 		} `json:"generationConfig,omitempty"`
 	}
@@ -305,7 +377,11 @@ func (p *LLMPlugin) callGeminiGenerate(cfg ProviderConfig, model string, req con
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return contract.GenerateResponse{}, fmt.Errorf("gemini returned status %d: %s", resp.StatusCode, string(respBody))
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"gemini returned status %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
 	}
 
 	var geminiResp struct {
@@ -332,14 +408,22 @@ func (p *LLMPlugin) callGeminiGenerate(cfg ProviderConfig, model string, req con
 	}, nil
 }
 
-func (p *LLMPlugin) callGeminiVision(cfg ProviderConfig, model string, req contract.VisionRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callGeminiVision(
+	cfg ProviderConfig,
+	model string,
+	req contract.VisionRequest,
+) (contract.GenerateResponse, error) {
 	// For Gemini vision, we need to handle the image part.
 	// Gemini v1beta supports inlineData for base64.
 	if cfg.APIKey == "" {
 		return contract.GenerateResponse{}, fmt.Errorf("gemini api_key not configured")
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, cfg.APIKey)
+	url := fmt.Sprintf(
+		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
+		model,
+		cfg.APIKey,
+	)
 
 	type InlineData struct {
 		MimeType string `json:"mime_type"`
@@ -356,7 +440,7 @@ func (p *LLMPlugin) callGeminiVision(cfg ProviderConfig, model string, req contr
 	type GeminiReq struct {
 		Contents         []Content `json:"contents"`
 		GenerationConfig struct {
-			Temperature float32 `json:"temperature,omitempty"`
+			Temperature     float32 `json:"temperature,omitempty"`
 			MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
 		} `json:"generationConfig,omitempty"`
 	}
@@ -422,7 +506,11 @@ func (p *LLMPlugin) callGeminiVision(cfg ProviderConfig, model string, req contr
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return contract.GenerateResponse{}, fmt.Errorf("gemini vision returned status %d: %s", resp.StatusCode, string(respBody))
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"gemini vision returned status %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
 	}
 
 	var geminiResp struct {
@@ -450,13 +538,21 @@ func (p *LLMPlugin) callGeminiVision(cfg ProviderConfig, model string, req contr
 	}, nil
 }
 
-func (p *LLMPlugin) callGeminiEmbed(cfg ProviderConfig, model string, input []string) ([][]float32, error) {
+func (p *LLMPlugin) callGeminiEmbed(
+	cfg ProviderConfig,
+	model string,
+	input []string,
+) ([][]float32, error) {
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("gemini api_key not configured")
 	}
 
 	// Gemini embedding API is per-request, but there is a batchEmbedContents
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:batchEmbedContents?key=%s", model, cfg.APIKey)
+	url := fmt.Sprintf(
+		"https://generativelanguage.googleapis.com/v1beta/models/%s:batchEmbedContents?key=%s",
+		model,
+		cfg.APIKey,
+	)
 
 	type Content struct {
 		Parts []struct {
@@ -513,7 +609,11 @@ func (p *LLMPlugin) callGeminiEmbed(cfg ProviderConfig, model string, input []st
 
 // --- Ollama Implementation ---
 
-func (p *LLMPlugin) callOllamaGenerate(cfg ProviderConfig, model string, req contract.GenerateRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callOllamaGenerate(
+	cfg ProviderConfig,
+	model string,
+	req contract.GenerateRequest,
+) (contract.GenerateResponse, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://localhost:11434"
 	}
@@ -537,7 +637,11 @@ func (p *LLMPlugin) callOllamaGenerate(cfg ProviderConfig, model string, req con
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return contract.GenerateResponse{}, fmt.Errorf("ollama returned status %d: %s", resp.StatusCode, string(respBody))
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"ollama returned status %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
 	}
 
 	var ollamaResp struct {
@@ -550,7 +654,11 @@ func (p *LLMPlugin) callOllamaGenerate(cfg ProviderConfig, model string, req con
 	return contract.GenerateResponse{Message: ollamaResp.Message}, nil
 }
 
-func (p *LLMPlugin) callOllamaVision(cfg ProviderConfig, model string, req contract.VisionRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callOllamaVision(
+	cfg ProviderConfig,
+	model string,
+	req contract.VisionRequest,
+) (contract.GenerateResponse, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://localhost:11434"
 	}
@@ -602,7 +710,11 @@ func (p *LLMPlugin) callOllamaVision(cfg ProviderConfig, model string, req contr
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return contract.GenerateResponse{}, fmt.Errorf("ollama vision returned status %d: %s", resp.StatusCode, string(respBody))
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"ollama vision returned status %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
 	}
 
 	var ollamaResp struct {
@@ -615,7 +727,11 @@ func (p *LLMPlugin) callOllamaVision(cfg ProviderConfig, model string, req contr
 	return contract.GenerateResponse{Message: ollamaResp.Message}, nil
 }
 
-func (p *LLMPlugin) callOllamaEmbed(cfg ProviderConfig, model string, input []string) ([][]float32, error) {
+func (p *LLMPlugin) callOllamaEmbed(
+	cfg ProviderConfig,
+	model string,
+	input []string,
+) ([][]float32, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "http://localhost:11434"
 	}
@@ -650,7 +766,11 @@ func (p *LLMPlugin) callOllamaEmbed(cfg ProviderConfig, model string, input []st
 
 // --- OpenAI Implementation ---
 
-func (p *LLMPlugin) callOpenAIGenerate(cfg ProviderConfig, model string, req contract.GenerateRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callOpenAIGenerate(
+	cfg ProviderConfig,
+	model string,
+	req contract.GenerateRequest,
+) (contract.GenerateResponse, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api.openai.com/v1"
 	}
@@ -681,7 +801,11 @@ func (p *LLMPlugin) callOpenAIGenerate(cfg ProviderConfig, model string, req con
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return contract.GenerateResponse{}, fmt.Errorf("openai returned status %d: %s", resp.StatusCode, string(respBody))
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"openai returned status %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
 	}
 
 	var openAIResp struct {
@@ -700,7 +824,11 @@ func (p *LLMPlugin) callOpenAIGenerate(cfg ProviderConfig, model string, req con
 	return contract.GenerateResponse{Message: openAIResp.Choices[0].Message}, nil
 }
 
-func (p *LLMPlugin) callOpenAIVision(cfg ProviderConfig, model string, req contract.VisionRequest) (contract.GenerateResponse, error) {
+func (p *LLMPlugin) callOpenAIVision(
+	cfg ProviderConfig,
+	model string,
+	req contract.VisionRequest,
+) (contract.GenerateResponse, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api.openai.com/v1"
 	}
@@ -739,10 +867,13 @@ func (p *LLMPlugin) callOpenAIVision(cfg ProviderConfig, model string, req contr
 			img = req.ImageURL
 		}
 		if img != "" {
-			messages[len(messages)-1].Content = append(messages[len(messages)-1].Content, ContentPart{
-				Type:     "image_url",
-				ImageURL: &ImageURL{URL: img},
-			})
+			messages[len(messages)-1].Content = append(
+				messages[len(messages)-1].Content,
+				ContentPart{
+					Type:     "image_url",
+					ImageURL: &ImageURL{URL: img},
+				},
+			)
 		}
 	}
 
@@ -771,7 +902,11 @@ func (p *LLMPlugin) callOpenAIVision(cfg ProviderConfig, model string, req contr
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return contract.GenerateResponse{}, fmt.Errorf("openai vision returned status %d: %s", resp.StatusCode, string(respBody))
+		return contract.GenerateResponse{}, fmt.Errorf(
+			"openai vision returned status %d: %s",
+			resp.StatusCode,
+			string(respBody),
+		)
 	}
 
 	var openAIResp struct {
@@ -798,7 +933,11 @@ func (p *LLMPlugin) callOpenAIVision(cfg ProviderConfig, model string, req contr
 	}, nil
 }
 
-func (p *LLMPlugin) callOpenAIEmbed(cfg ProviderConfig, model string, input []string) ([][]float32, error) {
+func (p *LLMPlugin) callOpenAIEmbed(
+	cfg ProviderConfig,
+	model string,
+	input []string,
+) ([][]float32, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api.openai.com/v1"
 	}

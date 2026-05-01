@@ -14,9 +14,7 @@ const (
 	MethodToolShow     = "tool_show"
 	MethodToolCall     = "tool_call"
 	MethodEvents       = "events"
-	MethodTUIHistory   = "tui.history"
-	MethodTUIClear     = "tui.clear"
-	MethodTUIAnswer    = "tui.answer"
+
 	MethodPluginList   = "plugin.list"
 	MethodPluginLoad   = "plugin.load"
 	MethodPluginUnload = "plugin.unload"

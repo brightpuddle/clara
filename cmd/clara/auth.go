@@ -40,8 +40,10 @@ var authWebexCmd = &cobra.Command{
 }
 
 func init() {
-	authWebexCmd.Flags().StringVar(&webexClientID, "client-id", os.Getenv("WEBEX_CLIENT_ID"), "Webex Client ID")
-	authWebexCmd.Flags().StringVar(&webexClientSecret, "client-secret", os.Getenv("WEBEX_CLIENT_SECRET"), "Webex Client Secret")
+	authWebexCmd.Flags().
+		StringVar(&webexClientID, "client-id", os.Getenv("WEBEX_CLIENT_ID"), "Webex Client ID")
+	authWebexCmd.Flags().
+		StringVar(&webexClientSecret, "client-secret", os.Getenv("WEBEX_CLIENT_SECRET"), "Webex Client Secret")
 
 	authCmd.AddCommand(authWebexCmd)
 	rootCmd.AddCommand(authCmd)

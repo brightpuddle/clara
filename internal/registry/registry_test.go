@@ -206,9 +206,18 @@ func TestUnregisterNamespace(t *testing.T) {
 	reg := registry.New(zerolog.Nop())
 
 	// Register tools in different namespaces
-	reg.Register("shell.ls", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
-	reg.Register("shell.pwd", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
-	reg.Register("fs.read", func(_ context.Context, _ map[string]any) (any, error) { return nil, nil })
+	reg.Register(
+		"shell.ls",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
+	reg.Register(
+		"shell.pwd",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
+	reg.Register(
+		"fs.read",
+		func(_ context.Context, _ map[string]any) (any, error) { return nil, nil },
+	)
 
 	// Register namespace metadata
 	reg.RegisterNamespaceDescription("shell", "Shell commands")

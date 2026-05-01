@@ -97,11 +97,21 @@ func (idx *Indexer) initSchema() error {
 	}
 
 	// UPDATE trigger
-	updateTrigger := fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %s AFTER UPDATE ON %s BEGIN
+	updateTrigger := fmt.Sprintf(
+		`CREATE TRIGGER IF NOT EXISTS %s AFTER UPDATE ON %s BEGIN
 		INSERT INTO %s(%s, rowid, %s) VALUES('delete', old.rowid, %s);
 		INSERT INTO %s(rowid, %s) VALUES (new.rowid, %s);
-	END`, quote(idx.schema.Name+"_au"), contentTable, idxTable, idxTable, strings.Join(quoteAll(idx.schema.Columns), ", "), strings.Join(prefix(quoteAll(idx.schema.Columns), "old."), ", "),
-		idxTable, strings.Join(quoteAll(idx.schema.Columns), ", "), strings.Join(prefix(quoteAll(idx.schema.Columns), "new."), ", "))
+	END`,
+		quote(idx.schema.Name+"_au"),
+		contentTable,
+		idxTable,
+		idxTable,
+		strings.Join(quoteAll(idx.schema.Columns), ", "),
+		strings.Join(prefix(quoteAll(idx.schema.Columns), "old."), ", "),
+		idxTable,
+		strings.Join(quoteAll(idx.schema.Columns), ", "),
+		strings.Join(prefix(quoteAll(idx.schema.Columns), "new."), ", "),
+	)
 
 	if _, err := idx.db.Exec(updateTrigger); err != nil {
 		return fmt.Errorf("create update trigger: %w", err)
@@ -112,11 +122,11 @@ func (idx *Indexer) initSchema() error {
 
 func (idx *Indexer) Index(ctx context.Context, doc *Document) error {
 	contentTable := quote(idx.schema.Name + "_content")
-	
+
 	cols := []string{"id"}
 	vals := []any{doc.ID}
 	placeholders := []string{"?"}
-	
+
 	for _, col := range idx.schema.Columns {
 		cols = append(cols, quote(col))
 		vals = append(vals, doc.Data[col])
@@ -133,7 +143,11 @@ func (idx *Indexer) Index(ctx context.Context, doc *Document) error {
 	return nil
 }
 
-func (idx *Indexer) Search(ctx context.Context, queryStr string, limit int) ([]SearchResult, error) {
+func (idx *Indexer) Search(
+	ctx context.Context,
+	queryStr string,
+	limit int,
+) ([]SearchResult, error) {
 	contentTable := quote(idx.schema.Name + "_content")
 	idxTable := quote(idx.schema.Name + "_idx")
 

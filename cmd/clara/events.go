@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/ipc"
-	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/brightpuddle/clara/internal/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +43,7 @@ func runEvents(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("send events request: %w", err)
 	}
 
-	theme := tui.DetectTheme()
+	theme := theme.DetectTheme()
 	fmt.Printf("%s\n", theme.Dimmed("Streaming events... (Ctrl+C to stop)"))
 
 	dec := json.NewDecoder(conn)

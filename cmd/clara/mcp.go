@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/brightpuddle/clara/internal/ipc"
-	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/brightpuddle/clara/internal/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -98,7 +98,7 @@ func runMCPList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	theme := tui.DetectTheme()
+	theme := theme.DetectTheme()
 	data, ok := resp.Data.(map[string]any)
 	if !ok {
 		return fmt.Errorf("unexpected response format")

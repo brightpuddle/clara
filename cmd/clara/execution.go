@@ -59,9 +59,10 @@ func executeStateMachineRun(
 	ilog *intentlog.Logger,
 	log zerolog.Logger,
 ) error {
-	it := interpreter.New(reg, log).WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-		appendRunEvent(ilog, log, event)
-	})
+	it := interpreter.New(reg, log).
+		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
+			appendRunEvent(ilog, log, event)
+		})
 	return it.Execute(ctx, intent, intent.InitialState, interpreter.RunOptions{RunID: runID})
 }
 

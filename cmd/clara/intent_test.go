@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/intentlog"
-	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/brightpuddle/clara/internal/theme"
 )
 
 func TestIntentWatchPrinterEventVerbose(t *testing.T) {
@@ -102,6 +102,6 @@ func TestParseArgs(t *testing.T) {
 	// Dummy test for now as we removed the original parseArgs from main.go
 }
 
-func testWatchTheme() tui.Theme {
-	return tui.DetectTheme()
+func testWatchTheme() theme.Theme {
+	return theme.DetectTheme()
 }

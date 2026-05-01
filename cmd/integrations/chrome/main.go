@@ -40,13 +40,13 @@ type bridgeResponse struct {
 }
 
 type Chrome struct {
-	mu              sync.Mutex
-	conn            net.Conn
-	pending         map[string]chan commandResult
-	log             zerolog.Logger
-	currentVersion  string
-	ctx             context.Context
-	cancel          context.CancelFunc
+	mu             sync.Mutex
+	conn           net.Conn
+	pending        map[string]chan commandResult
+	log            zerolog.Logger
+	currentVersion string
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
 func NewChrome() *Chrome {
@@ -81,53 +81,148 @@ func (c *Chrome) Description() (string, error) {
 
 func (c *Chrome) Tools() ([]byte, error) {
 	tools := []mcp.Tool{
-		mcp.NewTool("navigate",
-			mcp.WithDescription("Navigate to a URL. Opens a new background tab by default. Returns the tab_id and final URL."),
+		mcp.NewTool(
+			"navigate",
+			mcp.WithDescription(
+				"Navigate to a URL. Opens a new background tab by default. Returns the tab_id and final URL.",
+			),
 			mcp.WithString("url", mcp.Required(), mcp.Description("URL to navigate to.")),
-			mcp.WithNumber("tab_id", mcp.Description("Existing tab ID to navigate. If omitted, a new tab is opened.")),
-			mcp.WithBoolean("background", mcp.Description("When true (default), the new tab is opened in the background without stealing focus.")),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Description("Existing tab ID to navigate. If omitted, a new tab is opened."),
+			),
+			mcp.WithBoolean(
+				"background",
+				mcp.Description(
+					"When true (default), the new tab is opened in the background without stealing focus.",
+				),
+			),
 		),
-		mcp.NewTool("click",
-			mcp.WithDescription("Click an element identified by a CSS selector. Scrolls the element into view and dispatches a full click sequence."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab that contains the element.")),
-			mcp.WithString("selector", mcp.Required(), mcp.Description("CSS selector for the element to click.")),
-			mcp.WithNumber("wait_after_ms", mcp.Description("Milliseconds to wait after clicking (default 500).")),
+		mcp.NewTool(
+			"click",
+			mcp.WithDescription(
+				"Click an element identified by a CSS selector. Scrolls the element into view and dispatches a full click sequence.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab that contains the element."),
+			),
+			mcp.WithString(
+				"selector",
+				mcp.Required(),
+				mcp.Description("CSS selector for the element to click."),
+			),
+			mcp.WithNumber(
+				"wait_after_ms",
+				mcp.Description("Milliseconds to wait after clicking (default 500)."),
+			),
 		),
-		mcp.NewTool("fill",
+		mcp.NewTool(
+			"fill",
 			mcp.WithDescription("Fill a text input or textarea identified by a CSS selector."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab that contains the element.")),
-			mcp.WithString("selector", mcp.Required(), mcp.Description("CSS selector for the input element to fill.")),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab that contains the element."),
+			),
+			mcp.WithString(
+				"selector",
+				mcp.Required(),
+				mcp.Description("CSS selector for the input element to fill."),
+			),
 			mcp.WithString("value", mcp.Required(), mcp.Description("Text value to set.")),
-			mcp.WithBoolean("clear_first", mcp.Description("Select all existing text before typing (default true).")),
+			mcp.WithBoolean(
+				"clear_first",
+				mcp.Description("Select all existing text before typing (default true)."),
+			),
 		),
-		mcp.NewTool("fill_by_label",
+		mcp.NewTool(
+			"fill_by_label",
 			mcp.WithDescription("Find a text input or textarea by its label text and fill it."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab that contains the element.")),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab that contains the element."),
+			),
 			mcp.WithString("label", mcp.Required(), mcp.Description("Label text to search for.")),
 			mcp.WithString("value", mcp.Required(), mcp.Description("Text value to set.")),
-			mcp.WithString("tag", mcp.Description("HTML tag of the input element: 'input' (default) or 'textarea'.")),
+			mcp.WithString(
+				"tag",
+				mcp.Description("HTML tag of the input element: 'input' (default) or 'textarea'."),
+			),
 		),
-		mcp.NewTool("click_by_label",
-			mcp.WithDescription("Find a button, link, or clickable element by its text and click it."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab that contains the element.")),
-			mcp.WithString("label", mcp.Required(), mcp.Description("Text or aria-label to search for.")),
+		mcp.NewTool(
+			"click_by_label",
+			mcp.WithDescription(
+				"Find a button, link, or clickable element by its text and click it.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab that contains the element."),
+			),
+			mcp.WithString(
+				"label",
+				mcp.Required(),
+				mcp.Description("Text or aria-label to search for."),
+			),
 		),
-		mcp.NewTool("upload_file",
-			mcp.WithDescription("Set one or more local files on a <input type=\"file\"> element using the Chrome DevTools Protocol."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab that contains the file input.")),
-			mcp.WithString("selector", mcp.Required(), mcp.Description("CSS selector for the <input type=\"file\"> element.")),
-			mcp.WithString("file_path", mcp.Description("Absolute path to one local file to upload.")),
-			mcp.WithArray("file_paths", mcp.Description("Optional array of absolute paths to upload in one selection.")),
+		mcp.NewTool(
+			"upload_file",
+			mcp.WithDescription(
+				"Set one or more local files on a <input type=\"file\"> element using the Chrome DevTools Protocol.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab that contains the file input."),
+			),
+			mcp.WithString(
+				"selector",
+				mcp.Required(),
+				mcp.Description("CSS selector for the <input type=\"file\"> element."),
+			),
+			mcp.WithString(
+				"file_path",
+				mcp.Description("Absolute path to one local file to upload."),
+			),
+			mcp.WithArray(
+				"file_paths",
+				mcp.Description("Optional array of absolute paths to upload in one selection."),
+			),
 		),
-		mcp.NewTool("eval",
-			mcp.WithDescription("Execute an async JavaScript snippet in the page context and return its JSON-serializable result."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab where the script should run.")),
-			mcp.WithString("script", mcp.Required(), mcp.Description("JavaScript function body executed as async code.")),
-			mcp.WithObject("args", mcp.Description("Optional JSON-serializable argument object passed into the script.")),
+		mcp.NewTool(
+			"eval",
+			mcp.WithDescription(
+				"Execute an async JavaScript snippet in the page context and return its JSON-serializable result.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab where the script should run."),
+			),
+			mcp.WithString(
+				"script",
+				mcp.Required(),
+				mcp.Description("JavaScript function body executed as async code."),
+			),
+			mcp.WithObject(
+				"args",
+				mcp.Description(
+					"Optional JSON-serializable argument object passed into the script.",
+				),
+			),
 		),
-		mcp.NewTool("screenshot",
-			mcp.WithDescription("Capture a PNG screenshot of the visible area of a tab. Returns a data URL."),
-			mcp.WithNumber("tab_id", mcp.Description("ID of the tab to screenshot. If omitted, uses the active tab.")),
+		mcp.NewTool(
+			"screenshot",
+			mcp.WithDescription(
+				"Capture a PNG screenshot of the visible area of a tab. Returns a data URL.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Description("ID of the tab to screenshot. If omitted, uses the active tab."),
+			),
 		),
 		mcp.NewTool("read_page",
 			mcp.WithDescription("Read the visible text content, title, and URL of a tab."),
@@ -144,43 +239,90 @@ func (c *Chrome) Tools() ([]byte, error) {
 		mcp.NewTool("cleanup_tabs",
 			mcp.WithDescription("Close all browser tabs that were opened by Clara automation."),
 		),
-		mcp.NewTool("wait_for_selector",
-			mcp.WithDescription("Wait until an element matching a CSS selector is present in the DOM."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab to search in.")),
-			mcp.WithString("selector", mcp.Required(), mcp.Description("CSS selector to wait for.")),
-			mcp.WithNumber("timeout_seconds", mcp.Description("Maximum seconds to wait (default 30).")),
+		mcp.NewTool(
+			"wait_for_selector",
+			mcp.WithDescription(
+				"Wait until an element matching a CSS selector is present in the DOM.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab to search in."),
+			),
+			mcp.WithString(
+				"selector",
+				mcp.Required(),
+				mcp.Description("CSS selector to wait for."),
+			),
+			mcp.WithNumber(
+				"timeout_seconds",
+				mcp.Description("Maximum seconds to wait (default 30)."),
+			),
 		),
-		mcp.NewTool("wait_for_load",
+		mcp.NewTool(
+			"wait_for_load",
 			mcp.WithDescription("Wait until a tab's document status is 'complete'."),
 			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab to wait on.")),
-			mcp.WithNumber("timeout_seconds", mcp.Description("Maximum seconds to wait (default 30).")),
+			mcp.WithNumber(
+				"timeout_seconds",
+				mcp.Description("Maximum seconds to wait (default 30)."),
+			),
 		),
-		mcp.NewTool("query_elements",
-			mcp.WithDescription("Query multiple elements by CSS selector and return their attributes."),
-			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab to search in.")),
+		mcp.NewTool(
+			"query_elements",
+			mcp.WithDescription(
+				"Query multiple elements by CSS selector and return their attributes.",
+			),
+			mcp.WithNumber(
+				"tab_id",
+				mcp.Required(),
+				mcp.Description("ID of the tab to search in."),
+			),
 			mcp.WithString("selector", mcp.Required(), mcp.Description("CSS selector to query.")),
 		),
-		mcp.NewTool("type",
-			mcp.WithDescription("Simulate character-by-character typing into the currently focused element."),
+		mcp.NewTool(
+			"type",
+			mcp.WithDescription(
+				"Simulate character-by-character typing into the currently focused element.",
+			),
 			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab to type in.")),
 			mcp.WithString("text", mcp.Required(), mcp.Description("Text to type.")),
-			mcp.WithNumber("delay_between_keys_ms", mcp.Description("Optional delay between keystrokes (default 10ms).")),
+			mcp.WithNumber(
+				"delay_between_keys_ms",
+				mcp.Description("Optional delay between keystrokes (default 10ms)."),
+			),
 		),
-		mcp.NewTool("debugger_command",
-			mcp.WithDescription("Directly execute a Chrome DevTools Protocol (CDP) command on a tab."),
+		mcp.NewTool(
+			"debugger_command",
+			mcp.WithDescription(
+				"Directly execute a Chrome DevTools Protocol (CDP) command on a tab.",
+			),
 			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab to target.")),
 			mcp.WithString("method", mcp.Required(), mcp.Description("CDP method name.")),
 			mcp.WithObject("params", mcp.Description("Optional CDP parameters object.")),
 		),
-		mcp.NewTool("type_by_selector",
-			mcp.WithDescription("Type text into an element identified by CSS selector using native CDP commands."),
+		mcp.NewTool(
+			"type_by_selector",
+			mcp.WithDescription(
+				"Type text into an element identified by CSS selector using native CDP commands.",
+			),
 			mcp.WithNumber("tab_id", mcp.Required(), mcp.Description("ID of the tab to target.")),
-			mcp.WithString("selector", mcp.Required(), mcp.Description("CSS selector of the element to type into.")),
+			mcp.WithString(
+				"selector",
+				mcp.Required(),
+				mcp.Description("CSS selector of the element to type into."),
+			),
 			mcp.WithString("text", mcp.Required(), mcp.Description("Text to type.")),
-			mcp.WithNumber("delay_between_keys_ms", mcp.Description("Optional delay between keystrokes (default 10ms).")),
+			mcp.WithNumber(
+				"delay_between_keys_ms",
+				mcp.Description("Optional delay between keystrokes (default 10ms)."),
+			),
 		),
-		mcp.NewTool("extension_status",
-			mcp.WithDescription("Check if the Clara Chrome extension is currently connected to the bridge."),
+		mcp.NewTool(
+			"extension_status",
+			mcp.WithDescription(
+				"Check if the Clara Chrome extension is currently connected to the bridge.",
+			),
 		),
 		mcp.NewTool("reload_extension",
 			mcp.WithDescription("Signal the Chrome extension to reload itself from disk."),
@@ -231,7 +373,11 @@ func (c *Chrome) isConnected() bool {
 	return c.conn != nil
 }
 
-func (c *Chrome) execute(ctx context.Context, tool string, params map[string]any) (json.RawMessage, error) {
+func (c *Chrome) execute(
+	ctx context.Context,
+	tool string,
+	params map[string]any,
+) (json.RawMessage, error) {
 	c.mu.Lock()
 	conn := c.conn
 	if conn == nil {

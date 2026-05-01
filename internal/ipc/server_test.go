@@ -15,9 +15,13 @@ import (
 func TestHandleConnIgnoresEOFProbe(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf)
-	server, err := NewServer("", HandlerFunc(func(ctx context.Context, req *Request, w ResponseWriter) {
-		t.Fatal("handler should not be called for an empty probe connection")
-	}), logger)
+	server, err := NewServer(
+		"",
+		HandlerFunc(func(ctx context.Context, req *Request, w ResponseWriter) {
+			t.Fatal("handler should not be called for an empty probe connection")
+		}),
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
@@ -43,10 +47,14 @@ func TestHandleConnLogsMalformedRequest(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf)
 	var called atomic.Bool
-	server, err := NewServer("", HandlerFunc(func(ctx context.Context, req *Request, w ResponseWriter) {
-		called.Store(true)
-		_ = w.Write(&Response{Message: "unexpected"})
-	}), logger)
+	server, err := NewServer(
+		"",
+		HandlerFunc(func(ctx context.Context, req *Request, w ResponseWriter) {
+			called.Store(true)
+			_ = w.Write(&Response{Message: "unexpected"})
+		}),
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
@@ -77,12 +85,16 @@ func TestHandleConnLogsMalformedRequest(t *testing.T) {
 func TestHandleConnServesValidRequest(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := zerolog.New(&logBuf)
-	server, err := NewServer("", HandlerFunc(func(ctx context.Context, req *Request, w ResponseWriter) {
-		if req.Method != MethodStatus {
-			t.Fatalf("unexpected method: got %q want %q", req.Method, MethodStatus)
-		}
-		_ = w.Write(&Response{Message: "running", Data: map[string]any{"tools": 3}})
-	}), logger)
+	server, err := NewServer(
+		"",
+		HandlerFunc(func(ctx context.Context, req *Request, w ResponseWriter) {
+			if req.Method != MethodStatus {
+				t.Fatalf("unexpected method: got %q want %q", req.Method, MethodStatus)
+			}
+			_ = w.Write(&Response{Message: "running", Data: map[string]any{"tools": 3}})
+		}),
+		logger,
+	)
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}

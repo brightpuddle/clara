@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/ipc"
-	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/brightpuddle/clara/internal/theme"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -170,7 +170,7 @@ func runAgentStop(cmd *cobra.Command, args []string) error {
 }
 
 func runAgentStatus(cmd *cobra.Command, args []string) error {
-	theme := tui.DetectTheme()
+	theme := theme.DetectTheme()
 
 	if !isRunning(cfg.ControlSocketPath()) {
 		if wantJSON() {

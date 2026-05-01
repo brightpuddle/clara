@@ -22,7 +22,8 @@ func TestEnsureLoginShellEnv(t *testing.T) {
 	EnsureLoginShellEnv()
 
 	newPath := os.Getenv("PATH")
-	if !strings.Contains(newPath, "/usr/local/bin") && !strings.Contains(newPath, "/opt/homebrew/bin") {
+	if !strings.Contains(newPath, "/usr/local/bin") &&
+		!strings.Contains(newPath, "/opt/homebrew/bin") {
 		// If the user doesn't have homebrew installed, this might still "fail" to find them
 		// but it should at least have tried.
 		// Since we're on the user's machine, they likely have it.

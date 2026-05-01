@@ -203,49 +203,21 @@ func TestStore_ReplayHistoryAndWaitingRun(t *testing.T) {
 	}
 }
 
-func TestStore_TUIContentHistory(t *testing.T) {
+func TestStore_PendingAsk(t *testing.T) {
 	s := openTestStore(t)
 	ctx := context.Background()
 
-	item := store.TUIContentItem{
-		RunID:    "run-1",
-		IntentID: "intent-1",
-		Kind:     "qa",
-		Text:     "Ready?",
-		Options:  []string{"Yes", "No"},
-	}
-
-	id, err := s.SaveTUIContent(ctx, item)
+	// Save a pending ask
+	id, err := s.SavePendingAsk(ctx, "run-1", "Are you sure?")
 	if err != nil {
-		t.Fatalf("SaveTUIContent: %v", err)
+		t.Fatalf("SavePendingAsk: %v", err)
+	}
+	if id == 0 {
+		t.Fatal("expected non-zero id from SavePendingAsk")
 	}
 
-	// Verify it can be loaded
-	history, err := s.LoadTUIContentHistory(ctx, 10)
-	if err != nil {
-		t.Fatalf("LoadTUIContentHistory: %v", err)
-	}
-	if len(history) != 1 || history[0].Text != "Ready?" {
-		t.Fatalf("unexpected history: %#v", history)
-	}
-
-	// Answer it
-	if err := s.UpdateTUIContentAnswer(ctx, id, "Yes"); err != nil {
-		t.Fatalf("UpdateTUIContentAnswer: %v", err)
-	}
-
-	// Verify GetTUIAnswer works
-	answer, err := s.GetTUIAnswer(ctx, "intent-1", "Ready?")
-	if err != nil {
-		t.Fatalf("GetTUIAnswer: %v", err)
-	}
-	if answer != "Yes" {
-		t.Errorf("expected answer Yes, got %q", answer)
-	}
-
-	// Verify it returns empty for unknown or unanswered
-	answer, _ = s.GetTUIAnswer(ctx, "intent-1", "Other?")
-	if answer != "" {
-		t.Errorf("expected empty answer for unknown prompt")
+	// Resolve it
+	if err := s.ResolvePendingAsk(ctx, id, "yes"); err != nil {
+		t.Fatalf("ResolvePendingAsk: %v", err)
 	}
 }

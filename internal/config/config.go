@@ -51,6 +51,9 @@ type Config struct {
 	// before allowing intents to run.
 	MCPStartupTimeout time.Duration `yaml:"mcp_startup_timeout"`
 
+	// Notify configures the notification backend.
+	Notify NotifyConfig `yaml:"notify"`
+
 	// Testing overrides
 	ControlSocketPathOverride string `yaml:"-"`
 }
@@ -108,6 +111,30 @@ func (s *MCPServerConfig) ResolvedEnv() map[string]string {
 		out[k] = os.ExpandEnv(v)
 	}
 	return out
+}
+
+// NotifyConfig configures the notification backend for notify.send and notify.ask.
+type NotifyConfig struct {
+	// Backend selects the delivery mechanism: dummy (default), macos, webex, discord.
+	Backend string `yaml:"backend"`
+
+	// Webex configuration (used when backend = "webex").
+	Webex WebexNotifyConfig `yaml:"webex"`
+
+	// Discord configuration (used when backend = "discord").
+	Discord DiscordNotifyConfig `yaml:"discord"`
+}
+
+// WebexNotifyConfig holds credentials for the Webex notification backend.
+type WebexNotifyConfig struct {
+	BotToken string `yaml:"bot_token"`
+	RoomID   string `yaml:"room_id"`
+}
+
+// DiscordNotifyConfig holds credentials for the Discord notification backend.
+type DiscordNotifyConfig struct {
+	BotToken  string `yaml:"bot_token"`
+	ChannelID string `yaml:"channel_id"`
 }
 
 // Save writes the config to the given path in YAML format.

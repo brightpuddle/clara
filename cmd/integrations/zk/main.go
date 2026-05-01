@@ -170,7 +170,9 @@ func (p *ZkPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	}
 
 	if p.vault.IsIndexing() {
-		return nil, fmt.Errorf("The Zettelkasten vault is currently being indexed. Please try again in a few seconds.")
+		return nil, fmt.Errorf(
+			"The Zettelkasten vault is currently being indexed. Please try again in a few seconds.",
+		)
 	}
 
 	switch name {
@@ -247,7 +249,12 @@ func (p *ZkPlugin) CallTool(name string, args []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(map[string]string{"status": "success", "message": "Vault indexing started in background."})
+		return json.Marshal(
+			map[string]string{
+				"status":  "success",
+				"message": "Vault indexing started in background.",
+			},
+		)
 	default:
 		return nil, fmt.Errorf("tool %q not found", name)
 	}
