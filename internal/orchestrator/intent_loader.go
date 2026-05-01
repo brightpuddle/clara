@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
 
@@ -28,6 +29,8 @@ func CompileStarlarkIntent(path, script string, namespaces []string) (*Intent, e
 	predeclared := starlark.StringDict{
 		"clara": &claraBuiltins{loader: loader},
 		"tui":   &dummyNamespaceProxy{name: "tui", namespaces: namespaces},
+		"json":  json.Module,
+		"yaml":  YAMLModule,
 		"must":  MustModule,
 	}
 	for _, ns := range namespaces {

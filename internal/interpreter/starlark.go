@@ -12,6 +12,7 @@ import (
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
+	"go.starlark.net/lib/json"
 	"go.starlark.net/starlark"
 )
 
@@ -139,6 +140,8 @@ func (it *StarlarkInterpreter) Execute(
 	predeclared := starlark.StringDict{
 		"clara": &claraRuntimeBuiltins{rt: runtime},
 		"tui":   &NamespaceProxy{rt: runtime, name: "tui"},
+		"json":  json.Module,
+		"yaml":  orchestrator.YAMLModule,
 		"must":  orchestrator.MustModule,
 	}
 
