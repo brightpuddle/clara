@@ -24,26 +24,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// grpcPluginPaths lists known gRPC-based plugins and their candidate binary
-// paths in order of preference. The first path that exists is used.
-var grpcPluginPaths = map[string][]string{
-	"macos": {
-		"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge",
-		"./build/ClaraBridge.app/Contents/MacOS/ClaraBridge",
-	},
-}
-
-// resolveGRPCPluginPath returns the first existing binary path for a known
-// gRPC plugin, or ("", false) if the plugin is unknown or not installed.
-func resolveGRPCPluginPath(name string) (string, bool) {
-	for _, p := range grpcPluginPaths[name] {
-		if _, err := os.Stat(p); err == nil {
-			return p, true
-		}
-	}
-	return "", false
-}
-
 // pluginLoader manages the discovery and loading of native Go plugins.
 type pluginLoader struct {
 	reg *registry.Registry
@@ -70,38 +50,65 @@ func newPluginLoader(
 	}
 }
 
+// resolvePluginPath returns the binary path for a plugin. If explicitPath is
+// non-empty it is used directly (skipping the search). Otherwise each
+// directory in cfg.PluginSearchPaths is checked for an executable named name.
+func (l *pluginLoader) resolvePluginPath(name, explicitPath string) (string, bool) {
+	if explicitPath != "" {
+		if _, err := os.Stat(explicitPath); err == nil {
+			return explicitPath, true
+		}
+		return "", false
+	}
+	for _, dir := range l.cfg.PluginSearchPaths {
+		p := filepath.Join(dir, name)
+		if _, err := os.Stat(p); err == nil {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 func (l *pluginLoader) loadAll() error {
 	l.log.Debug().Msg("plugin loader starting")
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-
-	claraConfigDir := filepath.Join(home, ".config", "clara")
-	integrationsDir := filepath.Join(claraConfigDir, "integrations")
 	tasksDir := l.cfg.TasksDir()
 
-	l.log.Debug().
-		Str("integrations_dir", integrationsDir).
-		Str("tasks_dir", tasksDir).
-		Msg("scanning for plugins")
-
-	if err := l.loadIntegrations(integrationsDir); err != nil {
-		l.log.Error().
-			Stack().
-			Err(err).
-			Str("dir", integrationsDir).
-			Msg("failed to load integrations")
-	}
-
-	// Load gRPC plugins (e.g. ClaraBridge / macos) if present.
-	for pluginName := range grpcPluginPaths {
-		if p, ok := resolveGRPCPluginPath(pluginName); ok {
-			if err := l.loadIntegrationAt(pluginName, p); err != nil {
+	if len(l.cfg.Plugins) > 0 {
+		// Whitelist mode: load only the explicitly listed plugins.
+		l.log.Debug().
+			Int("count", len(l.cfg.Plugins)).
+			Strs("search_paths", l.cfg.PluginSearchPaths).
+			Msg("loading plugins from whitelist")
+		for _, pc := range l.cfg.Plugins {
+			path, ok := l.resolvePluginPath(pc.Name, pc.Path)
+			if !ok {
+				l.log.Warn().
+					Str("name", pc.Name).
+					Strs("search_paths", l.cfg.PluginSearchPaths).
+					Msg("plugin binary not found, skipping")
+				continue
+			}
+			if err := l.loadIntegrationAt(pc.Name, path); err != nil {
 				l.log.Error().
 					Err(err).
-					Str("name", pluginName).
-					Msg("failed to load gRPC integration")
+					Str("name", pc.Name).
+					Str("path", path).
+					Msg("failed to load plugin")
+			}
+		}
+	} else {
+		// Legacy mode: scan the first search path for all binaries.
+		if len(l.cfg.PluginSearchPaths) > 0 {
+			dir := l.cfg.PluginSearchPaths[0]
+			l.log.Debug().
+				Str("dir", dir).
+				Msg("no plugin whitelist configured, scanning directory")
+			if err := l.loadIntegrations(dir); err != nil {
+				l.log.Error().
+					Stack().
+					Err(err).
+					Str("dir", dir).
+					Msg("failed to load integrations")
 			}
 		}
 	}
@@ -141,21 +148,14 @@ func (l *pluginLoader) loadIntegrations(dir string) error {
 	return nil
 }
 
-// Load loads a specific plugin by name. It first checks the standard
-// integrations directory, then falls back to known gRPC plugin paths.
+// Load loads a specific plugin by name, scanning cfg.PluginSearchPaths for
+// the binary. Returns an error if the binary cannot be found.
 func (l *pluginLoader) Load(name string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
+	path, ok := l.resolvePluginPath(name, "")
+	if !ok {
+		return fmt.Errorf("plugin %q not found in search paths %v", name, l.cfg.PluginSearchPaths)
 	}
-	path := filepath.Join(home, ".config", "clara", "integrations", name)
-	if _, err := os.Stat(path); err == nil {
-		return l.loadIntegrationAt(name, path)
-	}
-	if grpcPath, ok := resolveGRPCPluginPath(name); ok {
-		return l.loadIntegrationAt(name, grpcPath)
-	}
-	return fmt.Errorf("plugin %q not found", name)
+	return l.loadIntegrationAt(name, path)
 }
 
 // Unload kills a plugin client and unregisters its tools and intents.
@@ -186,59 +186,64 @@ func (l *pluginLoader) Reload(name string) error {
 }
 
 // List returns a list of available plugins and their current status.
+//
+// In whitelist mode (cfg.Plugins non-empty) it reports exactly the configured
+// plugins. In legacy mode it scans the first PluginSearchPath for binaries.
+// Any currently loaded plugin not captured by either source is also included.
 func (l *pluginLoader) List() []map[string]any {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	dir := filepath.Join(home, ".config", "clara", "integrations")
-	entries, err := os.ReadDir(dir)
-	if err != nil && !os.IsNotExist(err) {
-		return nil
-	}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	seen := map[string]bool{}
 	var result []map[string]any
 
-	// Standard file-based plugins from the integrations directory.
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
+	if len(l.cfg.Plugins) > 0 {
+		// Whitelist mode: report status for each configured plugin.
+		for _, pc := range l.cfg.Plugins {
+			seen[pc.Name] = true
+			_, loaded := l.clients[pc.Name]
+			status := "Unloaded"
+			if loaded {
+				status = "Loaded"
+			}
+			result = append(result, map[string]any{
+				"name":   pc.Name,
+				"status": status,
+			})
 		}
-		name := entry.Name()
-		seen[name] = true
-		_, loaded := l.clients[name]
-		status := "Unloaded"
-		if loaded {
-			status = "Loaded"
+	} else if len(l.cfg.PluginSearchPaths) > 0 {
+		// Legacy mode: scan the first search path.
+		dir := l.cfg.PluginSearchPaths[0]
+		entries, err := os.ReadDir(dir)
+		if err != nil && !os.IsNotExist(err) {
+			entries = nil
 		}
-		result = append(result, map[string]any{
-			"name":   name,
-			"status": status,
-		})
+		for _, entry := range entries {
+			if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			name := entry.Name()
+			seen[name] = true
+			_, loaded := l.clients[name]
+			status := "Unloaded"
+			if loaded {
+				status = "Loaded"
+			}
+			result = append(result, map[string]any{
+				"name":   name,
+				"status": status,
+			})
+		}
 	}
 
-	// gRPC plugins (e.g. macos / ClaraBridge) — include if installed or loaded.
-	for name := range grpcPluginPaths {
-		if seen[name] {
-			continue
+	// Include any loaded plugins not captured above (e.g. dynamically loaded).
+	for name := range l.clients {
+		if !seen[name] {
+			result = append(result, map[string]any{
+				"name":   name,
+				"status": "Loaded",
+			})
 		}
-		_, loaded := l.clients[name]
-		_, installed := resolveGRPCPluginPath(name)
-		if !loaded && !installed {
-			continue
-		}
-		status := "Unloaded"
-		if loaded {
-			status = "Loaded"
-		}
-		result = append(result, map[string]any{
-			"name":   name,
-			"status": status,
-		})
 	}
 
 	return result

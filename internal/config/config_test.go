@@ -142,6 +142,72 @@ func TestLogLevelNormalized(t *testing.T) {
 	}
 }
 
+func TestLoad_PluginsWhitelist(t *testing.T) {
+	yaml := `
+plugins:
+  - name: chrome
+  - name: llm
+  - name: macos
+    path: /usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(cfg.Plugins) != 3 {
+		t.Fatalf("Plugins: got %d want 3", len(cfg.Plugins))
+	}
+	if cfg.Plugins[0].Name != "chrome" {
+		t.Errorf("Plugins[0].Name: got %q want %q", cfg.Plugins[0].Name, "chrome")
+	}
+	if cfg.Plugins[1].Name != "llm" {
+		t.Errorf("Plugins[1].Name: got %q want %q", cfg.Plugins[1].Name, "llm")
+	}
+	if cfg.Plugins[2].Name != "macos" {
+		t.Errorf("Plugins[2].Name: got %q want %q", cfg.Plugins[2].Name, "macos")
+	}
+	wantPath := "/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge"
+	if cfg.Plugins[2].Path != wantPath {
+		t.Errorf("Plugins[2].Path: got %q want %q", cfg.Plugins[2].Path, wantPath)
+	}
+}
+
+func TestLoad_PluginSearchPathsDefault(t *testing.T) {
+	yaml := `log_level: info`
+	f := writeTempFile(t, yaml)
+	cfg, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(cfg.PluginSearchPaths) == 0 {
+		t.Fatal("PluginSearchPaths should have defaults")
+	}
+	// First default path should be the integrations directory.
+	if !filepath.IsAbs(cfg.PluginSearchPaths[0]) {
+		t.Errorf("PluginSearchPaths[0] should be absolute, got %q", cfg.PluginSearchPaths[0])
+	}
+}
+
+func TestLoad_PluginSearchPathsOverride(t *testing.T) {
+	yaml := `
+plugin_search_paths:
+  - /opt/clara/plugins
+  - /usr/local/libexec
+`
+	f := writeTempFile(t, yaml)
+	cfg, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if len(cfg.PluginSearchPaths) != 2 {
+		t.Fatalf("PluginSearchPaths: got %d want 2", len(cfg.PluginSearchPaths))
+	}
+	if cfg.PluginSearchPaths[0] != "/opt/clara/plugins" {
+		t.Errorf("PluginSearchPaths[0]: got %q want %q", cfg.PluginSearchPaths[0], "/opt/clara/plugins")
+	}
+}
+
 func writeTempFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()

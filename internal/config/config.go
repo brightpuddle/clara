@@ -26,6 +26,17 @@ func DefaultDataDir() string {
 	return filepath.Join(home, ".local", "share", "clara")
 }
 
+// PluginConfig describes a single entry in the plugin startup whitelist.
+type PluginConfig struct {
+	// Name is the registry namespace key and the binary filename used when
+	// scanning PluginSearchPaths.
+	Name string `yaml:"name"`
+	// Path is an optional explicit binary path. When set, PluginSearchPaths
+	// are not consulted. Use this for non-standard locations such as macOS
+	// app bundles (e.g. ClaraBridge).
+	Path string `yaml:"path"`
+}
+
 // Config is the top-level configuration for the Clara daemon.
 type Config struct {
 	// LogLevel controls the zerolog log level (trace, debug, info, warn, error).
@@ -36,6 +47,16 @@ type Config struct {
 
 	// TasksDir overrides the default directory where .star intent files are watched.
 	TasksDirOverride string `yaml:"tasks_dir"`
+
+	// Plugins is the ordered whitelist of plugins to load on daemon startup.
+	// When absent, all binaries found in PluginSearchPaths[0] are loaded
+	// (backward-compatible behaviour).
+	Plugins []PluginConfig `yaml:"plugins"`
+
+	// PluginSearchPaths is the ordered list of directories searched when
+	// resolving a plugin binary by name. Defaults to the standard integrations
+	// directory followed by /usr/local/libexec.
+	PluginSearchPaths []string `yaml:"plugin_search_paths"`
 
 	// Integrations configures the native Go plugins.
 	Integrations map[string]map[string]any `yaml:"integrations"`
@@ -194,6 +215,13 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.MCPStartupTimeout == 0 {
 		cfg.MCPStartupTimeout = 30 * time.Second
+	}
+	if len(cfg.PluginSearchPaths) == 0 {
+		home, _ := os.UserHomeDir()
+		cfg.PluginSearchPaths = []string{
+			filepath.Join(home, ".config", "clara", "integrations"),
+			"/usr/local/libexec",
+		}
 	}
 }
 
