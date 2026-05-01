@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/google/shlex"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,8 +40,74 @@ type Config struct {
 	// Integrations configures the native Go plugins.
 	Integrations map[string]map[string]any `yaml:"integrations"`
 
+	// MCPCommandSearchPaths prepends additional search paths used to locate
+	// bare MCP server commands and to build the PATH passed to subprocesses.
+	MCPCommandSearchPaths []string `yaml:"mcp_command_search_paths"`
+
+	// MCPServers lists the MCP servers the daemon manages.
+	MCPServers []MCPServerConfig `yaml:"mcp_servers"`
+
+	// MCPStartupTimeout is the maximum time to wait for MCP servers to be ready
+	// before allowing intents to run.
+	MCPStartupTimeout time.Duration `yaml:"mcp_startup_timeout"`
+
 	// Testing overrides
 	ControlSocketPathOverride string `yaml:"-"`
+}
+
+// MCPServerConfig describes a single MCP server managed by the Clara daemon.
+// Either URL (streamable HTTP) or Command (stdio subprocess) must be provided;
+// they are mutually exclusive.
+type MCPServerConfig struct {
+	// Name is the registry alias for this server.
+	Name string `yaml:"name"`
+	// URL is the base URL of a streamable HTTP MCP server (e.g.
+	// "http://127.0.0.1:12306/mcp"). When set, Command and Env are
+	// ignored; the server is reached over HTTP instead of as a subprocess.
+	URL string `yaml:"url"`
+	// Token is an optional Bearer token to send when connecting to an HTTP MCP server.
+	Token string `yaml:"token"`
+	// SkipVerify skips TLS certificate verification when connecting to an HTTP MCP server.
+	SkipVerify bool `yaml:"skip_verify"`
+	// Command is the full command string to run (stdio subprocess servers only).
+	Command string `yaml:"command"`
+	// Env injects additional environment variables into the subprocess.
+	// Values support ${ENV_VAR} expansion.
+	Env map[string]string `yaml:"env"`
+	// Description is a human-readable summary of what this server provides.
+	Description string `yaml:"description"`
+}
+
+// IsHTTPServer reports whether this config entry describes a streamable HTTP
+// server (URL set) rather than a stdio subprocess (Command set).
+func (s *MCPServerConfig) IsHTTPServer() bool {
+	return s.URL != ""
+}
+
+// CommandArgs returns the command and its arguments as a slice of strings,
+// split according to shell quoting rules.
+func (s *MCPServerConfig) CommandArgs() ([]string, error) {
+	if s.Command == "" {
+		return nil, nil
+	}
+	args, err := shlex.Split(s.Command)
+	if err != nil {
+		return nil, errors.Wrapf(err, "split MCP command %q", s.Command)
+	}
+	return args, nil
+}
+
+// ResolvedEnv returns a copy of the MCP server's Env map with all ${VAR}
+// references expanded.
+func (s *MCPServerConfig) ResolvedEnv() map[string]string {
+	if s.Env == nil {
+		return nil
+	}
+	out := make(map[string]string, len(s.Env))
+	for k, v := range s.Env {
+		out[k] = os.ExpandEnv(v)
+	}
+	return out
 }
 
 // Save writes the config to the given path in YAML format.
@@ -97,6 +165,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.DataDir == "" {
 		cfg.DataDir = DefaultDataDir()
 	}
+	if cfg.MCPStartupTimeout == 0 {
+		cfg.MCPStartupTimeout = 30 * time.Second
+	}
 }
 
 func defaults() *Config {
@@ -137,8 +208,31 @@ func (c *Config) IntentLogsDir() string {
 	return filepath.Join(c.DataDir, "logs")
 }
 
+// MCPCommandSearchPathList returns the effective command search paths used to
+// resolve bare MCP server commands and to build subprocess PATH values.
+func (c *Config) MCPCommandSearchPathList() []string {
+	paths := make([]string, 0, len(c.MCPCommandSearchPaths)+8)
+	paths = append(paths, c.MCPCommandSearchPaths...)
+	paths = append(paths, "/usr/local/bin", "/opt/homebrew/bin")
+	paths = append(paths, filepath.SplitList(os.Getenv("PATH"))...)
+
+	seen := make(map[string]struct{}, len(paths))
+	effective := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		effective = append(effective, path)
+	}
+	return effective
+}
+
 // LogLevelNormalized returns the log level string lowercased and trimmed.
 func (c *Config) LogLevelNormalized() string {
 	return strings.ToLower(strings.TrimSpace(c.LogLevel))
 }
-

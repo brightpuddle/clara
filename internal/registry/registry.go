@@ -32,29 +32,48 @@ type ToolInfo struct {
 
 type NotificationHandler func(serverName, method string, params any)
 
-// Registry holds the set of available Tools.
+// Registry holds the set of available Tools and MCP server managers.
 type Registry struct {
-	mu            sync.RWMutex
-	tools          map[string]Tool
-	defaultTools   map[string]Tool
-	descriptions  map[string]string
+	mu                    sync.RWMutex
+	tools                 map[string]Tool
+	defaultTools          map[string]Tool
+	descriptions          map[string]string
 	namespaceDescriptions map[string]string
-	specs         map[string]mcp.Tool
-	examples      map[string][]string
-	notifications []NotificationHandler
-	log           zerolog.Logger
+	specs                 map[string]mcp.Tool
+	examples              map[string][]string
+	notifications         []NotificationHandler
+	log                   zerolog.Logger
+
+	// MCP server management.
+	servers        []*MCPServer
+	serverNames    map[string]struct{}
+	dynamic        map[string]dynamicServer
+	capabilities   map[string]*ServerCapabilities
+	serverTools    map[string][]string // serverName -> []toolNames
+	pendingServers map[string]struct{}
+	readyChan      chan struct{}
+	watchdogCancel context.CancelFunc
 }
 
 // New creates an empty Registry.
 func New(log zerolog.Logger) *Registry {
+	readyChan := make(chan struct{})
+	close(readyChan) // Ready by default until StartServers is called with servers.
+
 	return &Registry{
-		tools:          make(map[string]Tool),
-		defaultTools:   make(map[string]Tool),
-		descriptions:   make(map[string]string),
+		tools:                 make(map[string]Tool),
+		defaultTools:          make(map[string]Tool),
+		descriptions:          make(map[string]string),
 		namespaceDescriptions: make(map[string]string),
-		specs:          make(map[string]mcp.Tool),
-		examples:       make(map[string][]string),
-		log:            log,
+		specs:                 make(map[string]mcp.Tool),
+		examples:              make(map[string][]string),
+		log:                   log,
+		serverNames:           make(map[string]struct{}),
+		dynamic:               make(map[string]dynamicServer),
+		capabilities:          make(map[string]*ServerCapabilities),
+		serverTools:           make(map[string][]string),
+		pendingServers:        make(map[string]struct{}),
+		readyChan:             readyChan,
 	}
 }
 
@@ -204,7 +223,7 @@ func (r *Registry) Names() []string {
 func (r *Registry) Tools() []ToolInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	seen := make(map[string]struct{}, len(r.tools)+len(r.defaultTools))
 	for name := range r.tools {
 		seen[name] = struct{}{}
@@ -375,4 +394,3 @@ func (r *Registry) GetFQToolName(serverName, toolName string) string {
 	}
 	return serverName + "." + toolName
 }
-

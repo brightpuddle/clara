@@ -12,6 +12,34 @@ log_level: info
 # Directory where .star intent files are watched (default: ~/.config/clara/tasks)
 # tasks_dir: ~/.config/clara/tasks
 
+# MCP Servers: Clara manages their lifecycle and exposes their tools to Starlark.
+# The server name becomes the namespace prefix for its tools (e.g. github.search_repositories).
+#
+# How to use in Starlark:
+#   result = github.search_repositories({"query": "clara"})
+#
+# Maximum time to wait for servers to be ready at startup (default: 30s).
+# mcp_startup_timeout: 30s
+#
+# Additional directories to search for MCP server binaries (e.g. npm global installs).
+# mcp_command_search_paths:
+#   - /usr/local/bin
+#   - /opt/homebrew/bin
+
+mcp_servers:
+  # GitHub integration via the official GitHub MCP server.
+  # Install: npm install -g @modelcontextprotocol/server-github
+  # - name: github
+  #   command: github-mcp-server stdio
+  #   env:
+  #     GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+
+  # Any streamable HTTP MCP server.
+  # - name: my-service
+  #   url: http://localhost:8080/mcp
+  #   token: "${MY_SERVICE_TOKEN}"
+  #   description: "My custom MCP service"
+
 # Integrations configure the native Go plugins.
 integrations:
   # SQLite database integration

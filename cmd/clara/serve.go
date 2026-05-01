@@ -94,6 +94,14 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	registerPermanentTUITools(reg, db, logger)
 
+	// Register configured MCP servers.
+	for _, srv := range cfg.MCPServers {
+		mcpSrv := buildMCPServer(srv, logger)
+		if err := reg.AddServer(mcpSrv); err != nil {
+			logger.Error().Err(err).Str("name", srv.Name).Msg("failed to add MCP server")
+		}
+	}
+
 	sup := supervisor.New(cfg.TasksDir(), reg, func(
 		runCtx context.Context,
 		intent *orchestrator.Intent,
@@ -140,7 +148,17 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	}
 
 	return runDaemonServices(daemonCtx, daemonServiceHooks{
-		startControl: controlServer.ListenAndServe,
+		startMCPServers: func(ctx context.Context) error {
+			if err := reg.StartServers(ctx); err != nil {
+				return err
+			}
+			waitCtx, waitCancel := context.WithTimeout(ctx, cfg.MCPStartupTimeout)
+			defer waitCancel()
+			_ = reg.WaitReady(waitCtx)
+			return nil
+		},
+		stopMCPServers: reg.StopServers,
+		startControl:   controlServer.ListenAndServe,
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
@@ -151,13 +169,29 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 }
 
 type daemonServiceHooks struct {
+	startMCPServers func(context.Context) error
+	stopMCPServers  func()
 	startControl    func(context.Context) error
 	startSupervisor func(context.Context) error
 	watchTasks      func(context.Context)
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
+	// Start MCP servers and wait for them to be ready before serving requests.
+	if hooks.startMCPServers != nil {
+		if err := hooks.startMCPServers(ctx); err != nil {
+			return errors.Wrap(err, "start MCP servers")
+		}
+	}
+
 	wg := conc.NewWaitGroup()
+
+	if hooks.stopMCPServers != nil {
+		wg.Go(func() {
+			<-ctx.Done()
+			hooks.stopMCPServers()
+		})
+	}
 
 	wg.Go(func() {
 		if err := hooks.startControl(ctx); err != nil {
@@ -542,6 +576,157 @@ func buildHandler(
 			}
 			writeResp(&ipc.Response{Message: "plugin " + name + " reloaded"})
 
+		case ipc.MethodMCPList:
+			statuses := reg.ServerStatuses()
+			managed := make([]map[string]any, 0, len(statuses))
+			for srvName, status := range statuses {
+				managed = append(managed, map[string]any{
+					"name":   srvName,
+					"status": string(status),
+				})
+			}
+			sort.Slice(managed, func(i, j int) bool {
+				return managed[i]["name"].(string) < managed[j]["name"].(string)
+			})
+			writeResp(&ipc.Response{Data: map[string]any{
+				"managed": managed,
+				"active":  reg.DynamicServerNames(),
+				"pending": []string{},
+			}})
+
+		case ipc.MethodMCPStart:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			if err := reg.StartServer(ctx, name); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "MCP server " + name + " started"})
+
+		case ipc.MethodMCPStop:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			if err := reg.StopServer(name); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "MCP server " + name + " stopped"})
+
+		case ipc.MethodMCPRestart:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			if err := reg.RestartServer(ctx, name); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "MCP server " + name + " restarted"})
+
+		case ipc.MethodMCPAdd:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			command, _ := req.Params["command"].(string)
+			url, _ := req.Params["url"].(string)
+			if command == "" && url == "" {
+				writeResp(&ipc.Response{Error: "either command or url is required"})
+				return
+			}
+			overwrite, _ := req.Params["overwrite"].(bool)
+			desc, _ := req.Params["description"].(string)
+			token, _ := req.Params["token"].(string)
+			skipVerify, _ := req.Params["skip_verify"].(bool)
+
+			// Check if already exists in config.
+			existingIdx := -1
+			for i, srv := range cfg.MCPServers {
+				if srv.Name == name {
+					existingIdx = i
+					break
+				}
+			}
+			if existingIdx != -1 && !overwrite {
+				writeResp(&ipc.Response{
+					Error: "server " + name + " already exists; use overwrite:true to update",
+				})
+				return
+			}
+
+			newSrvCfg := config.MCPServerConfig{
+				Name:        name,
+				Command:     command,
+				URL:         url,
+				Description: desc,
+				Token:       token,
+				SkipVerify:  skipVerify,
+			}
+			if env, ok := req.Params["env"].(map[string]any); ok {
+				newSrvCfg.Env = make(map[string]string)
+				for k, v := range env {
+					newSrvCfg.Env[k] = fmt.Sprint(v)
+				}
+			}
+
+			if existingIdx != -1 {
+				cfg.MCPServers[existingIdx] = newSrvCfg
+			} else {
+				cfg.MCPServers = append(cfg.MCPServers, newSrvCfg)
+			}
+			if err := saveConfig(cfg, log); err != nil {
+				writeResp(&ipc.Response{Error: "failed to save config: " + err.Error()})
+				return
+			}
+
+			// Update registry: remove old instance if present.
+			if existingIdx != -1 || reg.HasServer(name) {
+				_ = reg.RemoveServer(name)
+			}
+			mcpSrv := buildMCPServer(newSrvCfg, log)
+			if err := reg.AddServer(mcpSrv); err != nil {
+				writeResp(&ipc.Response{Error: "failed to add to registry: " + err.Error()})
+				return
+			}
+			if err := reg.StartServer(ctx, name); err != nil {
+				writeResp(&ipc.Response{Error: "added but failed to start: " + err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "MCP server " + name + " added and started"})
+
+		case ipc.MethodMCPRemove:
+			name, _ := req.Params["name"].(string)
+			if name == "" {
+				writeResp(&ipc.Response{Error: "missing name parameter"})
+				return
+			}
+			found := false
+			for i, srv := range cfg.MCPServers {
+				if srv.Name == name {
+					cfg.MCPServers = append(cfg.MCPServers[:i], cfg.MCPServers[i+1:]...)
+					found = true
+					break
+				}
+			}
+			if !found {
+				writeResp(&ipc.Response{Error: "server " + name + " not found in config"})
+				return
+			}
+			if err := saveConfig(cfg, log); err != nil {
+				writeResp(&ipc.Response{Error: "failed to save config: " + err.Error()})
+				return
+			}
+			_ = reg.RemoveServer(name)
+			writeResp(&ipc.Response{Message: "MCP server " + name + " removed from config and stopped"})
+
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})
 		}
@@ -910,4 +1095,40 @@ func saveConfig(cfg *config.Config, log zerolog.Logger) error {
 	}
 	log.Info().Str("path", path).Msg("configuration saved")
 	return nil
+}
+
+// buildMCPServer constructs an MCPServer from a config entry.
+func buildMCPServer(srv config.MCPServerConfig, log zerolog.Logger) *registry.MCPServer {
+	if srv.IsHTTPServer() {
+		return registry.NewHTTPMCPServer(
+			srv.Name,
+			srv.Description,
+			srv.URL,
+			srv.Token,
+			srv.SkipVerify,
+			log,
+		)
+	}
+	args, err := srv.CommandArgs()
+	if err != nil || len(args) == 0 {
+		// Return a server that will fail to start with a clear error.
+		return registry.NewMCPServer(
+			srv.Name,
+			srv.Description,
+			srv.Command,
+			nil,
+			srv.ResolvedEnv(),
+			cfg.MCPCommandSearchPathList(),
+			log,
+		)
+	}
+	return registry.NewMCPServer(
+		srv.Name,
+		srv.Description,
+		args[0],
+		args[1:],
+		srv.ResolvedEnv(),
+		cfg.MCPCommandSearchPathList(),
+		log,
+	)
 }
