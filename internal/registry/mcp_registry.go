@@ -199,6 +199,7 @@ func (r *Registry) StopServer(name string) error {
 	}
 	if srv != nil {
 		delete(r.capabilities, name)
+		delete(r.namespaceDescriptions, name)
 		if tools, ok := r.serverTools[name]; ok {
 			for _, toolName := range tools {
 				r.deleteToolLocked(toolName)
@@ -322,6 +323,9 @@ func (r *Registry) RegisterConnectedClient(
 		return err
 	}
 	r.capabilities[serverName] = caps
+	if caps.Description != "" {
+		r.namespaceDescriptions[serverName] = caps.Description
+	}
 	return nil
 }
 

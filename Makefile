@@ -71,6 +71,7 @@ build-core:
 build-integrations:
 	# Note: shell, fs, and db are now built-in (Phase 2) - no plugin binaries.
 	mkdir -p bin/integrations
+	rm bin/integrations/*
 	for d in cmd/integrations/*; do \
 		if [ -d "$$d" ]; then \
 			name=$$(basename "$$d"); \
@@ -116,6 +117,7 @@ install: build $(BRIDGE_APP_EXE)
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
 	
 	mkdir -p $(HOME)/.config/clara/integrations
+	rm $(HOME)/.config/clara/integrations/*
 	if [ -d bin/integrations ]; then cp bin/integrations/* $(HOME)/.config/clara/integrations/; fi
 
 	install -d "$(LAUNCH_AGENT_DIR)"
