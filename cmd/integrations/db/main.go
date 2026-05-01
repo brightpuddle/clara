@@ -250,7 +250,7 @@ func main() {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: contract.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
-			"db": &contract.DBIntegrationPlugin{Impl: impl},
+			"db": &contract.IntegrationPlugin{Impl: impl},
 		},
 	})
 }

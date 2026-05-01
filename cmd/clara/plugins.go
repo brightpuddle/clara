@@ -254,9 +254,6 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: contract.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
-			"shell":       &contract.ShellIntegrationPlugin{},
-			"fs":          &contract.FSIntegrationPlugin{},
-			"db":          &contract.DBIntegrationPlugin{},
 			"chrome":      &contract.ChromeIntegrationPlugin{},
 			"zk":          &contract.ZkIntegrationPlugin{},
 			"llm":         &contract.LLMIntegrationPlugin{},

@@ -71,7 +71,7 @@ func main() {
 	shell := &Shell{}
 
 	var pluginMap = map[string]plugin.Plugin{
-		"shell": &contract.ShellIntegrationPlugin{Impl: shell},
+		"shell": &contract.IntegrationPlugin{Impl: shell},
 	}
 
 	plugin.Serve(&plugin.ServeConfig{

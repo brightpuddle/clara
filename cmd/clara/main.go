@@ -73,8 +73,6 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(runCmd)
 
-	// Add the architecture prototype command
-	rootCmd.AddCommand(prototypeCmd)
 }
 
 func main() {

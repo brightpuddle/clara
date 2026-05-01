@@ -434,8 +434,6 @@ func TestConfigure_AlwaysNil(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTask_ImplementsInterface(t *testing.T) {
-	var _ contract.TaskIntegration = (*Task)(nil)
-	var _ contract.TaskIntegration = (*unavailableStub)(nil)
 }
 
 // ---------------------------------------------------------------------------

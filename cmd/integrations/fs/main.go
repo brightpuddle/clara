@@ -130,7 +130,7 @@ func main() {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: contract.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
-			"fs": &contract.FSIntegrationPlugin{Impl: impl},
+			"fs": &contract.IntegrationPlugin{Impl: impl},
 		},
 	})
 }

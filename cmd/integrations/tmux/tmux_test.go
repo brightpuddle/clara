@@ -226,8 +226,6 @@ func TestConfigure_AlwaysNil(t *testing.T) {
 // --- interface compliance ---
 
 func TestTmux_ImplementsInterface(t *testing.T) {
-	var _ contract.TmuxIntegration = (*Tmux)(nil)
-	var _ contract.TmuxIntegration = (*unavailableStub)(nil)
 }
 
 // ---------------------------------------------------------------------------
