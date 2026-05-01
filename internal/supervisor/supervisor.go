@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/cockroachdb/errors"
+	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
 )
 
@@ -31,6 +33,11 @@ type Supervisor struct {
 	rootCtx  context.Context
 	intents  map[string]*managedIntent // keyed by intent ID
 	failures map[string]error          // keyed by file path, value is error
+
+	fsWatcher     *fsnotify.Watcher
+	fsWatchPaths  map[string]int // absolute path -> subscriber refcount
+	fsWatchMu     sync.Mutex
+	fsWatchCancel context.CancelFunc
 }
 
 // EventBus returns the internal event bus for subscribing to notifications.
@@ -57,13 +64,14 @@ type IntentInfo struct {
 }
 
 type managedIntent struct {
-	intent      *orchestrator.Intent
-	path        string
-	cancels     []context.CancelFunc
-	active      bool
-	activeTasks int
-	started     time.Time
-	runSeq      int64
+	intent       *orchestrator.Intent
+	path         string
+	cancels      []context.CancelFunc
+	active       bool
+	activeTasks  int
+	started      time.Time
+	runSeq       int64
+	fswatchPaths []string // absolute paths watched for fs.on_change tasks
 }
 
 // New creates a Supervisor.
@@ -73,15 +81,21 @@ func New(
 	runner IntentRunner,
 	log zerolog.Logger,
 ) *Supervisor {
+	fsWatcher, _ := fsnotify.NewWatcher()
+	fsCtx, fsCancel := context.WithCancel(context.Background())
+
 	sup := &Supervisor{
-		tasksDir:   tasksDir,
-		reg:        reg,
-		runIntent:  runner,
-		log:        log.With().Str("component", "supervisor").Logger(),
-		intents:    make(map[string]*managedIntent),
-		failures:   make(map[string]error),
-		bus:        NewEventBus(),
-		rootCtx:    context.Background(),
+		tasksDir:      tasksDir,
+		reg:           reg,
+		runIntent:     runner,
+		log:           log.With().Str("component", "supervisor").Logger(),
+		intents:       make(map[string]*managedIntent),
+		failures:      make(map[string]error),
+		bus:           NewEventBus(),
+		rootCtx:       context.Background(),
+		fsWatcher:     fsWatcher,
+		fsWatchPaths:  make(map[string]int),
+		fsWatchCancel: fsCancel,
 	}
 	reg.Subscribe(func(serverName, method string, params any) {
 		normalized := NormalizeNotificationParams(params)
@@ -91,6 +105,9 @@ func New(
 			Params: normalized,
 		})
 	})
+	if fsWatcher != nil {
+		go sup.runFSWatcher(fsCtx)
+	}
 	return sup
 }
 
@@ -128,7 +145,11 @@ func (s *Supervisor) UnregisterIntent(id string) error {
 	for _, cancel := range managed.cancels {
 		cancel()
 	}
+	for _, p := range managed.fswatchPaths {
+		s.removeFSWatch(p)
+	}
 	managed.cancels = nil
+	managed.fswatchPaths = nil
 	managed.activeTasks = 0
 	managed.active = false
 
@@ -155,7 +176,11 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 		for _, cancel := range managed.cancels {
 			cancel()
 		}
+		for _, p := range managed.fswatchPaths {
+			s.removeFSWatch(p)
+		}
 		managed.cancels = nil
+		managed.fswatchPaths = nil
 		managed.activeTasks = 0
 		managed.active = false
 	}
@@ -171,6 +196,15 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 	for _, t := range intent.Tasks {
 		if t.Mode == orchestrator.IntentModeOnDemand || t.Mode == "" {
 			continue
+		}
+		// For fs.on_change triggers, expand the path and set up a daemon-level watcher.
+		if t.Mode == orchestrator.IntentModeEvent && t.Trigger == "fs.on_change" {
+			if path, ok := t.TriggerArgs["path"].(string); ok && path != "" {
+				expanded := supervisorExpandPath(path)
+				t.TriggerArgs["path"] = expanded
+				managed.fswatchPaths = append(managed.fswatchPaths, expanded)
+				s.addFSWatch(expanded)
+			}
 		}
 		ctx, cancel := context.WithCancel(s.rootCtx)
 		managed.cancels = append(managed.cancels, cancel)
@@ -364,9 +398,109 @@ func (s *Supervisor) shutdown() {
 			cancel()
 		}
 		managed.cancels = nil
+		managed.fswatchPaths = nil
 		managed.activeTasks = 0
 		managed.active = false
 	}
+
+	s.fsWatchCancel() // stops runFSWatcher, which closes the watcher
+}
+
+// runFSWatcher reads events from the daemon-level fsnotify watcher and publishes
+// them to the event bus as "fs"/"on_change" events. It exits when ctx is done.
+func (s *Supervisor) runFSWatcher(ctx context.Context) {
+	if s.fsWatcher == nil {
+		return
+	}
+	defer s.fsWatcher.Close()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-s.fsWatcher.Events:
+			if !ok {
+				return
+			}
+			changeType := classifyFSEvent(event)
+			if changeType == "" {
+				continue
+			}
+			s.bus.Publish(Event{
+				Server: "fs",
+				Method: "on_change",
+				Params: map[string]any{
+					"path":  event.Name,
+					"event": changeType,
+				},
+			})
+		case _, ok := <-s.fsWatcher.Errors:
+			if !ok {
+				return
+			}
+		}
+	}
+}
+
+// addFSWatch adds path to the daemon-level watcher, using refcounting so multiple
+// tasks watching the same path only register one OS-level watch.
+func (s *Supervisor) addFSWatch(path string) {
+	if s.fsWatcher == nil {
+		return
+	}
+	s.fsWatchMu.Lock()
+	defer s.fsWatchMu.Unlock()
+	s.fsWatchPaths[path]++
+	if s.fsWatchPaths[path] == 1 {
+		if err := s.fsWatcher.Add(path); err != nil {
+			s.log.Warn().Err(err).Str("path", path).Msg("failed to add fs.on_change watch")
+		}
+	}
+}
+
+// removeFSWatch decrements the refcount for path and removes the OS-level watch
+// when the last subscriber unregisters.
+func (s *Supervisor) removeFSWatch(path string) {
+	if s.fsWatcher == nil {
+		return
+	}
+	s.fsWatchMu.Lock()
+	defer s.fsWatchMu.Unlock()
+	s.fsWatchPaths[path]--
+	if s.fsWatchPaths[path] <= 0 {
+		delete(s.fsWatchPaths, path)
+		_ = s.fsWatcher.Remove(path)
+	}
+}
+
+// classifyFSEvent maps an fsnotify.Event to a human-readable change type.
+func classifyFSEvent(event fsnotify.Event) string {
+	switch {
+	case event.Has(fsnotify.Create):
+		return "create"
+	case event.Has(fsnotify.Write), event.Has(fsnotify.Chmod), event.Has(fsnotify.Rename):
+		return "change"
+	case event.Has(fsnotify.Remove):
+		return "delete"
+	default:
+		return ""
+	}
+}
+
+// supervisorExpandPath expands ~ and environment variables in path.
+func supervisorExpandPath(path string) string {
+	path = os.ExpandEnv(strings.TrimSpace(path))
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+		return path
+	}
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 // ActiveIntents returns a snapshot of currently-deployed intents.

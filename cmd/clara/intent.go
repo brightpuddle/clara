@@ -438,9 +438,9 @@ func followSingleIntentLog(ctx context.Context, logPath, runID string, filter in
 				}
 			}
 		}()
-	} else {
-		close(done)
 	}
+	// When not monitoring a specific run (runID == "" or dbPath == ""),
+	// 'done' is never closed — the follow exits only when ctx is cancelled (Ctrl-C).
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
