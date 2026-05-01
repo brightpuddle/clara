@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/brightpuddle/clara/internal/ipc"
-	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/brightpuddle/clara/internal/theme"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +61,7 @@ func runPluginList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	theme := tui.DetectTheme()
+	theme := theme.DetectTheme()
 	plugins, ok := resp.Data.([]any)
 	if !ok {
 		return fmt.Errorf("unexpected response format")

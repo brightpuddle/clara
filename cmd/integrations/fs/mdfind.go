@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"strings"
-	"fmt"
 )
 
 // runMdfind executes the mdfind command with a query and an optional onlyin directory.

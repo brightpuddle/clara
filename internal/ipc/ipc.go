@@ -4,23 +4,20 @@ package ipc
 
 // Method constants for the control socket protocol.
 const (
-	MethodShutdown      = "shutdown"
-	MethodStatus        = "status"
-	MethodList          = "list"
-	MethodRun           = "run"
-	MethodStart         = "start"
-	MethodStop          = "stop"
-	MethodToolList      = "tool_list"
-	MethodToolShow      = "tool_show"
-	MethodToolCall      = "tool_call"
-	MethodEvents        = "events"
-	MethodTUIHistory    = "tui.history"
-	MethodTUIClear      = "tui.clear"
-	MethodTUIAnswer     = "tui.answer"
-	MethodPluginList    = "plugin.list"
-	MethodPluginLoad    = "plugin.load"
-	MethodPluginUnload  = "plugin.unload"
-	MethodPluginReload  = "plugin.reload"
+	MethodShutdown     = "shutdown"
+	MethodStatus       = "status"
+	MethodList         = "list"
+	MethodRun          = "run"
+	MethodStart        = "start"
+	MethodStop         = "stop"
+	MethodToolList     = "tool_list"
+	MethodToolShow     = "tool_show"
+	MethodToolCall     = "tool_call"
+	MethodEvents       = "events"
+	MethodPluginList   = "plugin.list"
+	MethodPluginLoad   = "plugin.load"
+	MethodPluginUnload = "plugin.unload"
+	MethodPluginReload = "plugin.reload"
 )
 
 // Request is a command sent from the CLI to the daemon.

@@ -33,10 +33,18 @@ func TestNamespaceAggregation(t *testing.T) {
 
 	// Verify we can call both
 	res1, err := reg.Call(context.Background(), "mail.search", nil)
-	if err != nil { t.Fatalf("mail.search failed: %v", err) }
-	if res1 != "search result" { t.Errorf("got %v", res1) }
+	if err != nil {
+		t.Fatalf("mail.search failed: %v", err)
+	}
+	if res1 != "search result" {
+		t.Errorf("got %v", res1)
+	}
 
 	res2, err := reg.Call(context.Background(), "mail.list", nil)
-	if err != nil { t.Fatalf("mail.list failed: %v", err) }
-	if res2 != "list result" { t.Errorf("got %v", res2) }
+	if err != nil {
+		t.Fatalf("mail.list failed: %v", err)
+	}
+	if res2 != "list result" {
+		t.Errorf("got %v", res2)
+	}
 }

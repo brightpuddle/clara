@@ -19,9 +19,31 @@ func TestAppendAndReadAll(t *testing.T) {
 
 	now := time.Now().Truncate(time.Second)
 	events := []Event{
-		{Time: now, RunID: "r1", IntentID: "hello", Entrypoint: "main", State: "INIT", Action: "start"},
-		{Time: now.Add(time.Second), RunID: "r1", IntentID: "hello", Entrypoint: "main", State: "RUN", Action: "db.query", Args: map[string]any{"sql": "select 1"}},
-		{Time: now.Add(2 * time.Second), RunID: "r1", IntentID: "hello", State: "DONE", Action: "finish", Result: map[string]any{"status": "completed"}},
+		{
+			Time:       now,
+			RunID:      "r1",
+			IntentID:   "hello",
+			Entrypoint: "main",
+			State:      "INIT",
+			Action:     "start",
+		},
+		{
+			Time:       now.Add(time.Second),
+			RunID:      "r1",
+			IntentID:   "hello",
+			Entrypoint: "main",
+			State:      "RUN",
+			Action:     "db.query",
+			Args:       map[string]any{"sql": "select 1"},
+		},
+		{
+			Time:     now.Add(2 * time.Second),
+			RunID:    "r1",
+			IntentID: "hello",
+			State:    "DONE",
+			Action:   "finish",
+			Result:   map[string]any{"status": "completed"},
+		},
 	}
 	for _, e := range events {
 		if err := l.Append(e); err != nil {
@@ -88,8 +110,24 @@ func TestFilterByEntrypoint(t *testing.T) {
 
 	now := time.Now().Truncate(time.Second)
 	_ = l.Append(Event{Time: now, RunID: "r1", IntentID: "hello", Entrypoint: "main", State: "RUN"})
-	_ = l.Append(Event{Time: now.Add(time.Second), RunID: "r2", IntentID: "hello", Entrypoint: "other", State: "RUN"})
-	_ = l.Append(Event{Time: now.Add(2 * time.Second), RunID: "r1", IntentID: "hello", Entrypoint: "main", State: "DONE"})
+	_ = l.Append(
+		Event{
+			Time:       now.Add(time.Second),
+			RunID:      "r2",
+			IntentID:   "hello",
+			Entrypoint: "other",
+			State:      "RUN",
+		},
+	)
+	_ = l.Append(
+		Event{
+			Time:       now.Add(2 * time.Second),
+			RunID:      "r1",
+			IntentID:   "hello",
+			Entrypoint: "main",
+			State:      "DONE",
+		},
+	)
 
 	got, err := ReadEvents(l.FilePath("hello"), Filter{Entrypoint: "main"}, 0)
 	if err != nil {
@@ -110,7 +148,14 @@ func TestFilterBySince(t *testing.T) {
 
 	base := time.Now().Truncate(time.Second)
 	for i := range 5 {
-		_ = l.Append(Event{Time: base.Add(time.Duration(i) * time.Second), RunID: "r1", IntentID: "hello", State: "RUN"})
+		_ = l.Append(
+			Event{
+				Time:     base.Add(time.Duration(i) * time.Second),
+				RunID:    "r1",
+				IntentID: "hello",
+				State:    "RUN",
+			},
+		)
 	}
 
 	// Only events strictly after base+2s.
@@ -133,7 +178,9 @@ func TestMergeEvents(t *testing.T) {
 
 	base := time.Now().Truncate(time.Second)
 	_ = l.Append(Event{Time: base, RunID: "r1", IntentID: "alpha", State: "RUN"})
-	_ = l.Append(Event{Time: base.Add(2 * time.Second), RunID: "r2", IntentID: "beta", State: "RUN"})
+	_ = l.Append(
+		Event{Time: base.Add(2 * time.Second), RunID: "r2", IntentID: "beta", State: "RUN"},
+	)
 	_ = l.Append(Event{Time: base.Add(time.Second), RunID: "r1", IntentID: "alpha", State: "DONE"})
 	l.Close()
 
@@ -160,8 +207,16 @@ func TestMergeTail(t *testing.T) {
 
 	base := time.Now().Truncate(time.Second)
 	for i := range 5 {
-		_ = l.Append(Event{Time: base.Add(time.Duration(i) * time.Second), RunID: "r1", IntentID: "alpha"})
-		_ = l.Append(Event{Time: base.Add(time.Duration(i)*time.Second + 500*time.Millisecond), RunID: "r2", IntentID: "beta"})
+		_ = l.Append(
+			Event{Time: base.Add(time.Duration(i) * time.Second), RunID: "r1", IntentID: "alpha"},
+		)
+		_ = l.Append(
+			Event{
+				Time:     base.Add(time.Duration(i)*time.Second + 500*time.Millisecond),
+				RunID:    "r2",
+				IntentID: "beta",
+			},
+		)
 	}
 	l.Close()
 

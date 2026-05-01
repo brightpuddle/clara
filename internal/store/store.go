@@ -72,15 +72,14 @@ type ReplayHistoryEntry struct {
 	CreatedAt  int64
 }
 
-type TUIContentItem struct {
-	ID          int64
-	RunID       string
-	IntentID    string
-	Kind        string
-	Text        string
-	Options     []string
-	Answer      string
-	CreatedAt   int64
+// PendingAsk holds an unanswered notify.ask prompt persisted for pause/resume.
+type PendingAsk struct {
+	ID         int64
+	RunID      string
+	Question   string
+	Answer     string
+	CreatedAt  int64
+	AnsweredAt sql.NullInt64
 }
 
 // Open opens or creates the SQLite database at dbPath.
@@ -184,26 +183,16 @@ func (s *Store) migrate() error {
 			updated_at INTEGER NOT NULL DEFAULT (unixepoch())
 		);
 
-		CREATE TABLE IF NOT EXISTS tui_command_history (
+		CREATE TABLE IF NOT EXISTS notify_pending_asks (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			command    TEXT    NOT NULL,
-			created_at INTEGER NOT NULL DEFAULT (unixepoch())
+			run_id     TEXT    NOT NULL DEFAULT '',
+			question   TEXT    NOT NULL,
+			answer     TEXT    NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			answered_at INTEGER
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_tui_command_history_created_at ON tui_command_history(created_at);
-
-		CREATE TABLE IF NOT EXISTS tui_content_history (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			run_id       TEXT    NOT NULL DEFAULT '',
-			intent_id    TEXT    NOT NULL DEFAULT '',
-			kind         TEXT    NOT NULL, -- 'notification' or 'qa'
-			text         TEXT    NOT NULL,
-			options_json TEXT    NOT NULL DEFAULT 'null',
-			answer       TEXT    NOT NULL DEFAULT '',
-			created_at   INTEGER NOT NULL DEFAULT (unixepoch())
-		);
-
-		CREATE INDEX IF NOT EXISTS idx_tui_content_history_created_at ON tui_content_history(created_at);
+		CREATE INDEX IF NOT EXISTS idx_notify_pending_asks_run_id ON notify_pending_asks(run_id);
 	`)
 	if err != nil {
 		return errors.Wrap(err, "create schema")
@@ -689,8 +678,6 @@ func (s *Store) LoadReplayHistory(ctx context.Context, runID string) ([]ReplayHi
 	return history, nil
 }
 
-
-
 func scanRows(rows *sql.Rows) ([]map[string]any, error) {
 	cols, err := rows.Columns()
 	if err != nil {
@@ -772,148 +759,26 @@ func encodeVector(v any) ([]byte, error) {
 	}
 }
 
-// SaveTUIContent persists a new notification or interactive Q&A to the database.
-func (s *Store) SaveTUIContent(ctx context.Context, item TUIContentItem) (int64, error) {
-	optionsJSON := "null"
-	if len(item.Options) > 0 {
-		raw, err := json.Marshal(item.Options)
-		if err == nil {
-			optionsJSON = string(raw)
-		}
-	}
-
+// SavePendingAsk persists an unanswered notify.ask prompt so the run can be
+// resumed when the answer arrives.
+func (s *Store) SavePendingAsk(ctx context.Context, runID, question string) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO tui_content_history (run_id, intent_id, kind, text, options_json, answer)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, item.RunID, item.IntentID, item.Kind, item.Text, optionsJSON, item.Answer)
+		INSERT INTO notify_pending_asks (run_id, question)
+		VALUES (?, ?)
+	`, runID, question)
 	if err != nil {
-		return 0, errors.Wrap(err, "save tui content")
+		return 0, errors.Wrap(err, "save pending ask")
 	}
-
 	id, _ := res.LastInsertId()
 	return id, nil
 }
 
-// LoadTUIContentHistory retrieves the latest items from tui_content_history.
-func (s *Store) LoadTUIContentHistory(ctx context.Context, limit int) ([]TUIContentItem, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, intent_id, kind, text, options_json, answer, created_at
-		FROM tui_content_history
-		ORDER BY created_at ASC
-		LIMIT ?
-	`, limit)
-	if err != nil {
-		return nil, errors.Wrap(err, "load tui content history")
-	}
-	defer rows.Close()
-
-	var result []TUIContentItem
-	for rows.Next() {
-		var item TUIContentItem
-		var optionsJSON string
-		if err := rows.Scan(
-			&item.ID, &item.RunID, &item.IntentID, &item.Kind, &item.Text, &optionsJSON, &item.Answer, &item.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		if optionsJSON != "null" && optionsJSON != "" {
-			_ = json.Unmarshal([]byte(optionsJSON), &item.Options)
-		}
-		result = append(result, item)
-	}
-	return result, nil
-}
-// UpdateTUIContentAnswer records the user's response to an interactive prompt.
-func (s *Store) UpdateTUIContentAnswer(ctx context.Context, id int64, answer string) error {
+// ResolvePendingAsk records the answer for a pending ask and marks it answered.
+func (s *Store) ResolvePendingAsk(ctx context.Context, id int64, answer string) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE tui_content_history SET answer = ? WHERE id = ?
+		UPDATE notify_pending_asks
+		SET answer = ?, answered_at = unixepoch()
+		WHERE id = ?
 	`, answer, id)
-	return errors.Wrap(err, "update tui content answer")
-}
-
-// GetTUIAnswer retrieves the most recent answer for a given intent and prompt text.
-func (s *Store) GetTUIAnswer(ctx context.Context, intentID, text string) (string, error) {
-	var answer string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT answer
-		FROM tui_content_history
-		WHERE intent_id = ? AND text = ? AND answer != ''
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, intentID, text).Scan(&answer)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
-		}
-		return "", errors.Wrap(err, "get tui answer")
-	}
-	return answer, nil
-}
-
-// GetUnansweredTUIPrompt returns the ID of the most recent unanswered prompt for an intent.
-func (s *Store) GetUnansweredTUIPrompt(ctx context.Context, intentID, text string) (int64, error) {
-	var id int64
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id
-		FROM tui_content_history
-		WHERE intent_id = ? AND text = ? AND answer = ''
-		ORDER BY created_at DESC
-		LIMIT 1
-	`, intentID, text).Scan(&id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, nil
-		}
-		return 0, errors.Wrap(err, "get unanswered tui prompt")
-	}
-	return id, nil
-}
-
-// DeleteTUIContent removes a single item from history.
-func (s *Store) DeleteTUIContent(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM tui_content_history WHERE id = ?", id)
-	return errors.Wrap(err, "delete tui content")
-}
-
-// ClearTUIContentHistory removes all content from history.
-func (s *Store) ClearTUIContentHistory(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM tui_content_history")
-	return errors.Wrap(err, "clear tui content history")
-}
-
-// SaveTUICommand persists a command to the TUI command history.
-func (s *Store) SaveTUICommand(ctx context.Context, command string) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO tui_command_history (command) VALUES (?)", command)
-	if err != nil {
-		return errors.Wrap(err, "save tui command")
-	}
-	// Prune to keep only latest 100
-	_, _ = s.db.ExecContext(ctx, `
-		DELETE FROM tui_command_history 
-		WHERE id NOT IN (SELECT id FROM tui_command_history ORDER BY created_at DESC LIMIT 100)
-	`)
-	return nil
-}
-
-// LoadTUICommandHistory retrieves all stored TUI commands.
-func (s *Store) LoadTUICommandHistory(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT command FROM tui_command_history ORDER BY created_at ASC")
-	if err != nil {
-		return nil, errors.Wrap(err, "load tui command history")
-	}
-	defer rows.Close()
-
-	var result []string
-	for rows.Next() {
-		var cmd string
-		if err := rows.Scan(&cmd); err != nil {
-			return nil, err
-		}
-		result = append(result, cmd)
-	}
-	return result, nil
+	return errors.Wrap(err, "resolve pending ask")
 }

@@ -21,7 +21,11 @@ func (p *IntegrationGRPCPlugin) GRPCServer(broker *plugin.GRPCBroker, s *grpc.Se
 	return nil
 }
 
-func (p *IntegrationGRPCPlugin) GRPCClient(ctx context.Context, broker *plugin.GRPCBroker, c *grpc.ClientConn) (interface{}, error) {
+func (p *IntegrationGRPCPlugin) GRPCClient(
+	ctx context.Context,
+	broker *plugin.GRPCBroker,
+	c *grpc.ClientConn,
+) (interface{}, error) {
 	return &GRPCClient{
 		client: proto.NewIntegrationClient(c),
 	}, nil
@@ -32,27 +36,42 @@ type GRPCServer struct {
 	Impl Integration
 }
 
-func (m *GRPCServer) Configure(ctx context.Context, req *proto.ConfigureRequest) (*proto.ConfigureResponse, error) {
+func (m *GRPCServer) Configure(
+	ctx context.Context,
+	req *proto.ConfigureRequest,
+) (*proto.ConfigureResponse, error) {
 	err := m.Impl.Configure(req.Config)
 	return &proto.ConfigureResponse{}, err
 }
 
-func (m *GRPCServer) Description(ctx context.Context, req *proto.DescriptionRequest) (*proto.DescriptionResponse, error) {
+func (m *GRPCServer) Description(
+	ctx context.Context,
+	req *proto.DescriptionRequest,
+) (*proto.DescriptionResponse, error) {
 	desc, err := m.Impl.Description()
 	return &proto.DescriptionResponse{Description: desc}, err
 }
 
-func (m *GRPCServer) Tools(ctx context.Context, req *proto.ToolsRequest) (*proto.ToolsResponse, error) {
+func (m *GRPCServer) Tools(
+	ctx context.Context,
+	req *proto.ToolsRequest,
+) (*proto.ToolsResponse, error) {
 	tools, err := m.Impl.Tools()
 	return &proto.ToolsResponse{Tools: tools}, err
 }
 
-func (m *GRPCServer) CallTool(ctx context.Context, req *proto.CallToolRequest) (*proto.CallToolResponse, error) {
+func (m *GRPCServer) CallTool(
+	ctx context.Context,
+	req *proto.CallToolRequest,
+) (*proto.CallToolResponse, error) {
 	res, err := m.Impl.CallTool(req.Name, req.Args)
 	return &proto.CallToolResponse{Result: res}, err
 }
 
-func (m *GRPCServer) StreamEvents(req *proto.StreamEventsRequest, srv proto.Integration_StreamEventsServer) error {
+func (m *GRPCServer) StreamEvents(
+	req *proto.StreamEventsRequest,
+	srv proto.Integration_StreamEventsServer,
+) error {
 	streamer, ok := m.Impl.(EventStreamer)
 	if !ok {
 		return nil
@@ -107,7 +126,10 @@ func (m *GRPCClient) Tools() ([]byte, error) {
 }
 
 func (m *GRPCClient) CallTool(name string, args []byte) ([]byte, error) {
-	res, err := m.client.CallTool(context.Background(), &proto.CallToolRequest{Name: name, Args: args})
+	res, err := m.client.CallTool(
+		context.Background(),
+		&proto.CallToolRequest{Name: name, Args: args},
+	)
 	if err != nil {
 		return nil, err
 	}

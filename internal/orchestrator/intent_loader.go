@@ -200,7 +200,9 @@ func (l *starlarkIntentLoader) onBuiltin(
 	kwargs []starlark.Tuple,
 ) (starlark.Value, error) {
 	if len(args) == 0 {
-		return nil, errors.New("on() requires at least one positional argument (the trigger tool reference)")
+		return nil, errors.New(
+			"on() requires at least one positional argument (the trigger tool reference)",
+		)
 	}
 	fn, ok := args[0].(*starlark.Builtin)
 	if !ok {
@@ -209,7 +211,10 @@ func (l *starlarkIntentLoader) onBuiltin(
 	name := fn.Name()
 
 	if !strings.Contains(name, ".") {
-		return nil, errors.Newf("invalid trigger %q: must be a namespaced tool reference (e.g. theme.on_change)", name)
+		return nil, errors.Newf(
+			"invalid trigger %q: must be a namespaced tool reference (e.g. theme.on_change)",
+			name,
+		)
 	}
 
 	// Restore underscores that were sanitized by dummyNamespaceProxy.
@@ -302,8 +307,11 @@ func (p *dummyNamespaceProxy) Attr(name string) (starlark.Value, error) {
 			return &dummyNamespaceProxy{name: fqName, namespaces: p.namespaces}, nil
 		}
 	}
-	return starlark.NewBuiltin(fqName, func(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-		return starlark.None, nil
-	}), nil
+	return starlark.NewBuiltin(
+		fqName,
+		func(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+			return starlark.None, nil
+		},
+	), nil
 }
 func (p *dummyNamespaceProxy) AttrNames() []string { return nil }

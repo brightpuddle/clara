@@ -66,7 +66,13 @@ func FormatToolList(tools []Tool, useColor bool) string {
 		if tool.IsEvent {
 			eventTag := "[event]"
 			if useColor {
-				nameLabel = colorize(tool.Name, ansiMagenta) + "  " + colorize(eventTag, ansiMagenta)
+				nameLabel = colorize(
+					tool.Name,
+					ansiMagenta,
+				) + "  " + colorize(
+					eventTag,
+					ansiMagenta,
+				)
 			} else {
 				nameLabel = tool.Name + "  " + eventTag
 			}

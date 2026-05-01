@@ -98,7 +98,10 @@ func (l *pluginLoader) loadAll() error {
 	for pluginName := range grpcPluginPaths {
 		if p, ok := resolveGRPCPluginPath(pluginName); ok {
 			if err := l.loadIntegrationAt(pluginName, p); err != nil {
-				l.log.Error().Err(err).Str("name", pluginName).Msg("failed to load gRPC integration")
+				l.log.Error().
+					Err(err).
+					Str("name", pluginName).
+					Msg("failed to load gRPC integration")
 			}
 		}
 	}
@@ -254,13 +257,13 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: contract.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
-			"chrome":      &contract.ChromeIntegrationPlugin{},
-			"zk":          &contract.ZkIntegrationPlugin{},
-			"llm":         &contract.LLMIntegrationPlugin{},
-			"web":         &contract.WebIntegrationPlugin{},
-			"macos":       &contract.IntegrationGRPCPlugin{},
-			"tmux":        &contract.TmuxIntegrationPlugin{},
-			"task": &contract.TaskIntegrationPlugin{},
+			"chrome": &contract.ChromeIntegrationPlugin{},
+			"zk":     &contract.ZkIntegrationPlugin{},
+			"llm":    &contract.LLMIntegrationPlugin{},
+			"web":    &contract.WebIntegrationPlugin{},
+			"macos":  &contract.IntegrationGRPCPlugin{},
+			"tmux":   &contract.TmuxIntegrationPlugin{},
+			"task":   &contract.TaskIntegrationPlugin{},
 		},
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC, plugin.ProtocolGRPC},
 		Cmd:              exec.Command(path),

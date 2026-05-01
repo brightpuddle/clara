@@ -38,8 +38,35 @@ type Config struct {
 	// Integrations configures the native Go plugins.
 	Integrations map[string]map[string]any `yaml:"integrations"`
 
+	// Notify configures the notification backend.
+	Notify NotifyConfig `yaml:"notify"`
+
 	// Testing overrides
 	ControlSocketPathOverride string `yaml:"-"`
+}
+
+// NotifyConfig configures the notification backend for notify.send and notify.ask.
+type NotifyConfig struct {
+	// Backend selects the delivery mechanism: dummy (default), macos, webex, discord.
+	Backend string `yaml:"backend"`
+
+	// Webex configuration (used when backend = "webex").
+	Webex WebexNotifyConfig `yaml:"webex"`
+
+	// Discord configuration (used when backend = "discord").
+	Discord DiscordNotifyConfig `yaml:"discord"`
+}
+
+// WebexNotifyConfig holds credentials for the Webex notification backend.
+type WebexNotifyConfig struct {
+	BotToken string `yaml:"bot_token"`
+	RoomID   string `yaml:"room_id"`
+}
+
+// DiscordNotifyConfig holds credentials for the Discord notification backend.
+type DiscordNotifyConfig struct {
+	BotToken  string `yaml:"bot_token"`
+	ChannelID string `yaml:"channel_id"`
 }
 
 // Save writes the config to the given path in YAML format.
@@ -141,4 +168,3 @@ func (c *Config) IntentLogsDir() string {
 func (c *Config) LogLevelNormalized() string {
 	return strings.ToLower(strings.TrimSpace(c.LogLevel))
 }
-

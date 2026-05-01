@@ -225,7 +225,11 @@ func (s *Supervisor) deployIntent(path string, intent *orchestrator.Intent) erro
 	return nil
 }
 
-func (s *Supervisor) runPersistentTask(ctx context.Context, managed *managedIntent, task orchestrator.Task) {
+func (s *Supervisor) runPersistentTask(
+	ctx context.Context,
+	managed *managedIntent,
+	task orchestrator.Task,
+) {
 	id := managed.intent.ID
 	runSeq := atomic.LoadInt64(&managed.runSeq)
 
@@ -256,7 +260,12 @@ func (s *Supervisor) runPersistentTask(ctx context.Context, managed *managedInte
 	}
 }
 
-func (s *Supervisor) loopScheduled(ctx context.Context, managed *managedIntent, task orchestrator.Task, runSeq int64) {
+func (s *Supervisor) loopScheduled(
+	ctx context.Context,
+	managed *managedIntent,
+	task orchestrator.Task,
+	runSeq int64,
+) {
 	// Simple polling scheduler for PoC. In production, use a proper cron lib.
 	// For now, only @every durations are supported in the Task.Schedule field.
 	interval, err := time.ParseDuration(strings.TrimPrefix(task.Schedule, "@every "))
@@ -282,7 +291,12 @@ func (s *Supervisor) loopScheduled(ctx context.Context, managed *managedIntent, 
 	}
 }
 
-func (s *Supervisor) loopWorker(ctx context.Context, managed *managedIntent, task orchestrator.Task, runSeq int64) {
+func (s *Supervisor) loopWorker(
+	ctx context.Context,
+	managed *managedIntent,
+	task orchestrator.Task,
+	runSeq int64,
+) {
 	intervalStr := task.Interval
 	if intervalStr == "" {
 		intervalStr = "1s"
@@ -310,7 +324,12 @@ func (s *Supervisor) loopWorker(ctx context.Context, managed *managedIntent, tas
 	}
 }
 
-func (s *Supervisor) loopEvent(ctx context.Context, managed *managedIntent, task orchestrator.Task, runSeq int64) {
+func (s *Supervisor) loopEvent(
+	ctx context.Context,
+	managed *managedIntent,
+	task orchestrator.Task,
+	runSeq int64,
+) {
 	events, stop := s.bus.Subscribe()
 	defer stop()
 
@@ -587,7 +606,12 @@ type SupervisorValidationError struct {
 }
 
 func (e *SupervisorValidationError) Error() string {
-	return fmt.Sprintf("intent %q state %q uses unregistered tool %q", e.IntentID, e.StateName, e.Action)
+	return fmt.Sprintf(
+		"intent %q state %q uses unregistered tool %q",
+		e.IntentID,
+		e.StateName,
+		e.Action,
+	)
 }
 
 // ValidateIntent checks if an intent is valid within the current registry context.

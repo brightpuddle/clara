@@ -12,7 +12,6 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/ipc"
-	"github.com/brightpuddle/clara/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -92,9 +91,11 @@ func loadConfig() error {
 	return err
 }
 
-// runHUD is the default command: launch the interactive TUI.
-func runHUD(cmd *cobra.Command, args []string) error {
-	return tui.Run(cfg)
+// runHUD is the default command. The interactive HUD has been removed in
+// Phase 4; this now prints a brief usage hint instead.
+func runHUD(cmd *cobra.Command, _ []string) error {
+	_ = cmd.Help()
+	return nil
 }
 
 // wantJSON returns true when output should be machine-readable JSON:

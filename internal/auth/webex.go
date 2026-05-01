@@ -32,10 +32,21 @@ type WebexTokens struct {
 	ClientSecret          string    `json:"client_secret"`
 }
 
-func AuthorizeWebex(ctx context.Context, clientID, clientSecret string, db *store.Store, log zerolog.Logger) error {
+func AuthorizeWebex(
+	ctx context.Context,
+	clientID, clientSecret string,
+	db *store.Store,
+	log zerolog.Logger,
+) error {
 	state := fmt.Sprintf("%d", time.Now().UnixNano())
-	authURL := fmt.Sprintf("%s?client_id=%s&response_type=code&redirect_uri=%s&scope=%s&state=%s",
-		WebexAuthURL, clientID, url.QueryEscape(WebexRedirectURI), url.QueryEscape(WebexScope), state)
+	authURL := fmt.Sprintf(
+		"%s?client_id=%s&response_type=code&redirect_uri=%s&scope=%s&state=%s",
+		WebexAuthURL,
+		clientID,
+		url.QueryEscape(WebexRedirectURI),
+		url.QueryEscape(WebexScope),
+		state,
+	)
 
 	fmt.Printf("Authorize Clara at Webex:\n\n%s\n\n", authURL)
 	fmt.Println("Waiting for callback on http://localhost:48766/webex/callback ...")
@@ -99,7 +110,12 @@ func RefreshToken(ctx context.Context, tokens *WebexTokens) (*WebexTokens, error
 	data.Set("client_secret", tokens.ClientSecret)
 	data.Set("refresh_token", tokens.RefreshToken)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", WebexTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		WebexTokenURL,
+		strings.NewReader(data.Encode()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +129,11 @@ func RefreshToken(ctx context.Context, tokens *WebexTokens) (*WebexTokens, error
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := json.Marshal(resp.Body)
-		return nil, fmt.Errorf("webex token refresh failed (status %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf(
+			"webex token refresh failed (status %d): %s",
+			resp.StatusCode,
+			string(body),
+		)
 	}
 
 	var newTokens WebexTokens
@@ -135,7 +155,12 @@ func exchangeCode(ctx context.Context, code, clientID, clientSecret string) (*We
 	data.Set("code", code)
 	data.Set("redirect_uri", WebexRedirectURI)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", WebexTokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		WebexTokenURL,
+		strings.NewReader(data.Encode()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +174,11 @@ func exchangeCode(ctx context.Context, code, clientID, clientSecret string) (*We
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := json.Marshal(resp.Body)
-		return nil, fmt.Errorf("webex token exchange failed (status %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf(
+			"webex token exchange failed (status %d): %s",
+			resp.StatusCode,
+			string(body),
+		)
 	}
 
 	var tokens WebexTokens

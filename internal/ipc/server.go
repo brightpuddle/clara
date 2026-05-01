@@ -40,7 +40,11 @@ type Server struct {
 // NewServer creates a new control socket server.
 func NewServer(socketPath string, handler Handler, log zerolog.Logger) (*Server, error) {
 	if len(socketPath) > 104 {
-		return nil, errors.Newf("unix socket path too long: %s (length: %d, max: 104)", socketPath, len(socketPath))
+		return nil, errors.Newf(
+			"unix socket path too long: %s (length: %d, max: 104)",
+			socketPath,
+			len(socketPath),
+		)
 	}
 	return &Server{socketPath: socketPath, handler: handler, log: log}, nil
 }

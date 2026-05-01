@@ -41,7 +41,7 @@ func (p *FSPlugin) CallTool(name string, args []byte) ([]byte, error) {
 	if p.server == nil {
 		return nil, fmt.Errorf("FSPlugin not configured")
 	}
-	
+
 	// Strip prefix if necessary, but plugins.go prefixes names for the registry,
 	// the original tool name is passed back to CallTool.
 	serverTools := p.server.ListTools()

@@ -34,27 +34,27 @@ type NotificationHandler func(serverName, method string, params any)
 
 // Registry holds the set of available Tools.
 type Registry struct {
-	mu            sync.RWMutex
-	tools          map[string]Tool
-	defaultTools   map[string]Tool
-	descriptions  map[string]string
+	mu                    sync.RWMutex
+	tools                 map[string]Tool
+	defaultTools          map[string]Tool
+	descriptions          map[string]string
 	namespaceDescriptions map[string]string
-	specs         map[string]mcp.Tool
-	examples      map[string][]string
-	notifications []NotificationHandler
-	log           zerolog.Logger
+	specs                 map[string]mcp.Tool
+	examples              map[string][]string
+	notifications         []NotificationHandler
+	log                   zerolog.Logger
 }
 
 // New creates an empty Registry.
 func New(log zerolog.Logger) *Registry {
 	return &Registry{
-		tools:          make(map[string]Tool),
-		defaultTools:   make(map[string]Tool),
-		descriptions:   make(map[string]string),
+		tools:                 make(map[string]Tool),
+		defaultTools:          make(map[string]Tool),
+		descriptions:          make(map[string]string),
 		namespaceDescriptions: make(map[string]string),
-		specs:          make(map[string]mcp.Tool),
-		examples:       make(map[string][]string),
-		log:            log,
+		specs:                 make(map[string]mcp.Tool),
+		examples:              make(map[string][]string),
+		log:                   log,
 	}
 }
 
@@ -204,7 +204,7 @@ func (r *Registry) Names() []string {
 func (r *Registry) Tools() []ToolInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	seen := make(map[string]struct{}, len(r.tools)+len(r.defaultTools))
 	for name := range r.tools {
 		seen[name] = struct{}{}
@@ -296,9 +296,6 @@ func (r *Registry) IsKnownNamespace(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if name == "tui" {
-		return true
-	}
 	prefix := name + "."
 	for t := range r.tools {
 		if strings.HasPrefix(t, prefix) {
@@ -375,4 +372,3 @@ func (r *Registry) GetFQToolName(serverName, toolName string) string {
 	}
 	return serverName + "." + toolName
 }
-

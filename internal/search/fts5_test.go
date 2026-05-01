@@ -18,16 +18,16 @@ func TestFTS5Indexing(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	dbPath := filepath.Join(tmpDir, "test.db")
-	
+
 	// Create a new indexer
 	// We want to index "documents" which have an ID, title, and body.
 	// We'll use an external content table strategy.
-	
+
 	schema := &IndexSchema{
-		Name: "docs",
+		Name:    "docs",
 		Columns: []string{"title", "body"},
 	}
-	
+
 	indexer, err := NewIndexer(dbPath, schema)
 	if err != nil {
 		t.Fatalf("failed to create indexer: %v", err)
@@ -42,7 +42,7 @@ func TestFTS5Indexing(t *testing.T) {
 			"body":  "This is a test document about SQLite and FTS5.",
 		},
 	}
-	
+
 	if err := indexer.Index(ctx, doc); err != nil {
 		t.Fatalf("failed to index document: %v", err)
 	}

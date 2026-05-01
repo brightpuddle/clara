@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	notifybuiltin "github.com/brightpuddle/clara/internal/builtin/notify"
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
@@ -24,6 +25,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/sourcegraph/conc"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -92,7 +94,10 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	reg := registry.New(logger)
 
-	registerPermanentTUITools(reg, db, logger)
+	// Register the notify builtin.
+	if err := notifybuiltin.Register(daemonCtx, cfg.Notify, reg, logger); err != nil {
+		logger.Error().Err(err).Msg("failed to register notify builtin")
+	}
 
 	sup := supervisor.New(cfg.TasksDir(), reg, func(
 		runCtx context.Context,
@@ -314,7 +319,10 @@ func buildHandler(
 				}
 				writeResp(&ipc.Response{
 					Message: msg,
-					Data:    map[string]any{"run_id": runID, "started_at": startedAt.Format(time.RFC3339Nano)},
+					Data: map[string]any{
+						"run_id":     runID,
+						"started_at": startedAt.Format(time.RFC3339Nano),
+					},
 				})
 				return
 			}
@@ -474,35 +482,6 @@ func buildHandler(
 				}
 			}
 
-		case ipc.MethodTUIHistory:
-			limit, _ := req.Params["limit"].(float64)
-			history, err := db.LoadTUIContentHistory(ctx, int(limit))
-			if err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Data: history})
-
-		case ipc.MethodTUIClear:
-			if err := db.ClearTUIContentHistory(ctx); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "TUI history cleared"})
-
-		case ipc.MethodTUIAnswer:
-			id, _ := req.Params["id"].(float64)
-			answer, _ := req.Params["answer"].(string)
-			if id == 0 {
-				writeResp(&ipc.Response{Error: "missing id"})
-				return
-			}
-			if err := db.UpdateTUIContentAnswer(ctx, int64(id), answer); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "answer recorded"})
-
 		case ipc.MethodPluginList:
 			writeResp(&ipc.Response{Data: loader.List()})
 
@@ -621,7 +600,11 @@ func serializeToolInfo(info registry.ToolInfo) map[string]any {
 }
 
 // listEventTools returns serialized event tool entries for the given namespace.
-func listEventTools(ctx context.Context, reg *registry.Registry, namespace string) []map[string]any {
+func listEventTools(
+	ctx context.Context,
+	reg *registry.Registry,
+	namespace string,
+) []map[string]any {
 	// Direct server owns its own clara_list_events.
 	directTool := namespace + ".clara_list_events"
 	if _, ok := reg.Tool(directTool); ok {
@@ -778,126 +761,12 @@ func extractParams(spec mcp.Tool) []map[string]any {
 	return params
 }
 
-func registerPermanentTUITools(reg *registry.Registry, db *store.Store, logger zerolog.Logger) {
-	reg.RegisterDefault("tui.notify.send", func(ctx context.Context, args map[string]any) (any, error) {
-		message, _ := args["message"].(string)
-		if message == "" {
-			return nil, errors.New("message is required")
-		}
-
-		// Always persist to DB
-		runID, _ := ctx.Value(orchestrator.ContextKeyRunID).(string)
-		intentID, _ := ctx.Value(orchestrator.ContextKeyIntentID).(string)
-		id, _ := db.SaveTUIContent(ctx, store.TUIContentItem{
-			RunID:    runID,
-			IntentID: intentID,
-			Kind:     "notification",
-			Text:     message,
-		})
-
-		// Check if TUI is connected (dynamic MCP)
-		if reg.Has("tui.hud_send") {
-			args["id"] = id
-			args["run_id"] = runID
-			args["intent_id"] = intentID
-			return reg.Call(ctx, "tui.hud_send", args)
-		}
-
-		return "notification recorded (TUI offline)", nil
-	})
-
-	reg.RegisterDefault("tui.notify.send_interactive", func(ctx context.Context, args map[string]any) (any, error) {
-		prompt, _ := args["prompt"].(string)
-		if prompt == "" {
-			return nil, errors.New("prompt is required")
-		}
-		var opts []string
-		if raw, ok := args["options"].([]any); ok {
-			for _, r := range raw {
-				if s, ok := r.(string); ok {
-					opts = append(opts, s)
-				}
-			}
-		}
-
-		runID, _ := ctx.Value(orchestrator.ContextKeyRunID).(string)
-		intentID, _ := ctx.Value(orchestrator.ContextKeyIntentID).(string)
-
-		// Check for existing answer in DB for this intent and prompt
-		if intentID != "" {
-			answer, _ := db.GetTUIAnswer(ctx, intentID, prompt)
-			if answer != "" {
-				// Record it in history as answered so TUI shows it
-				_, _ = db.SaveTUIContent(ctx, store.TUIContentItem{
-					RunID:    runID,
-					IntentID: intentID,
-					Kind:     "qa",
-					Text:     prompt,
-					Options:  opts,
-					Answer:   answer,
-				})
-				return fmt.Sprintf("Answer received: %s", answer), nil
-			}
-		}
-
-		// Always persist to DB (or reuse existing unanswered prompt)
-		var id int64
-		if intentID != "" {
-			id, _ = db.GetUnansweredTUIPrompt(ctx, intentID, prompt)
-		}
-
-		if id == 0 {
-			id, _ = db.SaveTUIContent(ctx, store.TUIContentItem{
-				RunID:    runID,
-				IntentID: intentID,
-				Kind:     "qa",
-				Text:     prompt,
-				Options:  opts,
-			})
-		}
-
-		// If TUI is connected, proxy immediately
-		if reg.Has("tui.hud_send_interactive") {
-			args["id"] = id
-			args["run_id"] = runID
-			args["intent_id"] = intentID
-			res, err := reg.Call(ctx, "tui.hud_send_interactive", args)
-			if err == nil {
-				if ans, ok := res.(string); ok && strings.HasPrefix(ans, "Answer received: ") {
-					actualAns := strings.TrimPrefix(ans, "Answer received: ")
-					_ = db.UpdateTUIContentAnswer(ctx, id, actualAns)
-				}
-			}
-			return res, err
-		}
-
-		// If no RunID is present, this is likely a direct CLI tool call.
-		// In this case, we block and wait for the answer to be recorded in the DB.
-		if runID == "" {
-			ticker := time.NewTicker(500 * time.Millisecond)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					// If CLI call is cancelled (e.g. Ctrl+C), remove the prompt from DB
-					// so it doesn't appear in TUI later.
-					_ = db.DeleteTUIContent(context.Background(), id)
-					return nil, ctx.Err()
-				case <-ticker.C:
-					// Check if answered
-					history, _ := db.LoadTUIContentHistory(ctx, 100)
-					for _, item := range history {
-						if item.ID == id && item.Answer != "" {
-							return fmt.Sprintf("Answer received: %s", item.Answer), nil
-						}
-					}
-				}
-			}
-		}
-
-		// If TUI is offline and it's a script run, pause execution.
-		return nil, errors.New("workflow paused: waiting for TUI input")
-	})
+// isTerminalFile reports whether f is connected to an interactive terminal.
+func isTerminalFile(f *os.File) bool {
+	if f == nil {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
 }
 
 func saveConfig(cfg *config.Config, log zerolog.Logger) error {

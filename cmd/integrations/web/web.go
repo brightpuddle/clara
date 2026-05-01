@@ -27,9 +27,14 @@ func (w *Web) Tools() ([]byte, error) {
 	return json.Marshal([]mcp.Tool{
 		mcp.NewTool(
 			"search",
-			mcp.WithDescription("Search the internet using DuckDuckGo. Returns top results with titles, snippets, and URLs."),
+			mcp.WithDescription(
+				"Search the internet using DuckDuckGo. Returns top results with titles, snippets, and URLs.",
+			),
 			mcp.WithString("query", mcp.Required(), mcp.Description("The search query string.")),
-			mcp.WithNumber("limit", mcp.Description("Maximum number of results to return (default: 5).")),
+			mcp.WithNumber(
+				"limit",
+				mcp.Description("Maximum number of results to return (default: 5)."),
+			),
 		),
 		mcp.NewTool(
 			"read",
@@ -64,7 +69,14 @@ func (w *Web) CallTool(name string, args []byte) ([]byte, error) {
 		}
 		var output strings.Builder
 		for i, res := range results {
-			fmt.Fprintf(&output, "[%d] %s\nURL: %s\nSnippet: %s\n\n", i+1, res.Title, res.URL, res.Snippet)
+			fmt.Fprintf(
+				&output,
+				"[%d] %s\nURL: %s\nSnippet: %s\n\n",
+				i+1,
+				res.Title,
+				res.URL,
+				res.Snippet,
+			)
 		}
 		if output.Len() == 0 {
 			return json.Marshal("No results found.")
@@ -93,7 +105,10 @@ func (w *Web) Search(query string, limit int) ([]contract.SearchResult, error) {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36")
+	req.Header.Set(
+		"User-Agent",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+	)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -154,7 +169,10 @@ func (w *Web) Read(u string) (string, error) {
 		return "", err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36")
+	req.Header.Set(
+		"User-Agent",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36",
+	)
 
 	resp, err := client.Do(req)
 	if err != nil {

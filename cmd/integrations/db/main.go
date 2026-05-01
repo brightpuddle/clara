@@ -24,7 +24,7 @@ func (p *DBPlugin) Configure(config []byte) error {
 			return err
 		}
 	}
-	
+
 	service, err := Open(cfg.Path)
 	if err != nil {
 		return err
@@ -51,7 +51,11 @@ func (p *DBPlugin) Tools() ([]byte, error) {
 		mcp.NewTool(
 			"exec",
 			mcp.WithDescription("Execute a SQL statement and return the number of affected rows."),
-			mcp.WithString("sql", mcp.Required(), mcp.Description("SQL statement text to execute.")),
+			mcp.WithString(
+				"sql",
+				mcp.Required(),
+				mcp.Description("SQL statement text to execute."),
+			),
 			mcp.WithArray(
 				"params",
 				mcp.Description("Optional positional parameters bound to the SQL statement."),
@@ -92,7 +96,9 @@ func (p *DBPlugin) Tools() ([]byte, error) {
 			),
 			mcp.WithBoolean(
 				"replace",
-				mcp.Description("When true, clear the table before inserting rows. Defaults to true."),
+				mcp.Description(
+					"When true, clear the table before inserting rows. Defaults to true.",
+				),
 			),
 		),
 	}
@@ -172,7 +178,12 @@ func (p *DBPlugin) Exec(sql string, params []any) (int64, error) {
 	return p.service.Exec(context.Background(), sql, params)
 }
 
-func (p *DBPlugin) VecSearch(table string, vector []float32, limit int, minScore float64) ([]map[string]any, error) {
+func (p *DBPlugin) VecSearch(
+	table string,
+	vector []float32,
+	limit int,
+	minScore float64,
+) ([]map[string]any, error) {
 	if p.service == nil {
 		return nil, fmt.Errorf("DBPlugin not configured")
 	}

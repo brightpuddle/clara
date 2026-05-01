@@ -12,7 +12,32 @@ log_level: info
 # Directory where .star intent files are watched (default: ~/.config/clara/tasks)
 # tasks_dir: ~/.config/clara/tasks
 
-# Integrations configure the native Go plugins.
+# ── Notification backend ───────────────────────────────────────────────────────
+# Controls how notify.send and notify.ask deliver messages to you.
+#
+# Backends: dummy (default) | macos | webex | discord
+#
+#   dummy   — logs messages to the daemon log; notify.ask returns "acknowledged"
+#             immediately. Safe default that requires no configuration.
+#
+#   macos   — uses the macOS ClaraBridge integration for native notifications.
+#
+#   webex   — bot posts to a Webex room; notify.ask pauses the script and
+#             resumes when the bot webhook receives a reply.
+#
+#   discord — same shape as webex but uses a Discord channel.
+#
+notify:
+  backend: dummy  # dummy | macos | webex | discord
+  # webex:
+  #   bot_token: "${WEBEX_BOT_TOKEN}"
+  #   room_id:   "${WEBEX_NOTIFY_ROOM_ID}"
+  # discord:
+  #   bot_token:  "${DISCORD_BOT_TOKEN}"
+  #   channel_id: "${DISCORD_NOTIFY_CHANNEL_ID}"
+
+# ── Integrations ───────────────────────────────────────────────────────────────
+# Configures the native Go plugins.
 integrations:
   # SQLite database integration
   db:
@@ -32,3 +57,40 @@ integrations:
 
   # Chrome browser automation
   # chrome: {}
+
+# ── Starlark lib/ convention ───────────────────────────────────────────────────
+# Place shared Starlark modules under ~/.config/clara/tasks/lib/ so any intent
+# can load them with:
+#
+#   load("lib/task.star", "add", "list")
+#   load("lib/search.star", "query")
+#
+# Two example stubs are documented below.  Copy and edit them to match your
+# preferred backends — changing the implementation in one lib file updates
+# every intent that loads it.
+#
+# lib/task.star example:
+#
+#   def add(description, project="", priority="", due=""):
+#       args = {"description": description}
+#       if project:  args["project"]  = project
+#       if priority: args["priority"] = priority
+#       if due:      args["due"]      = due
+#       return task.add(args)
+#
+#   def list(filter=""):
+#       return task.list({"filter": filter})
+#
+#   def complete(id):
+#       return task.done({"id": id})
+#
+# lib/search.star example:
+#
+#   def query(q, sources=["web", "zk"]):
+#       results = []
+#       if "web" in sources:
+#           results += web.search({"query": q}).get("results", [])
+#       if "zk" in sources:
+#           results += zk.search({"query": q}).get("notes", [])
+#       return results
+

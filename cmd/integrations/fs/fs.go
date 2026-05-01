@@ -76,8 +76,11 @@ func New(ctx context.Context) *Server {
 			mcp.Required(),
 			mcp.Description("Absolute or relative path to the file to read."),
 		),
-		mcp.WithString("decode",
-			mcp.Description("Optional decoder: json, yaml. When set, returns parsed data instead of raw text."),
+		mcp.WithString(
+			"decode",
+			mcp.Description(
+				"Optional decoder: json, yaml. When set, returns parsed data instead of raw text.",
+			),
 		),
 	), handleReadFile)
 
@@ -411,7 +414,9 @@ func handleReadFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 				return mcp.NewToolResultError(fmt.Sprintf("read_file yaml decode: %v", err)), nil
 			}
 		default:
-			return mcp.NewToolResultError(fmt.Sprintf("read_file: unsupported decode format %q", decode)), nil
+			return mcp.NewToolResultError(
+				fmt.Sprintf("read_file: unsupported decode format %q", decode),
+			), nil
 		}
 		return mcp.NewToolResultStructuredOnly(parsed), nil
 	}
@@ -431,7 +436,9 @@ func handleWriteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 
 	if hasData {
 		if encode == "" {
-			return mcp.NewToolResultError("write_file: 'encode' must be set when 'data' is provided"), nil
+			return mcp.NewToolResultError(
+				"write_file: 'encode' must be set when 'data' is provided",
+			), nil
 		}
 		var err error
 		switch strings.ToLower(encode) {
@@ -440,7 +447,9 @@ func handleWriteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 		case "yaml":
 			content, err = yaml.Marshal(data)
 		default:
-			return mcp.NewToolResultError(fmt.Sprintf("write_file: unsupported encode format %q", encode)), nil
+			return mcp.NewToolResultError(
+				fmt.Sprintf("write_file: unsupported encode format %q", encode),
+			), nil
 		}
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("write_file encode: %v", err)), nil
@@ -460,7 +469,9 @@ func handleWriteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolR
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("write_file: %v", err)), nil
 	}
-	res, err := mcp.NewToolResultJSON(map[string]any{"status": "success", "message": "file written successfully"})
+	res, err := mcp.NewToolResultJSON(
+		map[string]any{"status": "success", "message": "file written successfully"},
+	)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("marshal result: %v", err)), nil
 	}
@@ -579,7 +590,9 @@ func handleMoveFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	if err := os.Rename(src, dst); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("move_file: %v", err)), nil
 	}
-	res, err := mcp.NewToolResultJSON(map[string]any{"status": "success", "message": "file moved successfully"})
+	res, err := mcp.NewToolResultJSON(
+		map[string]any{"status": "success", "message": "file moved successfully"},
+	)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("marshal result: %v", err)), nil
 	}
@@ -595,7 +608,9 @@ func handleDeleteFile(_ context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	if err := os.Remove(path); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("delete_file: %v", err)), nil
 	}
-	res, err := mcp.NewToolResultJSON(map[string]any{"status": "success", "message": "deleted successfully"})
+	res, err := mcp.NewToolResultJSON(
+		map[string]any{"status": "success", "message": "deleted successfully"},
+	)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("marshal result: %v", err)), nil
 	}
@@ -614,7 +629,9 @@ func handleCreateDirectory(
 	if err := os.MkdirAll(path, 0o755); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("create_directory: %v", err)), nil
 	}
-	res, err := mcp.NewToolResultJSON(map[string]any{"status": "success", "message": "directory created"})
+	res, err := mcp.NewToolResultJSON(
+		map[string]any{"status": "success", "message": "directory created"},
+	)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("marshal result: %v", err)), nil
 	}

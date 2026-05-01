@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"fmt"
+
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -30,7 +31,9 @@ type Result struct {
 // ResultToMCPContent converts a search result into MCP content for a tool response.
 func ResultToMCPContent(res Result) mcp.Content {
 	// We'll return it as JSON for now, or text depending on needs.
-	return mcp.NewTextContent(fmt.Sprintf("[%s] %s\n%s (Score: %.2f)", res.ID, res.Title, res.Description, res.Score))
+	return mcp.NewTextContent(
+		fmt.Sprintf("[%s] %s\n%s (Score: %.2f)", res.ID, res.Title, res.Description, res.Score),
+	)
 }
 
 // Formatter is a helper to format multiple results for MCP.

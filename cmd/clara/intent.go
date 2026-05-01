@@ -15,12 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	notifybuiltin "github.com/brightpuddle/clara/internal/builtin/notify"
 	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
-	"github.com/brightpuddle/clara/internal/tui"
+	"github.com/brightpuddle/clara/internal/theme"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -157,7 +158,7 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 		tasks = append(tasks, t)
 	}
 
-	theme := tui.DetectTheme()
+	theme := theme.DetectTheme()
 
 	// Determine terminal width, defaulting to 80 if unavailable.
 	termWidth := 80
@@ -292,7 +293,15 @@ func runIntentStart(cmd *cobra.Command, args []string) error {
 		}
 		logPath := filepath.Join(cfg.IntentLogsDir(), intentID+".log")
 		filter := intentlog.Filter{RunID: runID, Since: startedAt}
-		return followSingleIntentLog(cmd.Context(), logPath, runID, filter, intentStartTail, intentStartVerbose, cfg.DBPath())
+		return followSingleIntentLog(
+			cmd.Context(),
+			logPath,
+			runID,
+			filter,
+			intentStartTail,
+			intentStartVerbose,
+			cfg.DBPath(),
+		)
 	}
 
 	return nil
@@ -340,7 +349,7 @@ func runIntentLogs(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	theme := tui.DetectTheme()
+	theme := theme.DetectTheme()
 	printer := newIntentWatchPrinter(&theme, intentID == "", intentLogsVerbose)
 
 	// Collect historical events.
@@ -385,8 +394,15 @@ func runIntentLogs(cmd *cobra.Command, args []string) error {
 // followSingleIntentLog follows a single intent log file using tail -F.
 // If runID is set, it exits when that run reaches a terminal state (checked via DB).
 // tail controls how many initial events to show (0 = already shown by caller; we skip re-printing).
-func followSingleIntentLog(ctx context.Context, logPath, runID string, filter intentlog.Filter, tail int, verbose bool, dbPath string) error {
-	theme := tui.DetectTheme()
+func followSingleIntentLog(
+	ctx context.Context,
+	logPath, runID string,
+	filter intentlog.Filter,
+	tail int,
+	verbose bool,
+	dbPath string,
+) error {
+	theme := theme.DetectTheme()
 	printer := newIntentWatchPrinter(&theme, false, verbose)
 
 	// Print historical tail if requested (only used from runOneOff/inline follow).
@@ -475,8 +491,13 @@ func followSingleIntentLog(ctx context.Context, logPath, runID string, filter in
 
 // followAllIntentLogs polls all *.log files in dir with byte-offset cursors.
 // This is used for `clara intent logs -f` (no intentID filter).
-func followAllIntentLogs(ctx context.Context, dir string, filter intentlog.Filter, verbose bool) error {
-	theme := tui.DetectTheme()
+func followAllIntentLogs(
+	ctx context.Context,
+	dir string,
+	filter intentlog.Filter,
+	verbose bool,
+) error {
+	theme := theme.DetectTheme()
 	printer := newIntentWatchPrinter(&theme, true, verbose)
 
 	fmt.Println(theme.Dimmed("Following events... (Ctrl-C to stop)"))
@@ -504,7 +525,12 @@ func followAllIntentLogs(ctx context.Context, dir string, filter intentlog.Filte
 
 // flushFileEvents reads new lines from path starting at offsets[path],
 // prints matching events, and updates the offset.
-func flushFileEvents(path string, filter intentlog.Filter, printer *intentWatchPrinter, offsets map[string]int64) error {
+func flushFileEvents(
+	path string,
+	filter intentlog.Filter,
+	printer *intentWatchPrinter,
+	offsets map[string]int64,
+) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -559,7 +585,8 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 		Script:       absPath,
 	}
 
-	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".json") {
+	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") ||
+		strings.HasSuffix(path, ".json") {
 		data, err := os.ReadFile(absPath)
 		if err != nil {
 			return err
@@ -571,7 +598,9 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	}
 
 	reg := registry.New(logger)
-	registerPermanentTUITools(reg, db, logger)
+	if err := notifybuiltin.Register(ctx, cfg.Notify, reg, logger); err != nil {
+		logger.Warn().Err(err).Msg("failed to register notify builtin")
+	}
 
 	coreIntegrations := []string{"fs", "shell", "db"}
 	for _, name := range coreIntegrations {
@@ -579,7 +608,10 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 		if _, err := os.Stat(p); err == nil {
 			loader := newPluginLoader(reg, nil, cfg, logger)
 			if err := loader.loadIntegrationAt(name, p); err != nil {
-				logger.Warn().Err(err).Str("name", name).Msg("failed to load core integration for one-off run")
+				logger.Warn().
+					Err(err).
+					Str("name", name).
+					Msg("failed to load core integration for one-off run")
 			}
 		}
 	}
@@ -613,13 +645,13 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 
 // intentWatchPrinter formats intentlog.Event values for terminal display.
 type intentWatchPrinter struct {
-	theme     *tui.Theme
+	theme     *theme.Theme
 	showID    bool
 	verbose   bool
 	lastState map[string]string // keyed by RunID
 }
 
-func newIntentWatchPrinter(theme *tui.Theme, showID, verbose bool) *intentWatchPrinter {
+func newIntentWatchPrinter(theme *theme.Theme, showID, verbose bool) *intentWatchPrinter {
 	return &intentWatchPrinter{
 		theme:     theme,
 		showID:    showID,

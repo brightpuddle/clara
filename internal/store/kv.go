@@ -15,7 +15,8 @@ type KVValue any
 // Returns sql.ErrNoRows if the key does not exist.
 func (s *Store) GetKV(ctx context.Context, key string, dest any) error {
 	var valueJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT value_json FROM kv_store WHERE key = ?`, key).Scan(&valueJSON)
+	err := s.db.QueryRowContext(ctx, `SELECT value_json FROM kv_store WHERE key = ?`, key).
+		Scan(&valueJSON)
 	if err != nil {
 		return err // includes sql.ErrNoRows
 	}

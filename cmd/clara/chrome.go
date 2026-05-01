@@ -207,7 +207,9 @@ func runNativeHost(ctx context.Context) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	if err != nil {
-		dlog.Error().Err(err).Msg("could not connect to bridge UDS — is the chrome integration loaded?")
+		dlog.Error().
+			Err(err).
+			Msg("could not connect to bridge UDS — is the chrome integration loaded?")
 		return errors.Wrap(err, "dial chrome bridge UDS")
 	}
 	dlog.Info().Msg("connected to bridge UDS")

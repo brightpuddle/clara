@@ -6,7 +6,7 @@ import (
 
 func TestGetFQToolName(t *testing.T) {
 	r := &Registry{}
-	
+
 	cases := []struct {
 		server string
 		tool   string
@@ -20,7 +20,7 @@ func TestGetFQToolName(t *testing.T) {
 		{"tmux", "session.list", "tmux.session.list"},
 		{"task", "pending.list", "task.pending.list"},
 	}
-	
+
 	for _, tc := range cases {
 		got := r.GetFQToolName(tc.server, tc.tool)
 		if got != tc.want {

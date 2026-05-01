@@ -139,15 +139,14 @@ func (it *StarlarkInterpreter) Execute(
 
 	predeclared := starlark.StringDict{
 		"clara": &claraRuntimeBuiltins{rt: runtime},
-		"tui":   &NamespaceProxy{rt: runtime, name: "tui"},
 		"json":  json.Module,
 		"yaml":  orchestrator.YAMLModule,
 		"must":  orchestrator.MustModule,
 	}
 
 	for _, ns := range it.reg.Namespaces() {
-		if ns == "clara" || ns == "tui" {
-			continue // Protect core namespaces
+		if ns == "clara" {
+			continue // Protect the core clara namespace
 		}
 		predeclared[ns] = &NamespaceProxy{rt: runtime, name: ns}
 	}
@@ -434,24 +433,7 @@ func (rt *starlarkRuntime) nextHistory(
 		)
 	}
 
-	if name == "tui.notify.send_interactive" || name == "tui.notify.send" {
-		matchArgs := cloneMap(args)
-		delete(matchArgs, "id")
-		delete(matchArgs, "run_id")
-		delete(matchArgs, "intent_id")
-
-		if entryArgs, ok := entry.Args.(map[string]any); ok {
-			entryMatchArgs := cloneMap(entryArgs)
-			delete(entryMatchArgs, "id")
-			delete(entryMatchArgs, "run_id")
-			delete(entryMatchArgs, "intent_id")
-
-			if reflect.DeepEqual(entryMatchArgs, matchArgs) {
-				rt.cursor++
-				return entry, true, nil
-			}
-		}
-	} else if reflect.DeepEqual(entry.Args, args) {
+	if reflect.DeepEqual(entry.Args, args) {
 		rt.cursor++
 		return entry, true, nil
 	}
@@ -605,26 +587,29 @@ func (p *NamespaceProxy) Attr(name string) (starlark.Value, error) {
 		return &NamespaceProxy{rt: p.rt, name: fqName}, nil
 	}
 
-	return starlark.NewBuiltin(fqName, func(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-		actualFQName := fqName
-		if !p.rt.reg.Has(actualFQName) {
-			if p.rt.reg.Has(p.name + "." + name) {
-				actualFQName = p.name + "." + name
-			} else {
-				return nil, errors.Newf("component %q is disconnected or has no tool %q", p.name, name)
+	return starlark.NewBuiltin(
+		fqName,
+		func(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			actualFQName := fqName
+			if !p.rt.reg.Has(actualFQName) {
+				if p.rt.reg.Has(p.name + "." + name) {
+					actualFQName = p.name + "." + name
+				} else {
+					return nil, errors.Newf("component %q is disconnected or has no tool %q", p.name, name)
+				}
 			}
-		}
 
-		callArgs, err := parseKwargs(args, kwargs)
-		if err != nil {
-			return nil, errors.Wrapf(err, "parse arguments for %q", actualFQName)
-		}
-		result, err := p.rt.invoke("tool", actualFQName, callArgs)
-		if err != nil {
-			return nil, err
-		}
-		return orchestrator.GoToStarlark(result)
-	}), nil
+			callArgs, err := parseKwargs(args, kwargs)
+			if err != nil {
+				return nil, errors.Wrapf(err, "parse arguments for %q", actualFQName)
+			}
+			result, err := p.rt.invoke("tool", actualFQName, callArgs)
+			if err != nil {
+				return nil, err
+			}
+			return orchestrator.GoToStarlark(result)
+		},
+	), nil
 }
 
 func (p *NamespaceProxy) AttrNames() []string {
