@@ -84,6 +84,15 @@ integrations:
   # Shell execution integration
   # shell: {}
 
+
+  # Discord relay integration — posts messages and approvals via the eve relay.
+  # Eve runs the Gateway bot; this plugin is a thin HTTP client.
+  # Channel IDs belong in the Starlark intents that use them, not here.
+  # discord:
+  #   eve_url: "https://eve.brightpuddle.com"
+  #   secret:  "${DISCORD_RELAY_SECRET}"
+  #   machine: "eve"   # or "sophia" — identifies this host for event routing
+
   # Chrome browser automation
   # chrome: {}
 
