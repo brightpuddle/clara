@@ -99,7 +99,8 @@ func TestLoad_FileNotFound(t *testing.T) {
 func TestConfigDerivedPaths(t *testing.T) {
 	yaml := `
 data_dir: /tmp/clara-paths
-tasks_dir: /tmp/clara-paths/tasks
+task_dirs:
+  - /tmp/clara-paths/tasks
 `
 	f := writeTempFile(t, yaml)
 	cfg, err := config.Load(f)
@@ -112,8 +113,8 @@ tasks_dir: /tmp/clara-paths/tasks
 	if cfg.ControlSocketPath() != "/tmp/clara-paths/clara.sock" {
 		t.Errorf("ControlSocketPath: got %q", cfg.ControlSocketPath())
 	}
-	if cfg.TasksDir() != "/tmp/clara-paths/tasks" {
-		t.Errorf("TasksDir: got %q", cfg.TasksDir())
+	if len(cfg.TaskDirs()) != 1 || cfg.TaskDirs()[0] != "/tmp/clara-paths/tasks" {
+		t.Errorf("TaskDirs: got %v", cfg.TaskDirs())
 	}
 	if cfg.LogPath() != "/tmp/clara-paths/clara.log" {
 		t.Errorf("LogPath: got %q", cfg.LogPath())

@@ -17,7 +17,7 @@ var pathsCmd = &cobra.Command{
 		fmt.Printf("Data dir:     %s\n", cfg.DataDir)
 		fmt.Printf("Socket:       %s\n", cfg.ControlSocketPath())
 		fmt.Printf("Database:     %s\n", cfg.DBPath())
-		fmt.Printf("Tasks dir:    %s\n", cfg.TasksDir())
+		fmt.Printf("Tasks dirs:   %v\n", cfg.TaskDirs())
 		fmt.Printf("Log file:     %s\n", cfg.LogPath())
 
 		// Try to find the extension directory if we're in a Homebrew-like setup

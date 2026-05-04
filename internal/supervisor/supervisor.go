@@ -22,7 +22,6 @@ import (
 
 // Supervisor manages the lifecycle of Intents.
 type Supervisor struct {
-	tasksDir   string
 	reg        *registry.Registry
 	runIntent  IntentRunner
 	log        zerolog.Logger
@@ -76,7 +75,6 @@ type managedIntent struct {
 
 // New creates a Supervisor.
 func New(
-	tasksDir string,
 	reg *registry.Registry,
 	runner IntentRunner,
 	log zerolog.Logger,
@@ -85,7 +83,6 @@ func New(
 	fsCtx, fsCancel := context.WithCancel(context.Background())
 
 	sup := &Supervisor{
-		tasksDir:      tasksDir,
 		reg:           reg,
 		runIntent:     runner,
 		log:           log.With().Str("component", "supervisor").Logger(),

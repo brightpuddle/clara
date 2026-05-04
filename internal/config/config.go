@@ -45,8 +45,8 @@ type Config struct {
 	// DataDir overrides the default runtime data directory.
 	DataDir string `yaml:"data_dir"`
 
-	// TasksDir overrides the default directory where .star intent files are watched.
-	TasksDirOverride string `yaml:"tasks_dir"`
+	// TaskDirs overrides the default directories where .star intent files are watched.
+	TaskDirsOverride []string `yaml:"task_dirs"`
 
 	// Plugins is the ordered whitelist of plugins to load on daemon startup.
 	// When absent, all binaries found in PluginSearchPaths[0] are loaded
@@ -246,12 +246,12 @@ func (c *Config) ControlSocketPath() string {
 	return filepath.Join(c.DataDir, "clara.sock")
 }
 
-// TasksDir returns the directory where .star intent files are watched.
-func (c *Config) TasksDir() string {
-	if c.TasksDirOverride != "" {
-		return c.TasksDirOverride
+// TaskDirs returns the directories where .star intent files are watched.
+func (c *Config) TaskDirs() []string {
+	if len(c.TaskDirsOverride) > 0 {
+		return c.TaskDirsOverride
 	}
-	return filepath.Join(filepath.Dir(DefaultConfigPath()), "tasks")
+	return []string{filepath.Join(filepath.Dir(DefaultConfigPath()), "tasks")}
 }
 
 // LogPath returns the default daemon log file path.

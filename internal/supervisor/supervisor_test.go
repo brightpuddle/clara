@@ -19,7 +19,7 @@ func newTestSupervisor(t *testing.T, tasksDir string) (*supervisor.Supervisor, *
 		Timestamp().
 		Logger()
 	reg := registry.New(log)
-	sup := supervisor.New(tasksDir, reg, func(
+	sup := supervisor.New(reg, func(
 		ctx context.Context,
 		intent *orchestrator.Intent,
 		runID string,

@@ -127,7 +127,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		}
 	}
 
-	sup := supervisor.New(cfg.TasksDir(), reg, func(
+	sup := supervisor.New(reg, func(
 		runCtx context.Context,
 		intent *orchestrator.Intent,
 		runID string,
@@ -188,7 +188,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			return sup.Start(ctx)
 		},
 		watchTasks: func(ctx context.Context) {
-			loader.watchTasks(ctx, cfg.TasksDir())
+			loader.watchTasks(ctx, cfg.TaskDirs())
 		},
 	}, logger)
 }

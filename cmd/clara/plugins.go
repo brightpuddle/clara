@@ -71,7 +71,7 @@ func (l *pluginLoader) resolvePluginPath(name, explicitPath string) (string, boo
 
 func (l *pluginLoader) loadAll() error {
 	l.log.Debug().Msg("plugin loader starting")
-	tasksDir := l.cfg.TasksDir()
+	tasksDirs := l.cfg.TaskDirs()
 
 	if len(l.cfg.Plugins) > 0 {
 		// Whitelist mode: load only the explicitly listed plugins.
@@ -113,8 +113,10 @@ func (l *pluginLoader) loadAll() error {
 		}
 	}
 
-	if err := l.loadIntents(tasksDir); err != nil {
-		l.log.Error().Stack().Err(err).Str("dir", tasksDir).Msg("failed to load starlark tasks")
+	for _, dir := range tasksDirs {
+		if err := l.loadIntents(dir); err != nil {
+			l.log.Error().Stack().Err(err).Str("dir", dir).Msg("failed to load starlark tasks")
+		}
 	}
 
 	return nil
@@ -464,14 +466,9 @@ func (l *pluginLoader) removeIntent(path string) {
 	l.log.Info().Str("id", id).Str("path", path).Msg("starlark intent removed")
 }
 
-// watchTasks starts an fsnotify watcher on dir and hot-reloads .star intents
+// watchTasks starts an fsnotify watcher on dirs and hot-reloads .star intents
 // as files are created, modified, or deleted. It blocks until ctx is done.
-func (l *pluginLoader) watchTasks(ctx context.Context, dir string) {
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		l.log.Error().Err(err).Str("dir", dir).Msg("failed to create tasks dir for watching")
-		return
-	}
-
+func (l *pluginLoader) watchTasks(ctx context.Context, dirs []string) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		l.log.Error().Err(err).Msg("failed to create fsnotify watcher")
@@ -479,12 +476,19 @@ func (l *pluginLoader) watchTasks(ctx context.Context, dir string) {
 	}
 	defer watcher.Close()
 
-	if err := watcher.Add(dir); err != nil {
-		l.log.Error().Err(err).Str("dir", dir).Msg("failed to watch tasks dir")
-		return
-	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			l.log.Error().Err(err).Str("dir", dir).Msg("failed to create tasks dir for watching")
+			continue
+		}
 
-	l.log.Info().Str("dir", dir).Msg("watching tasks directory for changes")
+		if err := watcher.Add(dir); err != nil {
+			l.log.Error().Err(err).Str("dir", dir).Msg("failed to watch tasks dir")
+			continue
+		}
+
+		l.log.Info().Str("dir", dir).Msg("watching tasks directory for changes")
+	}
 
 	for {
 		select {
