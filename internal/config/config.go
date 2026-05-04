@@ -152,9 +152,10 @@ type WebexNotifyConfig struct {
 	RoomID   string `yaml:"room_id"`
 }
 
-// DiscordNotifyConfig holds credentials for the Discord notification backend.
+// DiscordNotifyConfig configures the Discord notification backend.
+// Notifications are routed through the eve relay (not directly to Discord),
+// so no bot token is needed here — that lives in integrations.discord.
 type DiscordNotifyConfig struct {
-	BotToken  string `yaml:"bot_token"`
 	ChannelID string `yaml:"channel_id"`
 }
 

@@ -64,6 +64,12 @@ func Register(
 	case "dummy", "":
 		sendFn = dummySend(log)
 		askFn = dummyAsk(log)
+	case "discord":
+		if cfg.Discord.ChannelID == "" {
+			return errors.New("notify: discord backend requires notify.discord.channel_id")
+		}
+		sendFn = discordSend(reg, cfg.Discord.ChannelID, log)
+		askFn = discordAsk(reg, cfg.Discord.ChannelID, log)
 	default:
 		return errors.Newf("notify: unsupported backend %q", backend)
 	}
@@ -96,5 +102,56 @@ func dummyAsk(log zerolog.Logger) func(ctx context.Context, args map[string]any)
 		}
 		log.Info().Str("backend", "dummy").Str("question", question).Msg("notify.ask")
 		return "acknowledged", nil
+	}
+}
+
+// discordSend sends a notification via the discord.notification.send tool.
+// The discord plugin must be loaded; the lookup is lazy (happens at call time).
+func discordSend(
+	reg *registry.Registry,
+	channelID string,
+	log zerolog.Logger,
+) func(ctx context.Context, args map[string]any) (any, error) {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		message, _ := args["message"].(string)
+		if message == "" {
+			return nil, errors.New("notify.send: message is required")
+		}
+		result, err := reg.Call(ctx, "discord.notification.send", map[string]any{
+			"channel_id": channelID,
+			"title":      "Clara",
+			"body":       message,
+			"level":      "info",
+		})
+		if err != nil {
+			log.Error().Err(err).Str("backend", "discord").Msg("notify.send failed")
+			return nil, errors.Wrap(err, "notify.send: discord")
+		}
+		return result, nil
+	}
+}
+
+// discordAsk posts an approval request via discord.approval.request and blocks
+// until the user clicks a button. Returns "approved" or "rejected".
+func discordAsk(
+	reg *registry.Registry,
+	channelID string,
+	log zerolog.Logger,
+) func(ctx context.Context, args map[string]any) (any, error) {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		question, _ := args["question"].(string)
+		if question == "" {
+			return nil, errors.New("notify.ask: question is required")
+		}
+		result, err := reg.Call(ctx, "discord.approval.request", map[string]any{
+			"channel_id":  channelID,
+			"title":       "Clara needs your input",
+			"description": question,
+		})
+		if err != nil {
+			log.Error().Err(err).Str("backend", "discord").Msg("notify.ask failed")
+			return nil, errors.Wrap(err, "notify.ask: discord")
+		}
+		return result, nil
 	}
 }

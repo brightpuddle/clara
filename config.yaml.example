@@ -54,7 +54,8 @@ mcp_servers:
 #   webex   — bot posts to a Webex room; notify.ask pauses the script and
 #             resumes when the bot webhook receives a reply.
 #
-#   discord — same shape as webex but uses a Discord channel.
+#   discord — routes through the eve relay; requires the discord integration
+#             plugin to be configured under integrations.discord.
 #
 notify:
   backend: dummy  # dummy | macos | webex | discord
@@ -62,8 +63,7 @@ notify:
   #   bot_token: "${WEBEX_BOT_TOKEN}"
   #   room_id:   "${WEBEX_NOTIFY_ROOM_ID}"
   # discord:
-  #   bot_token:  "${DISCORD_BOT_TOKEN}"
-  #   channel_id: "${DISCORD_NOTIFY_CHANNEL_ID}"
+  #   channel_id: "${DISCORD_NOTIFY_CHANNEL_ID}"   # channel for notify.send / notify.ask"
 
 # ── Integrations ───────────────────────────────────────────────────────────────
 # Configures the native Go plugins.
