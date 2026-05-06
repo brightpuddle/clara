@@ -428,7 +428,8 @@ func (l *pluginLoader) loadIntents(dir string) error {
 		}
 
 		if err := l.sup.RegisterIntent(path, intent); err != nil {
-			l.log.Error().Err(err).Str("name", name).Msg("failed to register starlark intent")
+			l.log.Error().Err(err).Str("name", name).Str("path", path).
+				Msg("failed to register starlark intent; duplicate intent ID — first occurrence wins")
 		}
 	}
 

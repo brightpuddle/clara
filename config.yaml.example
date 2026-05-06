@@ -9,12 +9,14 @@ log_level: info
 # Data directory for internal storage (default: ~/.local/share/clara)
 # data_dir: ~/.local/share/clara
 
-# Directories where .star intent files are watched
-# Default: [~/.config/clara/tasks]
-# Note: Paths are searched in order. First intent found with a given ID wins.
+# Directories where .star intent files are watched.
+# Default (when not set): [~/.config/clara/tasks]
+# When any path is provided, the default is NOT included unless listed explicitly.
+# Paths are searched in order; if the same intent ID appears in more than one
+# directory, the first occurrence wins and subsequent ones are logged as errors.
 # task_dirs:
-#   - ~/.config/clara/tasks
-#   - ~/.config/clara/custom_tasks
+#   - ~/.config/clara/tasks           # default path (include explicitly if needed)
+#   - ~/.config/clara/tasks/personal  # additional path
 
 # ── MCP Servers ───────────────────────────────────────────────────────────────
 # Clara manages their lifecycle and exposes their tools to Starlark.

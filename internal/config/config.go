@@ -46,6 +46,10 @@ type Config struct {
 	DataDir string `yaml:"data_dir"`
 
 	// TaskDirs overrides the default directories where .star intent files are watched.
+	// When non-empty, the default (~/.config/clara/tasks) is not used unless
+	// explicitly listed. Paths are searched in order; if the same intent ID
+	// appears in more than one directory, the first occurrence wins and
+	// subsequent ones are logged as errors.
 	TaskDirsOverride []string `yaml:"task_dirs"`
 
 	// Plugins is the ordered whitelist of plugins to load on daemon startup.
@@ -245,10 +249,24 @@ func (c *Config) ControlSocketPath() string {
 	return filepath.Join(c.DataDir, "clara.sock")
 }
 
+// expandTilde replaces a leading ~ with the user's home directory.
+func expandTilde(path string) string {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		return home + path[1:]
+	}
+	return path
+}
+
 // TaskDirs returns the directories where .star intent files are watched.
+// Leading tildes in each path are expanded to the user's home directory.
 func (c *Config) TaskDirs() []string {
 	if len(c.TaskDirsOverride) > 0 {
-		return c.TaskDirsOverride
+		expanded := make([]string, len(c.TaskDirsOverride))
+		for i, d := range c.TaskDirsOverride {
+			expanded[i] = expandTilde(d)
+		}
+		return expanded
 	}
 	return []string{filepath.Join(filepath.Dir(DefaultConfigPath()), "tasks")}
 }

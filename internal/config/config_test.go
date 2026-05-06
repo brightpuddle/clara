@@ -205,7 +205,11 @@ plugin_search_paths:
 		t.Fatalf("PluginSearchPaths: got %d want 2", len(cfg.PluginSearchPaths))
 	}
 	if cfg.PluginSearchPaths[0] != "/opt/clara/plugins" {
-		t.Errorf("PluginSearchPaths[0]: got %q want %q", cfg.PluginSearchPaths[0], "/opt/clara/plugins")
+		t.Errorf(
+			"PluginSearchPaths[0]: got %q want %q",
+			cfg.PluginSearchPaths[0],
+			"/opt/clara/plugins",
+		)
 	}
 }
 
