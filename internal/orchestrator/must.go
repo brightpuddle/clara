@@ -37,6 +37,18 @@ func (m *mustModule) AttrNames() []string {
 	return []string{"eq", "neq", "true", "false", "fails"}
 }
 
+func fail(thread *starlark.Thread, format string, args ...any) error {
+	msg := fmt.Sprintf(format, args...)
+	stack := thread.CallStack()
+	for i := 0; i < len(stack); i++ {
+		pos := stack.At(i).Pos
+		if pos.Filename() != "" && pos.Filename() != "<builtin>" {
+			return fmt.Errorf("%s: %s", pos, msg)
+		}
+	}
+	return fmt.Errorf("%s", msg)
+}
+
 func mustEq(
 	thread *starlark.Thread,
 	b *starlark.Builtin,
@@ -44,13 +56,17 @@ func mustEq(
 	kwargs []starlark.Tuple,
 ) (starlark.Value, error) {
 	var x, y starlark.Value
-	if err := starlark.UnpackArgs("eq", args, kwargs, "x", &x, "y", &y); err != nil {
+	var msg string
+	if err := starlark.UnpackArgs("eq", args, kwargs, "x", &x, "y", &y, "msg?", &msg); err != nil {
 		return nil, err
 	}
 	if ok, err := starlark.Equal(x, y); err != nil {
 		return nil, err
 	} else if !ok {
-		return nil, fmt.Errorf("must.eq failed: %v != %v", x, y)
+		if msg == "" {
+			msg = fmt.Sprintf("%v != %v", x, y)
+		}
+		return nil, fail(thread, "must.eq failed: %s", msg)
 	}
 	return starlark.None, nil
 }
@@ -62,13 +78,17 @@ func mustNeq(
 	kwargs []starlark.Tuple,
 ) (starlark.Value, error) {
 	var x, y starlark.Value
-	if err := starlark.UnpackArgs("neq", args, kwargs, "x", &x, "y", &y); err != nil {
+	var msg string
+	if err := starlark.UnpackArgs("neq", args, kwargs, "x", &x, "y", &y, "msg?", &msg); err != nil {
 		return nil, err
 	}
 	if ok, err := starlark.Equal(x, y); err != nil {
 		return nil, err
 	} else if ok {
-		return nil, fmt.Errorf("must.neq failed: %v == %v", x, y)
+		if msg == "" {
+			msg = fmt.Sprintf("%v == %v", x, y)
+		}
+		return nil, fail(thread, "must.neq failed: %s", msg)
 	}
 	return starlark.None, nil
 }
@@ -80,11 +100,15 @@ func mustTrue(
 	kwargs []starlark.Tuple,
 ) (starlark.Value, error) {
 	var cond starlark.Value
-	if err := starlark.UnpackArgs("true", args, kwargs, "cond", &cond); err != nil {
+	var msg string
+	if err := starlark.UnpackArgs("true", args, kwargs, "cond", &cond, "msg?", &msg); err != nil {
 		return nil, err
 	}
 	if !cond.Truth() {
-		return nil, fmt.Errorf("must.true failed: expected True, got False")
+		if msg == "" {
+			msg = "expected True, got False"
+		}
+		return nil, fail(thread, "must.true failed: %s", msg)
 	}
 	return starlark.None, nil
 }
@@ -96,11 +120,15 @@ func mustFalse(
 	kwargs []starlark.Tuple,
 ) (starlark.Value, error) {
 	var cond starlark.Value
-	if err := starlark.UnpackArgs("false", args, kwargs, "cond", &cond); err != nil {
+	var msg string
+	if err := starlark.UnpackArgs("false", args, kwargs, "cond", &cond, "msg?", &msg); err != nil {
 		return nil, err
 	}
 	if cond.Truth() {
-		return nil, fmt.Errorf("must.false failed: expected False, got True")
+		if msg == "" {
+			msg = "expected False, got True"
+		}
+		return nil, fail(thread, "must.false failed: %s", msg)
 	}
 	return starlark.None, nil
 }
@@ -112,12 +140,16 @@ func mustFails(
 	kwargs []starlark.Tuple,
 ) (starlark.Value, error) {
 	var f starlark.Callable
-	if err := starlark.UnpackArgs("fails", args, kwargs, "f", &f); err != nil {
+	var msg string
+	if err := starlark.UnpackArgs("fails", args, kwargs, "f", &f, "msg?", &msg); err != nil {
 		return nil, err
 	}
 	_, err := starlark.Call(thread, f, nil, nil)
 	if err == nil {
-		return nil, fmt.Errorf("must.fails failed: expected function to fail but it succeeded")
+		if msg == "" {
+			msg = "expected function to fail but it succeeded"
+		}
+		return nil, fail(thread, "must.fails failed: %s", msg)
 	}
 	return starlark.None, nil
 }
