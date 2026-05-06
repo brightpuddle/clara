@@ -148,8 +148,7 @@ type NotifyConfig struct {
 
 // WebexNotifyConfig holds credentials for the Webex notification backend.
 type WebexNotifyConfig struct {
-	BotToken string `yaml:"bot_token"`
-	RoomID   string `yaml:"room_id"`
+	RoomID string `yaml:"room_id"`
 }
 
 // DiscordNotifyConfig configures the Discord notification backend.

@@ -55,8 +55,9 @@ mcp_servers:
 #
 #   macos   — uses the macOS ClaraBridge integration for native notifications.
 #
-#   webex   — bot posts to a Webex room; notify.ask pauses the script and
-#             resumes when the bot webhook receives a reply.
+#   webex   — bot posts to a Webex room via the eve relay; requires the
+#             webex integration plugin to be configured. notify.ask
+#             pauses the script and resumes when the user approves/rejects.
 #
 #   discord — routes through the eve relay; requires the discord integration
 #             plugin to be configured under integrations.discord.
@@ -64,7 +65,6 @@ mcp_servers:
 notify:
   backend: dummy  # dummy | macos | webex | discord
   # webex:
-  #   bot_token: "${WEBEX_BOT_TOKEN}"
   #   room_id:   "${WEBEX_NOTIFY_ROOM_ID}"
   # discord:
   #   channel_id: "${DISCORD_NOTIFY_CHANNEL_ID}"   # channel for notify.send / notify.ask"
@@ -88,14 +88,19 @@ integrations:
   # Shell execution integration
   # shell: {}
 
+  # Webex relay integration — posts messages and approvals via the eve relay.
+  # Eve manages the bot token; this plugin is a thin HTTP client.
+  # webex:
+  #   eve_url: "https://eve.brightpuddle.com"
+  #   secret:  "${WEBEX_RELAY_SECRET}"
+  #   machine: "eve"   # identifies this host for event routing
 
   # Discord relay integration — posts messages and approvals via the eve relay.
   # Eve runs the Gateway bot; this plugin is a thin HTTP client.
-  # Channel IDs belong in the Starlark intents that use them, not here.
   # discord:
   #   eve_url: "https://eve.brightpuddle.com"
   #   secret:  "${DISCORD_RELAY_SECRET}"
-  #   machine: "eve"   # or "sophia" — identifies this host for event routing
+  #   machine: "eve"   # identifies this host for event routing
 
   # Chrome browser automation
   # chrome: {}

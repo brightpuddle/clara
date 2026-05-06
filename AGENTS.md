@@ -15,11 +15,12 @@ orchestrator. It is a background daemon written in Go that:
    live intent management.
 
 **Architectural rules:**
+
 - **Integrations expose tools; Starlark scripts consume them.** Integration
   plugins (go-plugin RPC/gRPC) register tools into the registry; Starlark
   intents call those tools via namespace proxies (`fs.read_file(...)`, etc.).
 - **MCP (`mcp-go`) is used internally** within integration plugins to describe
-  and dispatch tools, but it is *not* the transport between the daemon and
+  and dispatch tools, but it is _not_ the transport between the daemon and
   plugins — that transport is go-plugin net/RPC (or gRPC for the Swift bridge).
 
 - **Go 1.24+** for the daemon, CLI, and integration plugins (supports macOS and
@@ -253,19 +254,19 @@ func TestLoad_BasicParsing(t *testing.T) {
 
 Key dependencies:
 
-| Purpose                          | Library                         |
-| -------------------------------- | ------------------------------- |
-| Structured logging               | `github.com/rs/zerolog`         |
-| Error handling (stacktraces)     | `github.com/cockroachdb/errors` |
-| SQLite (CGO-free)                | `github.com/ncruces/go-sqlite3` |
-| State machine conditions         | `github.com/expr-lang/expr`     |
-| Integration plugins (RPC/gRPC)   | `github.com/hashicorp/go-plugin`|
-| CLI                              | `github.com/spf13/cobra`        |
-| Tool spec & dispatch (internal)  | `github.com/mark3labs/mcp-go`   |
-| Starlark intent interpreter      | `go.starlark.net/starlark`      |
-| Structured concurrency           | `github.com/sourcegraph/conc`   |
-| YAML parsing                     | `gopkg.in/yaml.v3`              |
-| Filesystem watching (hot-reload) | `github.com/fsnotify/fsnotify`  |
+| Purpose                          | Library                          |
+| -------------------------------- | -------------------------------- |
+| Structured logging               | `github.com/rs/zerolog`          |
+| Error handling (stacktraces)     | `github.com/cockroachdb/errors`  |
+| SQLite (CGO-free)                | `github.com/ncruces/go-sqlite3`  |
+| State machine conditions         | `github.com/expr-lang/expr`      |
+| Integration plugins (RPC/gRPC)   | `github.com/hashicorp/go-plugin` |
+| CLI                              | `github.com/spf13/cobra`         |
+| Tool spec & dispatch (internal)  | `github.com/mark3labs/mcp-go`    |
+| Starlark intent interpreter      | `go.starlark.net/starlark`       |
+| Structured concurrency           | `github.com/sourcegraph/conc`    |
+| YAML parsing                     | `gopkg.in/yaml.v3`               |
+| Filesystem watching (hot-reload) | `github.com/fsnotify/fsnotify`   |
 
 ---
 
@@ -283,6 +284,34 @@ Key dependencies:
   tools, but it is not the daemon↔plugin transport.
 - **Keep docs in sync.** Feature and architectural changes must update
   `README.md` and `AGENTS.md`.
+
+## Eve Relay Server
+
+Several Clara integrations (discord, webex) do not connect to external services
+directly. Instead they call the **Eve relay server** (`~/src/eve/main`,
+`github.com/brightpuddle/eve`) which holds persistent credentials and
+connections. Clara plugins communicate with Eve over HTTPS using a shared bearer
+secret.
+
+**Eve configuration** lives in `~/.config/eve/config.yaml` — _not_ in
+environment variables or the LaunchAgent plist. This file is managed with
+chezmoi + 1Password. When modifying Eve integrations, consult
+`~/src/eve/main/AGENTS.md` for Eve's own coding conventions.
+
+Clara integration plugin config (`~/.config/clara/config.yaml`) for relay
+plugins only needs:
+
+```yaml
+integrations:
+  discord:
+    eve_url: "https://eve.brightpuddle.com"
+    secret: "<same value as eve.secret in ~/.config/eve/config.yaml>"
+    machine: "<this machine's name>"
+  webex:
+    eve_url: "https://eve.brightpuddle.com"
+    secret: "<same value as eve.secret in ~/.config/eve/config.yaml>"
+    machine: "<this machine's name>"
+```
 
 ## Project Sources of Truth
 

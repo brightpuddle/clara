@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -70,6 +72,21 @@ func (w *Webex) Tools() ([]byte, error) {
 			mcp.WithString("text", mcp.Required(), mcp.Description("Notification message text.")),
 		),
 		mcp.NewTool(
+			"approval.request",
+			mcp.WithDescription(
+				"Post an approval card with Approve/Reject buttons and block until decided. "+
+					"Returns \"approved\", \"rejected\", or \"timeout\".",
+			),
+			mcp.WithString(
+				"room_id",
+				mcp.Required(),
+				mcp.Description("Target Webex room ID."),
+			),
+			mcp.WithString("title", mcp.Required(), mcp.Description("Short title for the approval card.")),
+			mcp.WithString("description", mcp.Description("Detail shown in the card body.")),
+			mcp.WithNumber("timeout_s", mcp.Description("Seconds to wait for decision (default 300).")),
+		),
+		mcp.NewTool(
 			"message_created",
 			mcp.WithDescription(
 				"Event source: fired when a new Webex message is received (via webhook callback). "+
@@ -93,6 +110,8 @@ func (w *Webex) CallTool(name string, args []byte) ([]byte, error) {
 		return w.callMessageReply(args)
 	case "notification.send":
 		return w.callNotificationSend(args)
+	case "approval.request":
+		return w.callApprovalRequest(args)
 	case "message_created":
 		return json.Marshal(map[string]string{
 			"error": "message_created is an event source, not a callable tool",
@@ -188,6 +207,78 @@ func (w *Webex) callNotificationSend(args []byte) ([]byte, error) {
 		return nil, errors.New("webex notification.send: room_id and text are required")
 	}
 	return w.post("/api/webex/notification", map[string]any{"room_id": a.RoomID, "text": a.Text})
+}
+
+type approvalRequestArgs struct {
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	RoomID      string  `json:"room_id"`
+	TimeoutS    float64 `json:"timeout_s"`
+}
+
+func (w *Webex) callApprovalRequest(args []byte) ([]byte, error) {
+	var a approvalRequestArgs
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "webex approval.request: unmarshal")
+	}
+	if a.RoomID == "" {
+		return nil, errors.New("webex approval.request: room_id is required")
+	}
+	timeoutSec := int(a.TimeoutS)
+	if timeoutSec <= 0 {
+		timeoutSec = 300
+	}
+	requestID := uuid.New().String()
+	// Post the approval message to Webex via the relay.
+	_, err := w.post("/api/webex/approval", map[string]any{
+		"request_id":  requestID,
+		"machine":     w.cfg.Machine,
+		"room_id":     a.RoomID,
+		"title":       a.Title,
+		"description": a.Description,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "webex approval.request: post")
+	}
+	// Long-poll for the decision.
+	decision, err := w.waitDecision(requestID, timeoutSec)
+	if err != nil {
+		return nil, errors.Wrap(err, "webex approval.request: wait")
+	}
+	return json.Marshal(map[string]string{"decision": decision})
+}
+
+// waitDecision long-polls GET /api/webex/approval/{id}?timeout=N.
+func (w *Webex) waitDecision(requestID string, timeoutSec int) (string, error) {
+	url := fmt.Sprintf("%s/api/webex/approval/%s?timeout=%d", w.cfg.EveURL, requestID, timeoutSec)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", errors.Wrap(err, "build request")
+	}
+	req.Header.Set("Authorization", "Bearer "+w.cfg.Secret)
+
+	// Client timeout must exceed the server-side wait.
+	longClient := &http.Client{Timeout: time.Duration(timeoutSec+15) * time.Second}
+	resp, err := longClient.Do(req)
+	if err != nil {
+		return "", errors.Wrap(err, "http request")
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusRequestTimeout {
+		return "timeout", nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.Newf("approval poll: status %d: %s", resp.StatusCode, body)
+	}
+	var result struct {
+		Decision string `json:"decision"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", errors.Wrap(err, "unmarshal decision")
+	}
+	return result.Decision, nil
 }
 
 // --- HTTP helpers ---

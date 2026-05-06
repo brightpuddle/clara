@@ -70,6 +70,12 @@ func Register(
 		}
 		sendFn = discordSend(reg, cfg.Discord.ChannelID, log)
 		askFn = discordAsk(reg, cfg.Discord.ChannelID, log)
+	case "webex":
+		if cfg.Webex.RoomID == "" {
+			return errors.New("notify: webex backend requires notify.webex.room_id")
+		}
+		sendFn = webexSend(reg, cfg.Webex.RoomID, log)
+		askFn = webexAsk(reg, cfg.Webex.RoomID, log)
 	default:
 		return errors.Newf("notify: unsupported backend %q", backend)
 	}
@@ -151,6 +157,55 @@ func discordAsk(
 		if err != nil {
 			log.Error().Err(err).Str("backend", "discord").Msg("notify.ask failed")
 			return nil, errors.Wrap(err, "notify.ask: discord")
+		}
+		return result, nil
+	}
+}
+
+// webexSend sends a notification via the webex.notification.send tool.
+// The webex plugin must be loaded; the lookup is lazy (happens at call time).
+func webexSend(
+	reg *registry.Registry,
+	roomID string,
+	log zerolog.Logger,
+) func(ctx context.Context, args map[string]any) (any, error) {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		message, _ := args["message"].(string)
+		if message == "" {
+			return nil, errors.New("notify.send: message is required")
+		}
+		result, err := reg.Call(ctx, "webex.notification.send", map[string]any{
+			"room_id": roomID,
+			"text":    message,
+		})
+		if err != nil {
+			log.Error().Err(err).Str("backend", "webex").Msg("notify.send failed")
+			return nil, errors.Wrap(err, "notify.send: webex")
+		}
+		return result, nil
+	}
+}
+
+// webexAsk posts an approval request via webex.approval.request and blocks
+// until the user clicks a button. Returns "approved", "rejected", or "timeout".
+func webexAsk(
+	reg *registry.Registry,
+	roomID string,
+	log zerolog.Logger,
+) func(ctx context.Context, args map[string]any) (any, error) {
+	return func(ctx context.Context, args map[string]any) (any, error) {
+		question, _ := args["question"].(string)
+		if question == "" {
+			return nil, errors.New("notify.ask: question is required")
+		}
+		result, err := reg.Call(ctx, "webex.approval.request", map[string]any{
+			"room_id":     roomID,
+			"title":       "Clara needs your input",
+			"description": question,
+		})
+		if err != nil {
+			log.Error().Err(err).Str("backend", "webex").Msg("notify.ask failed")
+			return nil, errors.Wrap(err, "notify.ask: webex")
 		}
 		return result, nil
 	}
