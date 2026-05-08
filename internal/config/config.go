@@ -92,9 +92,6 @@ type ServerConfig struct {
 	// If empty, the HTTP server is disabled.
 	ListenAddr string `yaml:"listen_addr"`
 
-	// PublicURL is the base public URL used for webhooks (e.g., "https://eve.example.com").
-	PublicURL string `yaml:"public_url"`
-
 	// SharedSecret is the bearer token expected from remote Clara instances.
 	SharedSecret string `yaml:"shared_secret"`
 }

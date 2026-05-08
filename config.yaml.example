@@ -13,7 +13,6 @@ log_level: info
 # Enables remote MCP connections and incoming webhooks.
 # server:
 #   listen_addr: ":4444"                         # address to bind to
-#   public_url: "https://clara.example.com"      # used for webhook registration
 #   shared_secret: "${CLARA_SHARED_SECRET}"      # bearer token for remote Claras
 
 # ── MCP Servers ───────────────────────────────────────────────────────────────
