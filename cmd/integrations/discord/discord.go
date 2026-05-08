@@ -1,49 +1,65 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
+	"github.com/brightpuddle/clara/cmd/integrations/discord/internal/discordapi"
+	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/rs/zerolog/log"
 )
 
-const description = "Discord integration: send messages, notifications, and approval requests via the eve relay."
+const description = "Discord integration: send messages, notifications, and approval requests."
 
-func levelColor(level string) int {
-	switch level {
-	case "warn":
-		return 0xFFA500
-	case "danger":
-		return 0xFF0000
-	default:
-		return 0x5865F2
-	}
-}
-
-// Discord implements contract.Integration and contract.EventStreamer.
 type Discord struct {
-	cfg    Config
-	client *http.Client
+	cfg     discordapi.Config
+	bot     *discordapi.Bot
+	router  *discordapi.Router
+	eventCh chan contract.Event
 }
 
 func newDiscord() *Discord {
 	return &Discord{
-		client: &http.Client{Timeout: 10 * time.Second},
+		router:  discordapi.NewRouter(),
+		eventCh: make(chan contract.Event, 64),
 	}
 }
 
 func (d *Discord) Configure(raw []byte) error {
-	cfg, err := parseConfig(raw)
-	if err != nil {
-		return err
+	if len(raw) == 0 {
+		return errors.New("discord: no configuration provided")
 	}
-	d.cfg = cfg
+	if err := json.Unmarshal(raw, &d.cfg); err != nil {
+		return errors.Wrap(err, "discord: unmarshal config")
+	}
+
+	if d.cfg.Enabled() {
+		bot, err := discordapi.NewBot(d.cfg, d.router, log.Logger)
+		if err != nil {
+			return fmt.Errorf("discord: init bot: %w", err)
+		}
+		d.bot = bot
+	}
+
+	go func() {
+		events, cancel := d.router.Subscribe("local")
+		defer cancel()
+		for ev := range events {
+			var params map[string]string
+			if err := json.Unmarshal(ev.Data, &params); err == nil {
+				dataBytes, _ := json.Marshal(params)
+				d.eventCh <- contract.Event{
+					Name: ev.Type,
+					Data: dataBytes,
+				}
+			}
+		}
+	}()
+
 	return nil
 }
 
@@ -106,7 +122,6 @@ func (d *Discord) CallTool(name string, args []byte) ([]byte, error) {
 	case "approval.request":
 		return d.callApprovalRequest(args)
 	case "message_created":
-		// Event source — not directly callable.
 		return json.Marshal(map[string]string{"error": "message_created is an event source, not a callable tool"})
 	default:
 		return nil, errors.Newf("discord: unknown tool %q", name)
@@ -121,18 +136,22 @@ type messageSendArgs struct {
 }
 
 func (d *Discord) callMessageSend(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
 	var a messageSendArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, errors.Wrap(err, "discord message.send: unmarshal")
 	}
-	resp, err := d.post("/api/discord/message", map[string]any{
-		"channel_id": a.ChannelID,
-		"content":    a.Content,
-	})
+	if a.ChannelID == "" {
+		return nil, errors.New("channel_id required")
+	}
+	
+	msgID, err := d.bot.SendMessage(a.ChannelID, a.Content, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "discord message.send")
 	}
-	return json.Marshal(map[string]string{"message_id": resp["message_id"]})
+	return json.Marshal(map[string]string{"message_id": msgID})
 }
 
 type notificationSendArgs struct {
@@ -143,6 +162,9 @@ type notificationSendArgs struct {
 }
 
 func (d *Discord) callNotificationSend(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
 	var a notificationSendArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, errors.Wrap(err, "discord notification.send: unmarshal")
@@ -153,18 +175,18 @@ func (d *Discord) callNotificationSend(args []byte) ([]byte, error) {
 	if a.Level == "" {
 		a.Level = "info"
 	}
-	resp, err := d.post("/api/discord/message", map[string]any{
-		"channel_id": a.ChannelID,
-		"embed": map[string]any{
-			"title":       a.Title,
-			"description": a.Body,
-			"color":       levelColor(a.Level),
-		},
-	})
+	
+	embed := &discordapi.Embed{
+		Title:       a.Title,
+		Description: a.Body,
+		Color:       discordapi.LevelColor(a.Level),
+	}
+
+	msgID, err := d.bot.SendMessage(a.ChannelID, "", embed)
 	if err != nil {
 		return nil, errors.Wrap(err, "discord notification.send")
 	}
-	return json.Marshal(map[string]string{"message_id": resp["message_id"]})
+	return json.Marshal(map[string]string{"message_id": msgID})
 }
 
 type approvalRequestArgs struct {
@@ -175,6 +197,9 @@ type approvalRequestArgs struct {
 }
 
 func (d *Discord) callApprovalRequest(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
 	var a approvalRequestArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, errors.Wrap(err, "discord approval.request: unmarshal")
@@ -187,82 +212,26 @@ func (d *Discord) callApprovalRequest(args []byte) ([]byte, error) {
 		timeoutSec = 300
 	}
 	requestID := uuid.New().String()
-	// Post the approval message to Discord via the relay.
-	_, err := d.post("/api/discord/approval", map[string]any{
-		"request_id":  requestID,
-		"machine":     d.cfg.Machine,
-		"channel_id":  a.ChannelID,
-		"title":       a.Title,
-		"description": a.Description,
-	})
+	
+	d.router.RegisterApproval(requestID)
+	
+	_, err := d.bot.SendApproval(a.ChannelID, "local", requestID, a.Title, a.Description)
 	if err != nil {
-		return nil, errors.Wrap(err, "discord approval.request: post")
+		return nil, errors.Wrap(err, "discord approval.request: send")
 	}
-	// Long-poll for the decision.
-	decision, err := d.waitDecision(requestID, timeoutSec)
-	if err != nil {
-		return nil, errors.Wrap(err, "discord approval.request: wait")
+
+	waitCh := d.router.GetApprovalChan(requestID)
+	if waitCh == nil {
+		return nil, errors.New("approval not found")
 	}
-	return json.Marshal(map[string]string{"decision": decision})
+
+	decision, ok := d.router.WaitApproval(requestID, waitCh, time.Duration(timeoutSec)*time.Second)
+	if !ok {
+		return json.Marshal(map[string]string{"decision": "timeout"})
+	}
+	return json.Marshal(map[string]string{"decision": decision.Decision})
 }
 
-// waitDecision long-polls GET /api/discord/approval/{id}?timeout=N.
-func (d *Discord) waitDecision(requestID string, timeoutSec int) (string, error) {
-	url := fmt.Sprintf("%s/api/discord/approval/%s?timeout=%d", d.cfg.EveURL, requestID, timeoutSec)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return "", errors.Wrap(err, "build request")
-	}
-	req.Header.Set("Authorization", "Bearer "+d.cfg.Secret)
-
-	// Client timeout must exceed the server-side wait.
-	longClient := &http.Client{Timeout: time.Duration(timeoutSec+15) * time.Second}
-	resp, err := longClient.Do(req)
-	if err != nil {
-		return "", errors.Wrap(err, "http request")
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode == http.StatusRequestTimeout {
-		return "timeout", nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", errors.Newf("approval poll: status %d: %s", resp.StatusCode, body)
-	}
-	var result struct {
-		Decision string `json:"decision"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return "", errors.Wrap(err, "unmarshal decision")
-	}
-	return result.Decision, nil
-}
-
-func (d *Discord) post(path string, payload map[string]any) (map[string]string, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, errors.Wrap(err, "marshal payload")
-	}
-	req, err := http.NewRequest(http.MethodPost, d.cfg.EveURL+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, errors.Wrap(err, "build request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+d.cfg.Secret)
-
-	resp, err := d.client.Do(req)
-	if err != nil {
-		return nil, errors.Wrap(err, "http request")
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return nil, errors.Newf("eve relay %s: status %d: %s", path, resp.StatusCode, respBody)
-	}
-	var result map[string]string
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, errors.Wrap(err, "unmarshal response")
-	}
-	return result, nil
+func (d *Discord) StreamEvents() (<-chan contract.Event, error) {
+	return d.eventCh, nil
 }
