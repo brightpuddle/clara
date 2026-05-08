@@ -8,6 +8,10 @@ Migrate Webex and Discord integrations out of the centralized `eve` relay and in
 - **Clara Server**: Clara will expose a new HTTP/SSE server package. When configured with a shared secret, it will speak the MCP protocol over HTTP, advertising all tools loaded from its local plugins.
 - **Remote MCP Clients**: Clara will support configuring a "remote" instance. For example, `sophia` can point to `eve`. To `sophia`, `eve` behaves as a massive tool provider. Tool calls execute transparently on the remote instance.
 
+## Remote Tool Namespacing
+- **Namespace Merging**: Tools discovered from a remote Clara instance will be merged directly into the local root namespace (e.g., `webex.messages.list` instead of `eve.webex.messages.list`).
+- **Conflict Resolution**: If a tool name conflict occurs between a local plugin and a remote MCP server, the local tool will take precedence. This ensures transparent remote execution for missing capabilities while allowing local overrides.
+
 ## Events & Webhooks
 - **Webhook Hosting**: Webex requires a public callback URL. Clara's HTTP server will natively host webhook endpoints (e.g., `/api/webex/callback`).
 - **Proxy Support**: To support running behind reverse proxies (like Caddy), Clara's integration configurations will accept an explicit `public_url` (or `webhook_callback_url`) setting to use during dynamic registration, separate from its local bind port.
