@@ -660,3 +660,32 @@ func (a *hcZerologAdapter) ImpliedArgs() []interface{} {
 func (a *hcZerologAdapter) Name() string {
 	return a.name
 }
+
+// DispatchHTTP forwards an HTTP request to the specified plugin via RPC.
+func (l *pluginLoader) DispatchHTTP(pluginName, method, path string, headers map[string]string, body []byte) (int, []byte, error) {
+	l.mu.Lock()
+	client, ok := l.clients[pluginName]
+	l.mu.Unlock()
+
+	if !ok {
+		return 404, []byte("Plugin Not Found"), fmt.Errorf("plugin %q not loaded", pluginName)
+	}
+
+	rpcClient, err := client.Client()
+	if err != nil {
+		return 500, nil, fmt.Errorf("failed to get plugin RPC client: %w", err)
+	}
+
+	raw, err := rpcClient.Dispense(pluginName)
+	if err != nil {
+		return 500, nil, fmt.Errorf("failed to dispense plugin: %w", err)
+	}
+
+	if httpImpl, ok := raw.(interface {
+		HandleHTTP(method, path string, headers map[string]string, body []byte) (int, []byte, error)
+	}); ok {
+		return httpImpl.HandleHTTP(method, path, headers, body)
+	}
+
+	return 404, []byte("Plugin Does Not Handle HTTP"), nil
+}
