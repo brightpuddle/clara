@@ -196,6 +196,8 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 type daemonServiceHooks struct {
 	startMCPServers func(context.Context) error
 	stopMCPServers  func()
+	startHTTPServer func(context.Context) error
+	stopHTTPServer  func()
 	startControl    func(context.Context) error
 	startSupervisor func(context.Context) error
 	watchTasks      func(context.Context)
@@ -209,12 +211,25 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 		}
 	}
 
+	if hooks.startHTTPServer != nil {
+		if err := hooks.startHTTPServer(ctx); err != nil {
+			return errors.Wrap(err, "start HTTP server")
+		}
+	}
+
 	wg := conc.NewWaitGroup()
 
 	if hooks.stopMCPServers != nil {
 		wg.Go(func() {
 			<-ctx.Done()
 			hooks.stopMCPServers()
+		})
+	}
+
+	if hooks.stopHTTPServer != nil {
+		wg.Go(func() {
+			<-ctx.Done()
+			hooks.stopHTTPServer()
 		})
 	}
 

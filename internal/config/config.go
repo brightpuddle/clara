@@ -79,8 +79,24 @@ type Config struct {
 	// Notify configures the notification backend.
 	Notify NotifyConfig `yaml:"notify"`
 
+	// Server configures the Clara HTTP server for remote MCP and webhooks.
+	Server ServerConfig `yaml:"server"`
+
 	// Testing overrides
 	ControlSocketPathOverride string `yaml:"-"`
+}
+
+// ServerConfig configures the Clara HTTP server for remote MCP and webhooks.
+type ServerConfig struct {
+	// ListenAddr is the address to bind the HTTP server to (e.g., ":4444").
+	// If empty, the HTTP server is disabled.
+	ListenAddr string `yaml:"listen_addr"`
+
+	// PublicURL is the base public URL used for webhooks (e.g., "https://eve.example.com").
+	PublicURL string `yaml:"public_url"`
+
+	// SharedSecret is the bearer token expected from remote Clara instances.
+	SharedSecret string `yaml:"shared_secret"`
 }
 
 // MCPServerConfig describes a single MCP server managed by the Clara daemon.
