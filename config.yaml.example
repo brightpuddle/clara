@@ -9,29 +9,22 @@ log_level: info
 # Data directory for internal storage (default: ~/.local/share/clara)
 # data_dir: ~/.local/share/clara
 
-# Directories where .star intent files are watched.
-# Default (when not set): [~/.config/clara/tasks]
-# When any path is provided, the default is NOT included unless listed explicitly.
-# Paths are searched in order; if the same intent ID appears in more than one
-# directory, the first occurrence wins and subsequent ones are logged as errors.
-# task_dirs:
-#   - ~/.config/clara/tasks           # default path (include explicitly if needed)
-#   - ~/.config/clara/tasks/personal  # additional path
+# ── Clara HTTP/MCP Server ───────────────────────────────────────────────────
+# Enables remote MCP connections and incoming webhooks.
+# server:
+#   listen_addr: ":4444"                         # address to bind to
+#   public_url: "https://clara.example.com"      # used for webhook registration
+#   shared_secret: "${CLARA_SHARED_SECRET}"      # bearer token for remote Claras
 
 # ── MCP Servers ───────────────────────────────────────────────────────────────
 # Clara manages their lifecycle and exposes their tools to Starlark.
-# The server name becomes the namespace prefix for its tools (e.g. github.search_repositories).
 #
-# How to use in Starlark:
-#   result = github.search_repositories({"query": "clara"})
-#
-# Maximum time to wait for servers to be ready at startup (default: 30s).
-# mcp_startup_timeout: 30s
-#
-# Additional directories to search for MCP server binaries (e.g. npm global installs).
-# mcp_command_search_paths:
-#   - /usr/local/bin
-#   - /opt/homebrew/bin
+# Remote Clara Example:
+#   Connect to another Clara instance (e.g. Eve) to use its tools.
+#   Tools are merged into the root namespace (local tools take precedence).
+# - name: eve
+#   url: https://eve.example.com/mcp/sse
+#   token: "${EVE_SHARED_SECRET}"
 
 mcp_servers:
   # GitHub integration via the official GitHub MCP server.
@@ -41,35 +34,17 @@ mcp_servers:
   #   env:
   #     GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 
-  # Any streamable HTTP MCP server.
-  # - name: my-service
-  #   url: http://localhost:8080/mcp
-  #   token: "${MY_SERVICE_TOKEN}"
-  #   description: "My custom MCP service"
-
 # ── Notification backend ───────────────────────────────────────────────────────
 # Controls how notify.send and notify.ask deliver messages to you.
 #
 # Backends: dummy (default) | macos | webex | discord
-#
-#   dummy   — logs messages to the daemon log; notify.ask returns "acknowledged"
-#             immediately. Safe default that requires no configuration.
-#
-#   macos   — uses the macOS ClaraBridge integration for native notifications.
-#
-#   webex   — bot posts to a Webex room via the eve relay; requires the
-#             webex integration plugin to be configured. notify.ask
-#             pauses the script and resumes when the user approves/rejects.
-#
-#   discord — routes through the eve relay; requires the discord integration
-#             plugin to be configured under integrations.discord.
 #
 notify:
   backend: dummy  # dummy | macos | webex | discord
   # webex:
   #   room_id:   "${WEBEX_NOTIFY_ROOM_ID}"
   # discord:
-  #   channel_id: "${DISCORD_NOTIFY_CHANNEL_ID}"   # channel for notify.send / notify.ask"
+  #   channel_id: "${DISCORD_NOTIFY_CHANNEL_ID}"
 
 # ── Integrations ───────────────────────────────────────────────────────────────
 # Configures the native Go plugins.
@@ -81,137 +56,35 @@ integrations:
   # Zettelkasten/Obsidian vault integration
   zk:
     vault_root: "${HOME}/Documents/Notes"
-    # Optional FTS5 search index path
-    # index_path: "${HOME}/.local/share/clara/zk_search.db"
 
-  # Filesystem integration
-  # fs: {}
-
-  # Shell execution integration
-  # shell: {}
-
-  # Webex relay integration — posts messages and approvals via the eve relay.
-  # Eve manages the bot token; this plugin is a thin HTTP client.
+  # Webex Native Integration
   # webex:
-  #   eve_url: "https://eve.brightpuddle.com"
-  #   secret:  "${WEBEX_RELAY_SECRET}"
-  #   machine: "eve"   # identifies this host for event routing
+  #   client_id:     "${WEBEX_CLIENT_ID}"      # OAuth Integration ID
+  #   client_secret: "${WEBEX_CLIENT_SECRET}"  # OAuth Integration Secret
+  #   bot_token:     "${WEBEX_BOT_TOKEN}"     # Bot account token
+  #   webhook_secret: "${WEBEX_WEBHOOK_SECRET}" # HMAC key for signature verification
+  #   base_url:      "https://clara.example.com" # Public URL for callbacks
+  #   secret:        "${CLARA_SHARED_SECRET}"  # Shared secret for local auth
 
-  # Discord relay integration — posts messages and approvals via the eve relay.
-  # Eve runs the Gateway bot; this plugin is a thin HTTP client.
+  # Discord Native Integration
   # discord:
-  #   eve_url: "https://eve.brightpuddle.com"
-  #   secret:  "${DISCORD_RELAY_SECRET}"
-  #   machine: "eve"   # identifies this host for event routing
+  #   token:  "${DISCORD_BOT_TOKEN}"
+  #   secret: "${CLARA_SHARED_SECRET}"         # Shared secret for local auth
 
-  # Chrome browser automation
-  # chrome: {}
-
-  # LLM multiplexer — routes llm.generate / llm.embed calls to providers.
-  #
-  # Each category maps to an ordered list of models; Clara tries them in
-  # order and falls back to the next on error.  Provider names must match
-  # a key under `providers`.
-  #
-  # Built-in provider names: ollama | gemini | openai
-  # Any openai-compatible API (LM Studio, vLLM, …) can use provider: openai
-  # with a custom base_url.
-  #
-  # Starlark usage:
-  #   result = llm.generate({"category": "fast", "message": "Hello!"})
-  #   print(result["message"]["content"])
-  #
-  #   # Multi-turn:
-  #   result = llm.generate({
-  #     "category": "reasoning",
-  #     "messages": [
-  #       {"role": "system", "content": "You are a concise assistant."},
-  #       {"role": "user",   "content": "Explain goroutines in one sentence."},
-  #     ],
-  #   })
-  #
+  # LLM multiplexer
   # llm:
   #   providers:
-  #     # Local Ollama instance (no API key required)
   #     ollama:
   #       base_url: http://localhost:11434
-  #
-  #     # Google Gemini
   #     gemini:
   #       api_key: "${GEMINI_API_KEY}"
-  #
-  #     # OpenAI (or any OpenAI-compatible endpoint)
   #     openai:
   #       base_url: https://api.openai.com/v1
   #       key: "${OPENAI_API_KEY}"
-  #
-  #     # LM Studio example (openai-compatible)
-  #     lmstudio:
-  #       base_url: http://localhost:1234/v1
-  #
   #   categories:
-  #     # Quick tasks: try Gemini Flash first, fall back to local Ollama
   #     fast:
   #       - provider: gemini
   #         model: gemini-2.0-flash
-  #       - provider: ollama
-  #         model: qwen3:8b
-  #
-  #     # Heavy reasoning tasks
   #     reasoning:
   #       - provider: gemini
   #         model: gemini-2.5-pro
-  #       - provider: openai
-  #         model: o4-mini
-  #
-  #     # Fully local — no network calls
-  #     local:
-  #       - provider: ollama
-  #         model: qwen3-coder
-  #
-  #     # Vision tasks
-  #     vision:
-  #       - provider: gemini
-  #         model: gemini-2.0-flash
-  #
-  #     # Embeddings
-  #     embeddings:
-  #       - provider: ollama
-  #         model: nomic-embed-text
-
-# ── Starlark lib/ convention ───────────────────────────────────────────────────
-# Place shared Starlark modules under ~/.config/clara/tasks/lib/ so any intent
-# can load them with:
-#
-#   load("lib/task.star", "add", "list")
-#   load("lib/search.star", "query")
-#
-# Two example stubs are documented below.  Copy and edit them to match your
-# preferred backends — changing the implementation in one lib file updates
-# every intent that loads it.
-#
-# lib/task.star example:
-#
-#   def add(description, project="", priority="", due=""):
-#       args = {"description": description}
-#       if project:  args["project"]  = project
-#       if priority: args["priority"] = priority
-#       if due:      args["due"]      = due
-#       return task.add(args)
-#
-#   def list(filter=""):
-#       return task.list({"filter": filter})
-#
-#   def complete(id):
-#       return task.done({"id": id})
-#
-# lib/search.star example:
-#
-#   def query(q, sources=["web", "zk"]):
-#       results = []
-#       if "web" in sources:
-#           results += web.search({"query": q}).get("results", [])
-#       if "zk" in sources:
-#           results += zk.search({"query": q}).get("notes", [])
-#       return results
-
