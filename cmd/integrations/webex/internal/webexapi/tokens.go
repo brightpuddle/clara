@@ -41,7 +41,7 @@ func NewTokenManager(clientID, clientSecret string) (*TokenManager, error) {
 	tm := &TokenManager{
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		storePath:    filepath.Join(home, ".local", "share", "eve", "webex_tokens.json"),
+		storePath:    filepath.Join(home, ".local", "share", "clara", "webex_tokens.json"),
 	}
 	_ = tm.load() // not an error if the file doesn't exist yet
 	return tm, nil

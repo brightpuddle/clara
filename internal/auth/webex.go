@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,7 +21,7 @@ const (
 	WebexTokenURL    = "https://webexapis.com/v1/access_token"
 	WebexRedirectURI = "http://localhost:48766/webex/callback"
 	WebexScope       = "spark:all spark:kms"
-	WebexKVKey       = "webex_tokens"
+	WebexKVKey       = "webex_tokens" // Kept for legacy compatibility if anything else uses it
 )
 
 type WebexTokens struct {
@@ -92,14 +94,42 @@ func AuthorizeWebex(
 	if err != nil {
 		return err
 	}
-	tokens.ClientID = clientID
-	tokens.ClientSecret = clientSecret
 
-	if err := db.SetKV(ctx, WebexKVKey, tokens); err != nil {
-		return errors.Wrap(err, "save webex tokens")
+	// We save the tokens to ~/.local/share/clara/webex_tokens.json
+	// which is where the Webex native integration expects to find them.
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return errors.Wrap(err, "determine home dir")
 	}
 
-	fmt.Println("Webex authorization successful! Tokens saved to database.")
+	storePath := filepath.Join(home, ".local", "share", "clara", "webex_tokens.json")
+	
+	type storedTokens struct {
+		AccessToken  string    `json:"access_token"`
+		RefreshToken string    `json:"refresh_token"`
+		ExpiresAt    time.Time `json:"expires_at"`
+	}
+
+	dataToSave := storedTokens{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		ExpiresAt:    tokens.Expiry,
+	}
+
+	if err := os.MkdirAll(filepath.Dir(storePath), 0o700); err != nil {
+		return errors.Wrap(err, "create webex token store dir")
+	}
+	
+	data, err := json.Marshal(dataToSave)
+	if err != nil {
+		return errors.Wrap(err, "marshal webex tokens")
+	}
+	
+	if err := os.WriteFile(storePath, data, 0o600); err != nil {
+		return errors.Wrap(err, "save webex tokens to file")
+	}
+
+	fmt.Printf("Webex authorization successful! Tokens saved to %s\n", storePath)
 	return nil
 }
 
