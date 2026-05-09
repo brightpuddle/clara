@@ -24,8 +24,20 @@ var authWebexCmd = &cobra.Command{
 	Use:   "webex",
 	Short: "Authenticate Clara with Webex using OAuth",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// If not provided via flags/env, try to pull from the config file.
 		if webexClientID == "" || webexClientSecret == "" {
-			return fmt.Errorf("client-id and client-secret are required")
+			if wcfg, ok := cfg.Integrations["webex"]; ok {
+				if id, ok := wcfg["client_id"].(string); ok && webexClientID == "" {
+					webexClientID = id
+				}
+				if secret, ok := wcfg["client_secret"].(string); ok && webexClientSecret == "" {
+					webexClientSecret = secret
+				}
+			}
+		}
+
+		if webexClientID == "" || webexClientSecret == "" {
+			return fmt.Errorf("Webex client-id and client-secret are required (provide via flags, environment variables, or config.yaml)")
 		}
 
 		db, err := store.Open(cfg.DBPath(), zerolog.Nop())
