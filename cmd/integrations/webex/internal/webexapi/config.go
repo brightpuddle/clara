@@ -3,12 +3,12 @@ package webexapi
 // Config holds Webex integration settings.
 // Values are populated from the central Eve config (see internal/config).
 type Config struct {
-	ClientID      string // OAuth Integration client ID
-	ClientSecret  string // OAuth Integration client secret
-	BotToken      string // Bot account permanent access token
-	WebhookSecret string // HMAC-SHA1 key for X-Spark-Signature verification
-	BaseURL       string // Public Eve base URL, no trailing slash
-	Secret        string // Shared bearer secret for Clara → Eve relay auth
+	ClientID      string `json:"client_id"`      // OAuth Integration client ID
+	ClientSecret  string `json:"client_secret"`  // OAuth Integration client secret
+	BotToken      string `json:"bot_token"`      // Bot account permanent access token
+	WebhookSecret string `json:"webhook_secret"` // HMAC-SHA1 key for X-Spark-Signature verification
+	BaseURL       string `json:"base_url"`       // Public Eve base URL, no trailing slash
+	Secret        string `json:"secret"`         // Shared bearer secret for Clara → Eve relay auth
 }
 
 // OAuthRedirectURI is the redirect URI registered in the Webex Integration settings.
