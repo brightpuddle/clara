@@ -20,6 +20,7 @@ import (
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/server"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/internal/toolcatalog"
@@ -166,6 +167,8 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Error().Err(err).Msg("failed to load native plugins")
 	}
 
+	httpServer := server.New(cfg, reg, loader, logger)
+
 	handler := buildHandler(reg, sup, db, ilog, loader, logger, shutdown)
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 	if err != nil {
@@ -183,6 +186,12 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			return nil
 		},
 		stopMCPServers: reg.StopServers,
+		startHTTPServer: func(ctx context.Context) error {
+			return httpServer.Start()
+		},
+		stopHTTPServer: func() {
+			_ = httpServer.Stop(context.Background())
+		},
 		startControl:   controlServer.ListenAndServe,
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
