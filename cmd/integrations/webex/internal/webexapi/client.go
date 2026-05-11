@@ -112,8 +112,53 @@ func (c *Client) GetAttachmentAction(id string) (*AttachmentAction, error) {
 	return &action, nil
 }
 
-// SendApproval posts an adaptive card with Approve/Reject buttons.
-func (c *Client) SendApproval(roomID, machine, requestID, title, description string) (*Message, error) {
+// SendInteractive posts an adaptive card with multiple choice buttons and an optional text input.
+func (c *Client) SendInteractive(roomID, machine, requestID, title, description string, options []string, allowText bool) (*Message, error) {
+	if len(options) == 0 {
+		options = []string{"Approve", "Reject"}
+	}
+
+	actions := []any{}
+	for _, opt := range options {
+		actions = append(actions, map[string]any{
+			"type":  "Action.Submit",
+			"title": opt,
+			"data": map[string]string{
+				"request_id": requestID,
+				"decision":   opt,
+			},
+		})
+	}
+
+	if allowText {
+		actions = append(actions, map[string]any{
+			"type":  "Action.ShowCard",
+			"title": "Feedback / Other...",
+			"card": map[string]any{
+				"type":    "AdaptiveCard",
+				"version": "1.0",
+				"body": []any{
+					map[string]any{
+						"type":        "Input.Text",
+						"id":          "custom_text",
+						"placeholder": "Enter your response...",
+						"isMultiline": true,
+					},
+				},
+				"actions": []any{
+					map[string]any{
+						"type":  "Action.Submit",
+						"title": "Submit Feedback",
+						"data": map[string]string{
+							"request_id": requestID,
+							"decision":   "custom",
+						},
+					},
+				},
+			},
+		})
+	}
+
 	card := map[string]any{
 		"type":    "AdaptiveCard",
 		"version": "1.0",
@@ -125,24 +170,7 @@ func (c *Client) SendApproval(roomID, machine, requestID, title, description str
 				"size":   "Medium",
 			},
 		},
-		"actions": []any{
-			map[string]any{
-				"type":  "Action.Submit",
-				"title": "Approve",
-				"data": map[string]string{
-					"request_id": requestID,
-					"decision":   "approved",
-				},
-			},
-			map[string]any{
-				"type":  "Action.Submit",
-				"title": "Reject",
-				"data": map[string]string{
-					"request_id": requestID,
-					"decision":   "rejected",
-				},
-			},
-		},
+		"actions": actions,
 	}
 	if description != "" {
 		card["body"] = append(card["body"].([]any), map[string]any{
@@ -154,7 +182,7 @@ func (c *Client) SendApproval(roomID, machine, requestID, title, description str
 
 	payload := map[string]any{
 		"roomId": roomID,
-		"text":   fmt.Sprintf("Approval Request: %s", title),
+		"text":   fmt.Sprintf("Interactive Request: %s", title),
 		"attachments": []any{
 			map[string]any{
 				"contentType": "application/vnd.microsoft.card.adaptive",
