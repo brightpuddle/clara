@@ -94,14 +94,47 @@ func LevelColor(level string) int {
 	}
 }
 
-// SendApproval posts an embed with Approve/Reject buttons.
-// custom_id format: clara:{machine}:{requestID}:{action}
-func (b *Bot) SendApproval(channelID, machine, requestID, title, description string) (string, error) {
+// SendInteractive posts an embed with multiple choice buttons and an optional text input modal.
+func (b *Bot) SendInteractive(channelID, machine, requestID, title, description string, options []string, allowText bool) (string, error) {
 	if channelID == "" {
-		return "", fmt.Errorf("channel_id is required for approval")
+		return "", fmt.Errorf("channel_id is required for interactive request")
 	}
-	approveID := fmt.Sprintf("clara:%s:%s:approved", machine, requestID)
-	rejectID := fmt.Sprintf("clara:%s:%s:rejected", machine, requestID)
+	if len(options) == 0 {
+		options = []string{"Approve", "Reject"}
+	}
+
+	var components []discordgo.MessageComponent
+	var currentRow []discordgo.MessageComponent
+
+	addButton := func(label string, customID string, style discordgo.ButtonStyle) {
+		if len(currentRow) == 5 {
+			components = append(components, discordgo.ActionsRow{Components: currentRow})
+			currentRow = []discordgo.MessageComponent{}
+		}
+		currentRow = append(currentRow, discordgo.Button{
+			Label:    label,
+			Style:    style,
+			CustomID: customID,
+		})
+	}
+
+	for _, opt := range options {
+		safeOpt := opt
+		if len(safeOpt) > 30 {
+			safeOpt = safeOpt[:30]
+		}
+		customID := fmt.Sprintf("clara:%s:%s:b:%s", machine, requestID, safeOpt)
+		addButton(opt, customID, discordgo.PrimaryButton)
+	}
+
+	if allowText {
+		customID := fmt.Sprintf("clara:%s:%s:modalbtn", machine, requestID)
+		addButton("📝 Feedback / Other...", customID, discordgo.SecondaryButton)
+	}
+
+	if len(currentRow) > 0 {
+		components = append(components, discordgo.ActionsRow{Components: currentRow})
+	}
 
 	msg := &discordgo.MessageSend{
 		Embeds: []*discordgo.MessageEmbed{{
@@ -109,22 +142,7 @@ func (b *Bot) SendApproval(channelID, machine, requestID, title, description str
 			Description: description,
 			Color:       0xFFA500, // orange — pending
 		}},
-		Components: []discordgo.MessageComponent{
-			discordgo.ActionsRow{
-				Components: []discordgo.MessageComponent{
-					discordgo.Button{
-						Label:    "✅ Approve",
-						Style:    discordgo.SuccessButton,
-						CustomID: approveID,
-					},
-					discordgo.Button{
-						Label:    "❌ Reject",
-						Style:    discordgo.DangerButton,
-						CustomID: rejectID,
-					},
-				},
-			},
-		},
+		Components: components,
 	}
 	m, err := b.sess.ChannelMessageSendComplex(channelID, msg)
 	if err != nil {
@@ -141,70 +159,131 @@ func capitalize(s string) string {
 }
 
 func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.Type != discordgo.InteractionMessageComponent {
-		return
-	}
-	customID := i.MessageComponentData().CustomID
+	switch i.Type {
+	case discordgo.InteractionMessageComponent:
+		customID := i.MessageComponentData().CustomID
+		parts := strings.SplitN(customID, ":", 5)
+		if len(parts) < 4 || parts[0] != "clara" {
+			return
+		}
+		machine := parts[1]
+		requestID := parts[2]
+		actionType := parts[3] // "b" or "modalbtn"
 
-	// Ack immediately — Discord requires response within 3 seconds.
-	_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredMessageUpdate,
-	})
+		user := ""
+		if i.Member != nil && i.Member.User != nil {
+			user = i.Member.User.Username
+		} else if i.User != nil {
+			user = i.User.Username
+		}
 
-	// Parse: clara:{machine}:{requestID}:{action}
-	parts := strings.SplitN(customID, ":", 4)
-	if len(parts) != 4 || parts[0] != "clara" {
-		return
-	}
-	machine, requestID, action := parts[1], parts[2], parts[3]
-	if action != "approved" && action != "rejected" {
-		return
-	}
+		if actionType == "modalbtn" {
+			err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseModal,
+				Data: &discordgo.InteractionResponseData{
+					CustomID: fmt.Sprintf("clara:modal:%s:%s", machine, requestID),
+					Title:    "Custom Feedback",
+					Components: []discordgo.MessageComponent{
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.TextInput{
+									CustomID:    "feedback_text",
+									Label:       "Your response",
+									Style:       discordgo.TextInputParagraph,
+									Placeholder: "Type your feedback here...",
+									Required:    true,
+								},
+							},
+						},
+					},
+				},
+			})
+			if err != nil {
+				b.log.Error().Err(err).Msg("failed to send modal")
+			}
+			return
+		}
 
-	user := ""
-	if i.Member != nil && i.Member.User != nil {
-		user = i.Member.User.Username
-	} else if i.User != nil {
-		user = i.User.Username
-	}
+		// It's a standard button "b"
+		decisionVal := "approved" // default fallback
+		if len(parts) == 5 {
+			decisionVal = parts[4]
+		}
 
-	b.log.Info().
-		Str("machine", machine).
-		Str("request_id", requestID).
-		Str("action", action).
-		Str("user", user).
-		Msg("approval interaction received")
-
-	d := ApprovalDecision{Decision: action, User: user}
-	b.router.ResolveApproval(requestID, d)
-
-	// Also push to the machine's SSE stream for EventStreamer subscribers.
-	data, _ := json.Marshal(map[string]string{
-		"request_id": requestID,
-		"decision":   action,
-		"user":       user,
-	})
-	b.router.Publish(machine, Event{Type: "approval_decision", Data: data})
-
-	// Update embed to reflect the decision and remove buttons.
-	color := 0x57F287 // green
-	emoji := "✅"
-	if action == "rejected" {
-		color = 0xED4245 // red
-		emoji = "❌"
-	}
-	if len(i.Message.Embeds) > 0 {
-		orig := i.Message.Embeds[0]
-		_, _ = s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-			ID:      i.Message.ID,
-			Channel: i.Message.ChannelID,
-			Embeds: &[]*discordgo.MessageEmbed{{
-				Title:       orig.Title,
-				Description: orig.Description + fmt.Sprintf("\n\n%s **%s** by %s", emoji, capitalize(action), user),
-				Color:       color,
-			}},
-			Components: &[]discordgo.MessageComponent{},
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    fmt.Sprintf("Selection made by %s: %s", user, decisionVal),
+				Components: []discordgo.MessageComponent{}, // clear buttons
+			},
 		})
+		if err != nil {
+			b.log.Error().Err(err).Msg("failed to ack interaction")
+		}
+
+		b.router.ResolveInteractive(requestID, InteractiveDecision{
+			Selection: decisionVal,
+			User:      user,
+		})
+
+		// Also push to the machine's SSE stream
+		data, _ := json.Marshal(map[string]string{
+			"request_id": requestID,
+			"selection":  decisionVal,
+			"user":       user,
+		})
+		b.router.Publish(machine, Event{Type: "interactive_decision", Data: data})
+
+	case discordgo.InteractionModalSubmit:
+		data := i.ModalSubmitData()
+		customID := data.CustomID
+		parts := strings.SplitN(customID, ":", 4)
+		if len(parts) != 4 || parts[0] != "clara" || parts[1] != "modal" {
+			return
+		}
+		machine := parts[2]
+		requestID := parts[3]
+
+		customText := ""
+		for _, comp := range data.Components {
+			if row, ok := comp.(*discordgo.ActionsRow); ok && len(row.Components) > 0 {
+				if textInput, ok := row.Components[0].(*discordgo.TextInput); ok && textInput.CustomID == "feedback_text" {
+					customText = textInput.Value
+				}
+			}
+		}
+
+		user := ""
+		if i.Member != nil && i.Member.User != nil {
+			user = i.Member.User.Username
+		} else if i.User != nil {
+			user = i.User.Username
+		}
+
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("Feedback received from %s.", user),
+			},
+		})
+		if err != nil {
+			b.log.Error().Err(err).Msg("failed to ack modal")
+		}
+
+		b.router.ResolveInteractive(requestID, InteractiveDecision{
+			Selection:  "custom",
+			CustomText: customText,
+			User:       user,
+		})
+
+		// Push to SSE stream
+		sseData, _ := json.Marshal(map[string]string{
+			"request_id":  requestID,
+			"selection":   "custom",
+			"custom_text": customText,
+			"user":        user,
+		})
+		b.router.Publish(machine, Event{Type: "interactive_decision", Data: sseData})
 	}
 }
 
