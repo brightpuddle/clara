@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const description = "Discord integration: send messages, notifications, and approval requests."
+const description = "Discord integration: send messages, notifications, and interactive requests."
 
 type Discord struct {
 	cfg     discordapi.Config
@@ -86,17 +86,17 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithString("level", mcp.Description("Severity: info (default), warn, or danger.")),
 		),
 		mcp.NewTool(
-			"approval.request",
+			"interactive.request",
 			mcp.WithDescription(
-				"Post an approval embed with Approve/Reject buttons and block until decided. "+
-					"Returns \"approved\", \"rejected\", or \"timeout\".",
+				"Post an interactive embed with buttons and block until decided. "+
+					"Returns a JSON object with 'selection' and optional 'custom_text'.",
 			),
 			mcp.WithString(
 				"channel_id",
 				mcp.Required(),
 				mcp.Description("Target Discord channel ID."),
 			),
-			mcp.WithString("title", mcp.Required(), mcp.Description("Short title for the approval card.")),
+			mcp.WithString("title", mcp.Required(), mcp.Description("Short title for the card.")),
 			mcp.WithString("description", mcp.Description("Detail shown in the embed body.")),
 			mcp.WithNumber("timeout_s", mcp.Description("Seconds to wait for decision (default 300).")),
 		),
@@ -119,8 +119,8 @@ func (d *Discord) CallTool(name string, args []byte) ([]byte, error) {
 		return d.callMessageSend(args)
 	case "notification.send":
 		return d.callNotificationSend(args)
-	case "approval.request":
-		return d.callApprovalRequest(args)
+	case "interactive.request":
+		return d.callInteractiveRequest(args)
 	case "message_created":
 		return json.Marshal(map[string]string{"error": "message_created is an event source, not a callable tool"})
 	default:
@@ -189,23 +189,25 @@ func (d *Discord) callNotificationSend(args []byte) ([]byte, error) {
 	return json.Marshal(map[string]string{"message_id": msgID})
 }
 
-type approvalRequestArgs struct {
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	ChannelID   string  `json:"channel_id"`
-	TimeoutS    float64 `json:"timeout_s"`
+type interactiveRequestArgs struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	ChannelID   string   `json:"channel_id"`
+	TimeoutS    float64  `json:"timeout_s"`
+	Options     []string `json:"options"`
+	AllowText   bool     `json:"allow_text"`
 }
 
-func (d *Discord) callApprovalRequest(args []byte) ([]byte, error) {
+func (d *Discord) callInteractiveRequest(args []byte) ([]byte, error) {
 	if d.bot == nil {
 		return nil, errors.New("discord bot account not configured")
 	}
-	var a approvalRequestArgs
+	var a interactiveRequestArgs
 	if err := json.Unmarshal(args, &a); err != nil {
-		return nil, errors.Wrap(err, "discord approval.request: unmarshal")
+		return nil, errors.Wrap(err, "discord interactive.request: unmarshal")
 	}
 	if a.ChannelID == "" {
-		return nil, errors.New("discord approval.request: channel_id is required")
+		return nil, errors.New("discord interactive.request: channel_id is required")
 	}
 	timeoutSec := int(a.TimeoutS)
 	if timeoutSec <= 0 {
@@ -213,23 +215,30 @@ func (d *Discord) callApprovalRequest(args []byte) ([]byte, error) {
 	}
 	requestID := uuid.New().String()
 	
-	d.router.RegisterApproval(requestID)
+	d.router.RegisterInteractive(requestID)
 	
-	_, err := d.bot.SendApproval(a.ChannelID, "local", requestID, a.Title, a.Description)
+	_, err := d.bot.SendInteractive(a.ChannelID, "local", requestID, a.Title, a.Description, a.Options, a.AllowText)
 	if err != nil {
-		return nil, errors.Wrap(err, "discord approval.request: send")
+		return nil, errors.Wrap(err, "discord interactive.request: send")
 	}
 
-	waitCh := d.router.GetApprovalChan(requestID)
+	waitCh := d.router.GetInteractiveChan(requestID)
 	if waitCh == nil {
-		return nil, errors.New("approval not found")
+		return nil, errors.New("interactive request not found")
 	}
 
-	decision, ok := d.router.WaitApproval(requestID, waitCh, time.Duration(timeoutSec)*time.Second)
+	decision, ok := d.router.WaitInteractive(requestID, waitCh, time.Duration(timeoutSec)*time.Second)
 	if !ok {
-		return json.Marshal(map[string]string{"decision": "timeout"})
+		return json.Marshal(map[string]string{"selection": "timeout"})
 	}
-	return json.Marshal(map[string]string{"decision": decision.Decision})
+
+	res := map[string]string{
+		"selection": decision.Selection,
+	}
+	if decision.CustomText != "" {
+		res["custom_text"] = decision.CustomText
+	}
+	return json.Marshal(res)
 }
 
 func (d *Discord) StreamEvents() (<-chan contract.Event, error) {
