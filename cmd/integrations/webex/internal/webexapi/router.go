@@ -12,24 +12,25 @@ type Event struct {
 	Data json.RawMessage `json:"data"`
 }
 
-// ApprovalDecision is delivered to a waiting approval request.
-type ApprovalDecision struct {
-	Decision string `json:"decision"`
-	User     string `json:"user"`
+// InteractiveDecision is delivered to a waiting interactive request.
+type InteractiveDecision struct {
+	Selection  string `json:"selection"`
+	CustomText string `json:"custom_text,omitempty"`
+	User       string `json:"user"`
 }
 
 // Router distributes Webex webhook events to SSE subscribers.
 type Router struct {
 	mu          sync.RWMutex
 	subscribers map[string][]chan Event // keyed by machine name
-	approvals   map[string]chan ApprovalDecision
+	approvals   map[string]chan InteractiveDecision
 }
 
 // NewRouter creates an empty Router.
 func NewRouter() *Router {
 	return &Router{
 		subscribers: make(map[string][]chan Event),
-		approvals:   make(map[string]chan ApprovalDecision),
+		approvals:   make(map[string]chan InteractiveDecision),
 	}
 }
 
@@ -72,26 +73,26 @@ func (r *Router) Publish(ev Event) {
 	}
 }
 
-// RegisterApproval creates a decision channel for the given request ID.
-func (r *Router) RegisterApproval(requestID string) <-chan ApprovalDecision {
-	ch := make(chan ApprovalDecision, 1)
+// RegisterInteractive creates a decision channel for the given request ID.
+func (r *Router) RegisterInteractive(requestID string) <-chan InteractiveDecision {
+	ch := make(chan InteractiveDecision, 1)
 	r.mu.Lock()
 	r.approvals[requestID] = ch
 	r.mu.Unlock()
 	return ch
 }
 
-// GetApprovalChan returns the decision channel for a request ID, or nil if not found.
-func (r *Router) GetApprovalChan(requestID string) <-chan ApprovalDecision {
+// GetInteractiveChan returns the decision channel for a request ID, or nil if not found.
+func (r *Router) GetInteractiveChan(requestID string) <-chan InteractiveDecision {
 	r.mu.RLock()
 	ch := r.approvals[requestID]
 	r.mu.RUnlock()
 	return ch
 }
 
-// ResolveApproval delivers a decision for the given request ID.
+// ResolveInteractive delivers a decision for the given request ID.
 // Returns true if a waiter was found.
-func (r *Router) ResolveApproval(requestID string, d ApprovalDecision) bool {
+func (r *Router) ResolveInteractive(requestID string, d InteractiveDecision) bool {
 	r.mu.Lock()
 	ch, ok := r.approvals[requestID]
 	if ok {
@@ -108,13 +109,13 @@ func (r *Router) ResolveApproval(requestID string, d ApprovalDecision) bool {
 	return ok
 }
 
-// WaitApproval blocks until a decision arrives or the timeout elapses.
+// WaitInteractive blocks until a decision arrives or the timeout elapses.
 // Cleans up the stale entry on timeout.
-func (r *Router) WaitApproval(
+func (r *Router) WaitInteractive(
 	requestID string,
-	ch <-chan ApprovalDecision,
+	ch <-chan InteractiveDecision,
 	timeout time.Duration,
-) (ApprovalDecision, bool) {
+) (InteractiveDecision, bool) {
 	select {
 	case d := <-ch:
 		return d, true
@@ -122,6 +123,6 @@ func (r *Router) WaitApproval(
 		r.mu.Lock()
 		delete(r.approvals, requestID)
 		r.mu.Unlock()
-		return ApprovalDecision{}, false
+		return InteractiveDecision{}, false
 	}
 }
