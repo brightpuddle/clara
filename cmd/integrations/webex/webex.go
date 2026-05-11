@@ -116,13 +116,13 @@ func (w *Webex) Tools() ([]byte, error) {
 			mcp.WithString("text", mcp.Required(), mcp.Description("Notification message text.")),
 		),
 		mcp.NewTool(
-			"approval.request",
+			"interactive.request",
 			mcp.WithDescription(
-				"Post an approval card with Approve/Reject buttons and block until decided. "+
-					"Returns \"approved\", \"rejected\", or \"timeout\".",
+				"Post an interactive card with buttons and block until decided. "+
+					"Returns a JSON object with 'selection' and optional 'custom_text'.",
 			),
 			mcp.WithString("room_id", mcp.Required(), mcp.Description("Target Webex room ID.")),
-			mcp.WithString("title", mcp.Required(), mcp.Description("Short title for the approval card.")),
+			mcp.WithString("title", mcp.Required(), mcp.Description("Short title for the card.")),
 			mcp.WithString("description", mcp.Description("Detail shown in the card body.")),
 			mcp.WithNumber("timeout_s", mcp.Description("Seconds to wait for decision (default 300).")),
 		),
@@ -150,8 +150,8 @@ func (w *Webex) CallTool(name string, args []byte) ([]byte, error) {
 		return w.callMessageReply(args)
 	case "notification.send":
 		return w.callNotificationSend(args)
-	case "approval.request":
-		return w.callApprovalRequest(args)
+	case "interactive.request":
+		return w.callInteractiveRequest(args)
 	case "message_created":
 		return json.Marshal(map[string]string{"error": "message_created is an event source, not a callable tool"})
 	default:
@@ -267,16 +267,20 @@ func (w *Webex) callNotificationSend(args []byte) ([]byte, error) {
 	return json.Marshal(map[string]string{"message_id": msg.ID})
 }
 
-func (w *Webex) callApprovalRequest(args []byte) ([]byte, error) {
+type interactiveRequestArgs struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	RoomID      string   `json:"room_id"`
+	TimeoutS    float64  `json:"timeout_s"`
+	Options     []string `json:"options"`
+	AllowText   bool     `json:"allow_text"`
+}
+
+func (w *Webex) callInteractiveRequest(args []byte) ([]byte, error) {
 	if w.bot == nil {
 		return nil, errors.New("webex bot account not configured")
 	}
-	var a struct {
-		Title       string  `json:"title"`
-		Description string  `json:"description"`
-		RoomID      string  `json:"room_id"`
-		TimeoutS    float64 `json:"timeout_s"`
-	}
+	var a interactiveRequestArgs
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, errors.Wrap(err, "unmarshal args")
 	}
@@ -289,22 +293,29 @@ func (w *Webex) callApprovalRequest(args []byte) ([]byte, error) {
 	}
 	requestID := uuid.New().String()
 	
-	w.router.RegisterApproval(requestID)
-	_, err := w.bot.SendApproval(a.RoomID, "local", requestID, a.Title, a.Description)
+	w.router.RegisterInteractive(requestID)
+	_, err := w.bot.SendInteractive(a.RoomID, "local", requestID, a.Title, a.Description, a.Options, a.AllowText)
 	if err != nil {
-		return nil, errors.Wrap(err, "send approval")
+		return nil, errors.Wrap(err, "send interactive")
 	}
 
-	waitCh := w.router.GetApprovalChan(requestID)
+	waitCh := w.router.GetInteractiveChan(requestID)
 	if waitCh == nil {
-		return nil, errors.New("approval not found")
+		return nil, errors.New("interactive request not found")
 	}
 
-	decision, ok := w.router.WaitApproval(requestID, waitCh, time.Duration(timeoutSec)*time.Second)
+	decision, ok := w.router.WaitInteractive(requestID, waitCh, time.Duration(timeoutSec)*time.Second)
 	if !ok {
-		return json.Marshal(map[string]string{"decision": "timeout"})
+		return json.Marshal(map[string]string{"selection": "timeout"})
 	}
-	return json.Marshal(map[string]string{"decision": decision.Decision})
+
+	res := map[string]string{
+		"selection": decision.Selection,
+	}
+	if decision.CustomText != "" {
+		res["custom_text"] = decision.CustomText
+	}
+	return json.Marshal(res)
 }
 
 // --- HTTPIntegration implementation ---
@@ -444,12 +455,18 @@ func (w *Webex) handleAttachmentAction(id string) {
 
 	requestID, _ := action.Inputs["request_id"].(string)
 	decision, _ := action.Inputs["decision"].(string)
+	
+	customText := ""
+	if ct, ok := action.Inputs["custom_text"].(string); ok {
+		customText = ct
+	}
 
 	if requestID != "" && decision != "" {
-		log.Info().Str("request_id", requestID).Str("decision", decision).Msg("webex: approval resolved")
-		w.router.ResolveApproval(requestID, webexapi.ApprovalDecision{
-			Decision: decision,
-			User:     action.PersonID,
+		log.Info().Str("request_id", requestID).Str("decision", decision).Msg("webex: interactive request resolved")
+		w.router.ResolveInteractive(requestID, webexapi.InteractiveDecision{
+			Selection:  decision,
+			CustomText: customText,
+			User:       action.PersonID,
 		})
 	}
 }
