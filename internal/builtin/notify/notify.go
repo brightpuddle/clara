@@ -50,7 +50,7 @@ func Register(
 	askSpec := mcp.NewTool("notify.ask",
 		mcp.WithDescription(
 			"Deliver a question and return the user's answer. "+
-				"With the dummy backend, returns \"acknowledged\" immediately.",
+				"Returns a JSON object with 'selection' and optional 'custom_text'.",
 		),
 		mcp.WithString("question",
 			mcp.Required(),
@@ -107,7 +107,7 @@ func dummyAsk(log zerolog.Logger) func(ctx context.Context, args map[string]any)
 			return nil, errors.New("notify.ask: question is required")
 		}
 		log.Info().Str("backend", "dummy").Str("question", question).Msg("notify.ask")
-		return "acknowledged", nil
+		return map[string]string{"selection": "acknowledged"}, nil
 	}
 }
 
@@ -137,8 +137,8 @@ func discordSend(
 	}
 }
 
-// discordAsk posts an approval request via discord.approval.request and blocks
-// until the user clicks a button. Returns "approved" or "rejected".
+// discordAsk posts an interactive request via discord.interactive.request and blocks
+// until the user responds. Returns selection and custom_text.
 func discordAsk(
 	reg *registry.Registry,
 	channelID string,
@@ -149,10 +149,12 @@ func discordAsk(
 		if question == "" {
 			return nil, errors.New("notify.ask: question is required")
 		}
-		result, err := reg.Call(ctx, "discord.approval.request", map[string]any{
+		result, err := reg.Call(ctx, "discord.interactive.request", map[string]any{
 			"channel_id":  channelID,
 			"title":       "Clara needs your input",
 			"description": question,
+			"options":     args["options"],
+			"allow_text":  args["allow_text"],
 		})
 		if err != nil {
 			log.Error().Err(err).Str("backend", "discord").Msg("notify.ask failed")
@@ -186,8 +188,8 @@ func webexSend(
 	}
 }
 
-// webexAsk posts an approval request via webex.approval.request and blocks
-// until the user clicks a button. Returns "approved", "rejected", or "timeout".
+// webexAsk posts an interactive request via webex.interactive.request and blocks
+// until the user responds. Returns selection and custom_text.
 func webexAsk(
 	reg *registry.Registry,
 	roomID string,
@@ -198,10 +200,12 @@ func webexAsk(
 		if question == "" {
 			return nil, errors.New("notify.ask: question is required")
 		}
-		result, err := reg.Call(ctx, "webex.approval.request", map[string]any{
+		result, err := reg.Call(ctx, "webex.interactive.request", map[string]any{
 			"room_id":     roomID,
 			"title":       "Clara needs your input",
 			"description": question,
+			"options":     args["options"],
+			"allow_text":  args["allow_text"],
 		})
 		if err != nil {
 			log.Error().Err(err).Str("backend", "webex").Msg("notify.ask failed")
