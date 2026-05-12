@@ -56,6 +56,13 @@ func Register(
 			mcp.Required(),
 			mcp.Description("The question to ask."),
 		),
+		mcp.WithArray("options",
+			mcp.Description("The specific choices available to the user. Defaults to [\"Approve\", \"Reject\"] if omitted."),
+			mcp.WithStringItems(),
+		),
+		mcp.WithBoolean("allow_text",
+			mcp.Description("Whether to provide a UI affordance for custom text feedback. Defaults to false."),
+		),
 	)
 
 	var sendFn, askFn func(ctx context.Context, args map[string]any) (any, error)

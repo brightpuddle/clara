@@ -99,6 +99,13 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithString("title", mcp.Required(), mcp.Description("Short title for the card.")),
 			mcp.WithString("description", mcp.Description("Detail shown in the embed body.")),
 			mcp.WithNumber("timeout_s", mcp.Description("Seconds to wait for decision (default 300).")),
+			mcp.WithArray("options",
+				mcp.Description("The specific choices available to the user. Defaults to [\"Approve\", \"Reject\"] if omitted."),
+				mcp.WithStringItems(),
+			),
+			mcp.WithBoolean("allow_text",
+				mcp.Description("Whether to provide a UI affordance for custom text feedback. Defaults to false."),
+			),
 		),
 		mcp.NewTool(
 			"message_created",
