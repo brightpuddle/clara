@@ -581,6 +581,52 @@ func buildHandler(
 
 			result, err := reg.Call(ctx, name, args)
 			if err != nil {
+				parts := strings.SplitN(name, ".", 2)
+				if len(parts) == 2 {
+					eventsList := listEventTools(ctx, reg, parts[0])
+					isEvent := false
+					for _, ev := range eventsList {
+						if evName, ok := ev["name"].(string); ok && evName == name {
+							isEvent = true
+							break
+						}
+					}
+
+					if isEvent {
+						events, unsubscribe := sup.EventBus().Subscribe()
+						defer unsubscribe()
+
+						for {
+							select {
+							case <-ctx.Done():
+								writeResp(&ipc.Response{Error: ctx.Err().Error()})
+								return
+							case event, ok := <-events:
+								if !ok {
+									writeResp(&ipc.Response{Error: "event bus closed"})
+									return
+								}
+								if event.Server == parts[0] && event.Method == parts[1] {
+									matched := true
+									if len(args) > 0 {
+										evParams, _ := event.Params.(map[string]any)
+										for k, v := range args {
+											if fmt.Sprintf("%v", evParams[k]) != fmt.Sprintf("%v", v) {
+												matched = false
+												break
+											}
+										}
+									}
+									if matched {
+										writeResp(&ipc.Response{Data: event.Params})
+										return
+									}
+								}
+							}
+						}
+					}
+				}
+
 				writeResp(&ipc.Response{Error: err.Error()})
 				return
 			}
@@ -900,10 +946,23 @@ func buildEventTools(
 
 	res, err := reg.Call(callCtx, listTool, map[string]any{})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "buildEventTools %s error: %v\n", listTool, err)
 		return nil
 	}
 
 	var events []any
+
+	if _, isList := res.([]any); !isList {
+		if _, isMap := res.(map[string]any); !isMap {
+			if b, err := json.Marshal(res); err == nil {
+				var normalized any
+				if err := json.Unmarshal(b, &normalized); err == nil {
+					res = normalized
+				}
+			}
+		}
+	}
+
 	switch v := res.(type) {
 	case []any:
 		events = v
@@ -916,12 +975,17 @@ func buildEventTools(
 					var parsed []any
 					if err := json.Unmarshal([]byte(text), &parsed); err == nil {
 						events = parsed
+					} else {
+						fmt.Fprintf(os.Stderr, "buildEventTools %s unmarshal error: %v text=%q\n", listTool, err, text)
 					}
 				}
 			}
 		}
+	default:
+		fmt.Fprintf(os.Stderr, "buildEventTools %s unexpected type: %T res=%v\n", listTool, res, res)
 	}
 	if len(events) == 0 {
+		fmt.Fprintf(os.Stderr, "buildEventTools %s events empty\n", listTool)
 		return nil
 	}
 

@@ -55,6 +55,19 @@ func FormatProviderList(providers []Provider, useColor bool) string {
 			b.WriteString(provider.Description)
 			b.WriteString("\n")
 		}
+		if len(provider.Events) > 0 {
+			b.WriteString("  events:\n")
+			for _, event := range provider.Events {
+				b.WriteString("    ")
+				eventTag := "[event]"
+				if useColor {
+					b.WriteString(colorize(event.Name, ansiMagenta) + "  " + colorize(eventTag, ansiMagenta))
+				} else {
+					b.WriteString(event.Name + "  " + eventTag)
+				}
+				b.WriteString("\n")
+			}
+		}
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
