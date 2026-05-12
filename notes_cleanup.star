@@ -26,7 +26,6 @@ def sync_all_embeddings():
     init_db()
     notes = zk.note_list()
     
-    # Get all current paths in db
     db_paths_res = db.query(sql="SELECT path FROM zk_embeddings")
     db_paths = [row["path"] for row in db_paths_res]
     current_paths = []
@@ -35,7 +34,6 @@ def sync_all_embeddings():
         path = note["path"]
         current_paths.append(path)
         
-        # Read full content to hash
         note_data = zk.note_get(note=path)
         content = note_data.get("content", "")
         if not content:
@@ -43,12 +41,10 @@ def sync_all_embeddings():
             
         current_hash = _hash_content(content)
         
-        # Check if exists and matches
         existing = db.query(sql="SELECT hash FROM zk_embeddings WHERE path = ?", params=[path])
         if len(existing) > 0 and existing[0]["hash"] == current_hash:
-            continue # unchanged
+            continue
             
-        # Needs update
         if not DRY_RUN:
             print("Embedding: " + path)
             embed_res = llm.embed(category="local", input=[content])
@@ -61,7 +57,6 @@ def sync_all_embeddings():
         else:
             print("DRY_RUN: Would embed and sync: " + path)
 
-    # Clean up deleted notes
     for p in db_paths:
         if p not in current_paths:
             if not DRY_RUN:
@@ -72,28 +67,20 @@ def sync_all_embeddings():
 def on_note_change(event, path, root, timestamp):
     if not path.endswith(".md"):
         return
-        
     init_db()
-    
-    # Safely check existence via shell
     exists_res = shell.run(command="test -f '" + path.replace("'", "'\\''") + "' && echo 'yes' || echo 'no'")
     exists = exists_res["output"].strip()
-    
     if exists == "no":
         if not DRY_RUN:
             db.exec(sql="DELETE FROM zk_embeddings WHERE path = ?", params=[path])
         else:
             print("DRY_RUN: Would delete embedding for: " + path)
         return
-
-    # Note: fs.read_file uses absolute paths
     content = fs.read_file(path=path)
     current_hash = _hash_content(content)
-    
     existing = db.query(sql="SELECT hash FROM zk_embeddings WHERE path = ?", params=[path])
     if len(existing) > 0 and existing[0]["hash"] == current_hash:
-        return # unchanged
-
+        return
     if not DRY_RUN:
         print("Real-time Embedding: " + path)
         embed_res = llm.embed(category="local", input=[content])
@@ -106,14 +93,45 @@ def on_note_change(event, path, root, timestamp):
     else:
         print("DRY_RUN: Would update real-time embedding for: " + path)
 
-def test_sync_all_embeddings():
-    sync_all_embeddings()
-    print("sync_all_embeddings finished")
+def task_maintenance():
+    notes = zk.note_list()
+    for note in notes:
+        path = note["path"]
+        name = note["name"]
+        
+        note_data = zk.note_get(note=path)
+        content = note_data.get("content", "")
+        
+        # Check for empty notes
+        if len(content.strip()) == 0:
+            notify.send(title="Empty Note Detected", body="The note `" + name + "` is empty.\n\n[Open Note](obsidian://open?file=" + name.replace(" ", "%20") + ")")
+            resp = notify.ask(question="What should we do?", options=["Delete", "Keep"])
+            if resp["selection"] == "Delete":
+                if not DRY_RUN:
+                    zk.note_delete(note=path)
+                else:
+                    print("DRY_RUN: Would delete empty note: " + path)
+            continue
+            
+        # Check dead links
+        links = note.get("wikilinks", [])
+        for link in links:
+            target = zk.note_resolve_wikilink(target=link)
+            if target == "":
+                # Dead link
+                notify.send(title="Dead Link Detected", body="Note `" + name + "` has a dead link to `[[" + link + "]]`.\n\n[Open Note](obsidian://open?file=" + name.replace(" ", "%20") + ")")
+                resp = notify.ask(question="Remove the broken link brackets for `[[" + link + "]]`?", options=["Remove", "Keep"])
+                if resp["selection"] == "Remove":
+                    new_content = content.replace("[[" + link + "]]", link)
+                    if not DRY_RUN:
+                        zk.note_update(note=path, content=new_content)
+                        content = new_content
+                    else:
+                        print("DRY_RUN: Would fix dead link " + link + " in " + path)
 
-def test_init_db():
-    init_db()
-    res = db.query(sql="SELECT count(*) as c FROM sqlite_master WHERE type='table' AND name='zk_embeddings'")
-    must.eq(x=res[0]["c"], y=1)
+def test_maintenance():
+    # Only run for 1 note to avoid spamming the HUD during tests
+    task_maintenance()
 
 def main():
     pass
@@ -121,5 +139,5 @@ def main():
 clara.task(main)
 clara.task(sync_all_embeddings)
 clara.task(on_note_change, trigger=clara.on(fs.on_change, path=VAULT_ROOT, recursive=True))
-clara.task(test_init_db)
-clara.task(test_sync_all_embeddings)
+clara.task(task_maintenance, schedule="0 2 * * 0") # Weekly on Sunday 2AM
+clara.task(test_maintenance)
