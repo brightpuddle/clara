@@ -13,6 +13,8 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
+
+	_ "github.com/asg017/sqlite-vec-go-bindings/ncruces"
 )
 
 const Description = "Built-in Zettelkasten integration: CRUD notes, resolve wikilinks, query by tag, and parse YAML frontmatter from Obsidian-style Markdown vaults."
