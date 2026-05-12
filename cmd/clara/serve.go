@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -362,6 +363,49 @@ func buildHandler(
 				list = []taskEntry{}
 			}
 			writeResp(&ipc.Response{Data: list})
+
+		case ipc.MethodRun:
+			path, _ := req.Params["path"].(string)
+			if path == "" {
+				writeResp(&ipc.Response{Error: "missing path parameter"})
+				return
+			}
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			intent := &orchestrator.Intent{
+				ID:           strings.TrimSuffix(filepath.Base(absPath), filepath.Ext(absPath)),
+				WorkflowType: orchestrator.WorkflowTypeNative,
+				Script:       absPath,
+			}
+			if strings.HasSuffix(absPath, ".yaml") || strings.HasSuffix(absPath, ".yml") || strings.HasSuffix(absPath, ".json") {
+				data, err := os.ReadFile(absPath)
+				if err != nil {
+					writeResp(&ipc.Response{Error: "read intent file: " + err.Error()})
+					return
+				}
+				intent, err = orchestrator.ParseIntent(data)
+				if err != nil {
+					writeResp(&ipc.Response{Error: "parse intent: " + err.Error()})
+					return
+				}
+			}
+			
+			runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
+			startedAt := time.Now()
+			
+			go runIntentInBackground(ctx, intent, runID, "main", nil, reg, db, ilog, log)
+			
+			writeResp(&ipc.Response{
+				Message: "intent " + intent.ID + " started",
+				Data: map[string]any{
+					"run_id":     runID,
+					"intent_id":  intent.ID,
+					"started_at": startedAt.Format(time.RFC3339Nano),
+				},
+			})
 
 		case ipc.MethodStart:
 			id, _ := req.Params["id"].(string)
