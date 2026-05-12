@@ -238,7 +238,51 @@ func runIntentList(cmd *cobra.Command, args []string) error {
 }
 
 func runIntentRun(cmd *cobra.Command, args []string) error {
-	return runOneOff(cmd.Context(), args[0], intentRunVerbose)
+	path := args[0]
+	if isRunning(cfg.ControlSocketPath()) {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+
+		resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+			Method: ipc.MethodRun,
+			Params: map[string]any{"path": absPath},
+		})
+		if err != nil {
+			return err
+		}
+
+		if wantJSON() {
+			prettyPrint(resp.Data)
+			return nil
+		}
+
+		var runID string
+		var startedAt time.Time
+		if m, ok := resp.Data.(map[string]any); ok {
+			runID, _ = m["run_id"].(string)
+			if s, ok := m["started_at"].(string); ok {
+				startedAt, _ = time.Parse(time.RFC3339Nano, s)
+			}
+			intentID, _ := m["intent_id"].(string)
+
+			logPath := filepath.Join(cfg.IntentLogsDir(), intentID+".log")
+			filter := intentlog.Filter{RunID: runID, Since: startedAt}
+			return followSingleIntentLog(
+				cmd.Context(),
+				logPath,
+				runID,
+				filter,
+				0,
+				intentRunVerbose,
+				cfg.DBPath(),
+			)
+		}
+		return nil
+	}
+
+	return runOneOff(cmd.Context(), path, intentRunVerbose)
 }
 
 func runIntentStart(cmd *cobra.Command, args []string) error {
