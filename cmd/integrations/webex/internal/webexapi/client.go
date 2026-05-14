@@ -103,6 +103,30 @@ func (c *Client) SendMessage(roomID, text string) (*Message, error) {
 	return &msg, nil
 }
 
+// DeleteMessage deletes a Webex message by ID.
+func (c *Client) DeleteMessage(id string) error {
+	token, err := c.getToken()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodDelete, apiBase+"/messages/"+url.PathEscape(id), nil)
+	if err != nil {
+		return fmt.Errorf("webex: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("webex: DELETE message %s: %w", id, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode != 404 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("webex: DELETE message %s: status %d: %s", id, resp.StatusCode, body)
+	}
+	return nil
+}
+
 // GetAttachmentAction fetches details of a button click.
 func (c *Client) GetAttachmentAction(id string) (*AttachmentAction, error) {
 	var action AttachmentAction

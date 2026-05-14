@@ -301,7 +301,7 @@ func (w *Webex) callInteractiveRequest(args []byte) ([]byte, error) {
 	requestID := uuid.New().String()
 	
 	w.router.RegisterInteractive(requestID)
-	_, err := w.bot.SendInteractive(a.RoomID, "local", requestID, a.Title, a.Description, a.Options, a.AllowText)
+	sentMsg, err := w.bot.SendInteractive(a.RoomID, "local", requestID, a.Title, a.Description, a.Options, a.AllowText)
 	if err != nil {
 		return nil, errors.Wrap(err, "send interactive")
 	}
@@ -312,6 +312,26 @@ func (w *Webex) callInteractiveRequest(args []byte) ([]byte, error) {
 	}
 
 	decision, ok := w.router.WaitInteractive(requestID, waitCh, time.Duration(timeoutSec)*time.Second)
+
+	// Replace the interactive card with a static summary so the room shows
+	// only outstanding questions as live cards.
+	if sentMsg != nil {
+		answer := "timeout"
+		if ok {
+			answer = decision.Selection
+			if decision.CustomText != "" {
+				answer = decision.CustomText
+			}
+		}
+		summary := fmt.Sprintf("✅ **%s**\nAnswered: %s", a.Title, answer)
+		if err := w.bot.DeleteMessage(sentMsg.ID); err != nil {
+			log.Warn().Err(err).Str("message_id", sentMsg.ID).Msg("webex: could not delete interactive card")
+		}
+		if _, err := w.bot.SendMessage(a.RoomID, summary); err != nil {
+			log.Warn().Err(err).Msg("webex: could not send answer summary")
+		}
+	}
+
 	if !ok {
 		return json.Marshal(map[string]string{"selection": "timeout"})
 	}

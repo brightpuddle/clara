@@ -263,26 +263,47 @@ func (s *Supervisor) loopScheduled(
 	task orchestrator.Task,
 	runSeq int64,
 ) {
-	// Simple polling scheduler for PoC. In production, use a proper cron lib.
-	// For now, only @every durations are supported in the Task.Schedule field.
-	interval, err := time.ParseDuration(strings.TrimPrefix(task.Schedule, "@every "))
-	if err != nil {
-		s.log.Error().
-			Err(err).
-			Str("intent_id", managed.intent.ID).
-			Str("schedule", task.Schedule).
-			Msg("invalid schedule duration; task will not run")
-		return
+	schedule := task.Schedule
+
+	// Support @every <duration> shorthand.
+	if strings.HasPrefix(schedule, "@every ") {
+		interval, err := time.ParseDuration(strings.TrimPrefix(schedule, "@every "))
+		if err != nil {
+			s.log.Error().
+				Err(err).
+				Str("intent_id", managed.intent.ID).
+				Str("schedule", schedule).
+				Msg("invalid schedule duration; task will not run")
+			return
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.executeTask(ctx, managed, task, runSeq, nil)
+			}
+		}
 	}
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
+	// Otherwise treat as a 5-field cron expression.
 	for {
+		next, err := nextCronTime(schedule, time.Now())
+		if err != nil {
+			s.log.Error().
+				Err(err).
+				Str("intent_id", managed.intent.ID).
+				Str("schedule", schedule).
+				Msg("invalid cron schedule; task will not run")
+			return
+		}
+		delay := time.Until(next)
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-time.After(delay):
 			s.executeTask(ctx, managed, task, runSeq, nil)
 		}
 	}
