@@ -1,0 +1,149 @@
+package templ
+
+import "github.com/brightpuddle/clara/internal/supervisor"
+
+// IntentListData holds data for the intent list page.
+type IntentListData struct {
+	Intents []supervisor.IntentInfo
+}
+
+// IntentList renders the list of all registered intents.
+templ IntentList(d IntentListData) {
+	@Layout("Intents", "/ui/intents") {
+		@PageHeader("Intents", "Loaded Starlark intent files")
+		<div class="card bg-base-200 shadow-sm">
+			<div class="card-body p-0">
+				if len(d.Intents) == 0 {
+					<p class="text-sm text-base-content/50 px-5 py-4">No intents loaded. Place .star files in your tasks directory.</p>
+				} else {
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th class="hidden md:table-cell">Description</th>
+								<th>Tasks</th>
+								<th>Status</th>
+								<th></th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, info := range d.Intents {
+								<tr class="hover">
+									<td class="font-mono text-sm">{ info.ID }</td>
+									<td class="hidden md:table-cell text-base-content/70 text-sm max-w-xs truncate">{ info.Description }</td>
+									<td class="text-sm">{ itoa(len(info.Tasks)) }</td>
+									<td>
+										if info.Error != "" {
+											@StatusBadge("error")
+										} else if info.Active {
+											@StatusBadge("active")
+										} else {
+											@StatusBadge("idle")
+										}
+									</td>
+									<td class="text-right">
+										<a href={ templ.SafeURL("/ui/intents/" + info.ID) } class="btn btn-xs btn-ghost">Details →</a>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</div>
+	}
+}
+
+// IntentDetailData holds data for a single intent detail page.
+type IntentDetailData struct {
+	Info    supervisor.IntentInfo
+	LogLines []string
+	Flash   string
+	FlashKind string
+}
+
+// IntentDetail renders the detail view for a single intent.
+templ IntentDetail(d IntentDetailData) {
+	@Layout("Intent: "+d.Info.ID, "/ui/intents") {
+		<div class="flex items-center gap-2 mb-1">
+			<a href="/ui/intents" class="text-sm text-base-content/50 hover:text-base-content">← Intents</a>
+		</div>
+		@PageHeader(d.Info.ID, d.Info.Description)
+		@Flash(d.FlashKind, d.Flash)
+		<!-- Tasks -->
+		<div class="card bg-base-200 shadow-sm mb-6">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300 flex items-center justify-between">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">Tasks</h2>
+					<!-- Run button (only shown for on-demand / empty mode) -->
+					<form
+						hx-post={ "/ui/intents/" + d.Info.ID + "/run" }
+						hx-target="#run-result"
+						hx-swap="innerHTML"
+					>
+						<button type="submit" class="btn btn-xs btn-primary">▶ Run</button>
+					</form>
+				</div>
+				<div id="run-result" class="px-5 py-2"></div>
+				if len(d.Info.Tasks) == 0 {
+					<p class="text-sm text-base-content/50 px-5 py-4">No tasks defined.</p>
+				} else {
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th>Handler</th>
+								<th>Mode</th>
+								<th class="hidden md:table-cell">Schedule / Trigger</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, task := range d.Info.Tasks {
+								<tr>
+									<td class="font-mono text-sm">{ task.Handler }</td>
+									<td>
+										<span class="badge badge-outline badge-sm">{ task.Mode }</span>
+									</td>
+									<td class="hidden md:table-cell text-sm text-base-content/60">
+										if task.Schedule != "" {
+											{ task.Schedule }
+										} else if task.Interval != "" {
+											{ "every " + task.Interval }
+										} else if task.Trigger != "" {
+											{ task.Trigger }
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</div>
+		<!-- Intent log tail -->
+		<div class="card bg-base-200 shadow-sm">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">Recent Log</h2>
+				</div>
+				if len(d.LogLines) == 0 {
+					<p class="text-sm text-base-content/50 px-5 py-4">No log entries yet.</p>
+				} else {
+					<pre class="log-pre text-xs font-mono px-5 py-4 max-h-80 overflow-y-auto whitespace-pre-wrap">
+						for _, line := range d.LogLines {
+							{ line + "\n" }
+						}
+					</pre>
+				}
+			</div>
+		</div>
+	}
+}
+
+// IntentRunResult is the HTMX partial returned after triggering an intent.
+templ IntentRunResult(success bool, message string) {
+	if success {
+		<div class="alert alert-success text-sm py-2">{ message }</div>
+	} else {
+		<div class="alert alert-error text-sm py-2">{ message }</div>
+	}
+}

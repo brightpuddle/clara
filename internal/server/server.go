@@ -10,6 +10,7 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/webui"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -27,6 +28,7 @@ type Server struct {
 	dispatcher HTTPDispatcher
 	log        zerolog.Logger
 	httpServer *http.Server
+	WebUI      *webui.WebUI
 }
 
 func New(cfg *config.Config, reg *registry.Registry, dispatcher HTTPDispatcher, log zerolog.Logger) *Server {
@@ -112,6 +114,11 @@ func (s *Server) Start() error {
 	// Plugin HTTP proxy
 	mux.HandleFunc("/api/", s.handlePluginAPI)
 	mux.HandleFunc("/auth/", s.handlePluginAPI)
+
+	// Web UI (mounts /ui/ and registers a / redirect)
+	if s.WebUI != nil {
+		s.WebUI.Mount(mux)
+	}
 
 	s.httpServer = &http.Server{
 		Addr:    s.cfg.Server.ListenAddr,

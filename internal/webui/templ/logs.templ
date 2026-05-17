@@ -1,0 +1,64 @@
+package templ
+
+// LogsData holds data for the agent log viewer page.
+type LogsData struct {
+	Lines       []string
+	LevelFilter string
+}
+
+// Logs renders the agent log viewer with SSE live tail.
+templ Logs(d LogsData) {
+	@Layout("Logs", "/ui/logs") {
+		@PageHeader("Agent Logs", "Live tail of the Clara daemon log")
+		<!-- Filter bar -->
+		<div class="flex gap-2 mb-4 flex-wrap">
+			@levelFilterBtn("", d.LevelFilter, "All")
+			@levelFilterBtn("trace", d.LevelFilter, "Trace")
+			@levelFilterBtn("debug", d.LevelFilter, "Debug")
+			@levelFilterBtn("info", d.LevelFilter, "Info")
+			@levelFilterBtn("warn", d.LevelFilter, "Warn")
+			@levelFilterBtn("error", d.LevelFilter, "Error")
+		</div>
+		<!-- Log output -->
+		<div class="card bg-base-200 shadow-sm">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300 flex items-center justify-between">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">Output</h2>
+					<span class="text-xs text-base-content/40" id="log-status">connecting…</span>
+				</div>
+				<pre
+					id="log-output"
+					class="log-pre text-xs font-mono px-5 py-4 min-h-64 max-h-screen overflow-y-auto whitespace-pre-wrap"
+					hx-ext="sse"
+					sse-connect={ "/ui/logs/stream?level=" + d.LevelFilter }
+					sse-swap="message"
+					hx-swap="beforeend"
+				>
+					for _, line := range d.Lines {
+						{ line + "\n" }
+					}
+				</pre>
+			</div>
+		</div>
+		<script>
+			// Scroll log to bottom on load and when new content is added
+			var logOutput = document.getElementById('log-output');
+			var logStatus = document.getElementById('log-status');
+			if (logOutput) {
+				logOutput.scrollTop = logOutput.scrollHeight;
+				var observer = new MutationObserver(function() {
+					logOutput.scrollTop = logOutput.scrollHeight;
+					logStatus.textContent = 'live';
+				});
+				observer.observe(logOutput, { childList: true });
+			}
+		</script>
+	}
+}
+
+templ levelFilterBtn(level, current, label string) {
+	<a
+		href={ templ.SafeURL("/ui/logs?level=" + level) }
+		class={ "btn btn-xs", templ.KV("btn-active btn-primary", level == current) }
+	>{ label }</a>
+}

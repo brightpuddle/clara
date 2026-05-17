@@ -1,0 +1,70 @@
+package templ
+
+// IntegrationsData holds data for the integrations page.
+type IntegrationsData struct {
+	Plugins    []map[string]any
+	MCPServers []map[string]any
+}
+
+// Integrations renders the integrations status page.
+templ Integrations(d IntegrationsData) {
+	@Layout("Integrations", "/ui/integrations") {
+		@PageHeader("Integrations", "Native plugins and MCP servers")
+		<!-- Native plugins -->
+		<div class="card bg-base-200 shadow-sm mb-6">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">Native Plugins</h2>
+				</div>
+				if len(d.Plugins) == 0 {
+					<p class="text-sm text-base-content/50 px-5 py-4">No native plugins configured.</p>
+				} else {
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Status</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, p := range d.Plugins {
+								<tr class="hover">
+									<td class="font-mono text-sm">{ strVal(p["name"]) }</td>
+									<td>@StatusBadge(strVal(p["status"]))</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</div>
+		<!-- MCP servers -->
+		<div class="card bg-base-200 shadow-sm">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">MCP Servers</h2>
+				</div>
+				if len(d.MCPServers) == 0 {
+					<p class="text-sm text-base-content/50 px-5 py-4">No MCP servers configured.</p>
+				} else {
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Status</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, s := range d.MCPServers {
+								<tr class="hover">
+									<td class="font-mono text-sm">{ strVal(s["name"]) }</td>
+									<td>@StatusBadge(strVal(s["status"]))</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</div>
+	}
+}

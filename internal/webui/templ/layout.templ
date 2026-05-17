@@ -1,0 +1,156 @@
+package templ
+
+// navItem defines a sidebar navigation entry.
+type navItem struct {
+	Label string
+	Path  string
+	Icon  string
+}
+
+var navItems = []navItem{
+	{Label: "Dashboard", Path: "/ui/", Icon: iconDashboard},
+	{Label: "Intents", Path: "/ui/intents", Icon: iconIntents},
+	{Label: "Integrations", Path: "/ui/integrations", Icon: iconIntegrations},
+	{Label: "Logs", Path: "/ui/logs", Icon: iconLogs},
+	{Label: "Configuration", Path: "/ui/config", Icon: iconConfig},
+}
+
+const iconDashboard = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>`
+const iconIntents = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>`
+const iconIntegrations = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>`
+const iconLogs = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`
+const iconConfig = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`
+
+// Layout renders the base HTML page wrapping all Clara UI pages.
+// currentPath is used to highlight the active nav item.
+templ Layout(title, currentPath string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } — Clara</title>
+			<!-- Theme applied before first paint to avoid FOUC -->
+			<script src="/ui/static/app.js"></script>
+			<!-- Tailwind + DaisyUI via CDN (replace with compiled CSS for production) -->
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.24/dist/full.min.css" rel="stylesheet" type="text/css"/>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script>
+				tailwind.config = {
+					darkMode: ['attribute', '[data-theme="dark"]'],
+					theme: {
+						extend: {}
+					}
+				}
+			</script>
+			<style>
+				:root { --sidebar-width: 240px; }
+				[data-theme="light"] { --clara-bg: #f8fafc; --clara-surface: #ffffff; }
+				[data-theme="dark"]  { --clara-bg: #0f172a; --clara-surface: #1e293b; }
+				.sidebar-link.active { @apply bg-base-200 font-semibold; }
+				/* Hide scrollbar on log pre but keep scrollable */
+				.log-pre { scrollbar-width: thin; scrollbar-color: oklch(var(--bc)/0.2) transparent; }
+			</style>
+			<script src="/ui/static/htmx.min.js"></script>
+			<script src="/ui/static/htmx-sse.js"></script>
+		</head>
+		<body class="min-h-screen bg-base-100 text-base-content">
+			<!-- Mobile drawer -->
+			<div class="drawer lg:drawer-open">
+				<input id="sidebar-drawer" type="checkbox" class="drawer-toggle"/>
+				<!-- Main content -->
+				<div class="drawer-content flex flex-col min-h-screen">
+					<!-- Top bar (mobile only) -->
+					<header class="lg:hidden navbar bg-base-200 shadow-sm px-4">
+						<label for="sidebar-drawer" class="btn btn-ghost btn-sm drawer-button mr-2">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+							</svg>
+						</label>
+						<span class="text-lg font-semibold tracking-tight">Clara</span>
+					</header>
+					<!-- Page content -->
+					<main class="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto">
+						{ children... }
+					</main>
+				</div>
+				<!-- Sidebar drawer -->
+				<div class="drawer-side z-40">
+					<label for="sidebar-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+					<aside class="bg-base-200 min-h-screen flex flex-col" style="width: var(--sidebar-width)">
+						<!-- Logo -->
+						<div class="px-5 py-6 border-b border-base-300">
+							<a href="/ui/" class="flex items-center gap-2">
+								<span class="text-xl font-bold tracking-tight">Clara</span>
+								<span class="badge badge-ghost badge-sm">agent</span>
+							</a>
+						</div>
+						<!-- Nav -->
+						<nav class="flex-1 py-4 px-3 space-y-1">
+							for _, item := range navItems {
+								<a
+									href={ templ.SafeURL(item.Path) }
+									class={ "sidebar-link flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors hover:bg-base-300", templ.KV("active", currentPath == item.Path || (item.Path != "/ui/" && len(currentPath) >= len(item.Path) && currentPath[:len(item.Path)] == item.Path)) }
+								>
+									@templ.Raw(item.Icon)
+									{ item.Label }
+								</a>
+							}
+						</nav>
+						<!-- Theme toggle -->
+						<div class="border-t border-base-300 px-4 py-4">
+							<p class="text-xs text-base-content/50 mb-2 uppercase tracking-widest">Theme</p>
+							<div class="join w-full">
+								<button data-theme-btn="light" onclick="__claraSetTheme('light')" class="join-item btn btn-xs flex-1">Light</button>
+								<button data-theme-btn="system" onclick="__claraSetTheme('system')" class="join-item btn btn-xs flex-1">Auto</button>
+								<button data-theme-btn="dark" onclick="__claraSetTheme('dark')" class="join-item btn btn-xs flex-1">Dark</button>
+							</div>
+							<script>
+								// Highlight active theme button on load
+								(function(){
+									var t = localStorage.getItem('clara-theme') || 'system';
+									document.querySelectorAll('[data-theme-btn]').forEach(function(b){
+										b.classList.toggle('btn-active', b.dataset.themeBtn === t);
+									});
+								})();
+							</script>
+						</div>
+					</aside>
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+// PageHeader renders a consistent page title section.
+templ PageHeader(title, subtitle string) {
+	<div class="mb-6">
+		<h1 class="text-2xl font-semibold tracking-tight">{ title }</h1>
+		if subtitle != "" {
+			<p class="text-sm text-base-content/60 mt-1">{ subtitle }</p>
+		}
+	</div>
+}
+
+// Flash renders an alert banner.
+templ Flash(kind, message string) {
+	if message != "" {
+		<div class={ "alert mb-4", templ.KV("alert-success", kind == "success"), templ.KV("alert-error", kind == "error") }>
+			<span>{ message }</span>
+		</div>
+	}
+}
+
+// StatusBadge renders a coloured badge for status strings.
+templ StatusBadge(status string) {
+	switch status {
+		case "active", "loaded", "running", "ok":
+			<span class="badge badge-success badge-sm">{ status }</span>
+		case "error", "failed":
+			<span class="badge badge-error badge-sm">{ status }</span>
+		case "unloaded", "stopped":
+			<span class="badge badge-ghost badge-sm">{ status }</span>
+		default:
+			<span class="badge badge-outline badge-sm">{ status }</span>
+	}
+}

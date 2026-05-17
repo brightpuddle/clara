@@ -25,6 +25,7 @@ import (
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/internal/toolcatalog"
+	"github.com/brightpuddle/clara/internal/webui"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -169,6 +170,14 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	}
 
 	httpServer := server.New(cfg, reg, loader, logger)
+
+	// Attach the web UI (served at /ui/ on the same port as the HTTP server).
+	uiCfgPath := cfgFile
+	if uiCfgPath == "" {
+		uiCfgPath = config.DefaultConfigPath()
+	}
+	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, ilog, logger)
+	httpServer.WebUI = ui
 
 	handler := buildHandler(reg, sup, db, ilog, loader, logger, shutdown)
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)

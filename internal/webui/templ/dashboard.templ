@@ -1,0 +1,72 @@
+package templ
+
+// DashboardData holds the data rendered on the dashboard page.
+type DashboardData struct {
+	IntentCount       int
+	ActiveIntentCount int
+	ToolCount         int
+	Integrations      []map[string]any
+	RecentLogs        []string // last N daemon log lines
+}
+
+// Dashboard renders the agent overview page.
+templ Dashboard(d DashboardData) {
+	@Layout("Dashboard", "/ui/") {
+		@PageHeader("Dashboard", "Agent status and recent activity")
+		<!-- Stat cards -->
+		<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+			@statCard("Intents", itoa(d.IntentCount), "total loaded")
+			@statCard("Active", itoa(d.ActiveIntentCount), "currently running")
+			@statCard("Tools", itoa(d.ToolCount), "registered")
+			@statCard("Integrations", itoa(len(d.Integrations)), "plugins")
+		</div>
+		<!-- Integrations table -->
+		<div class="card bg-base-200 shadow-sm mb-6">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">Integrations</h2>
+				</div>
+				if len(d.Integrations) == 0 {
+					<p class="text-sm text-base-content/50 px-5 py-4">No integrations loaded.</p>
+				} else {
+					<table class="table table-sm">
+						<tbody>
+							for _, integ := range d.Integrations {
+								<tr class="hover">
+									<td class="font-mono text-sm">{ strVal(integ["name"]) }</td>
+									<td>
+										@StatusBadge(strVal(integ["status"]))
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</div>
+		<!-- Recent log tail -->
+		<div class="card bg-base-200 shadow-sm">
+			<div class="card-body p-0">
+				<div class="px-5 py-4 border-b border-base-300 flex items-center justify-between">
+					<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">Recent Logs</h2>
+					<a href="/ui/logs" class="btn btn-xs btn-ghost">View all →</a>
+				</div>
+				<pre class="log-pre text-xs font-mono px-5 py-4 max-h-64 overflow-y-auto whitespace-pre-wrap">
+					for _, line := range d.RecentLogs {
+						{ line + "\n" }
+					}
+				</pre>
+			</div>
+		</div>
+	}
+}
+
+templ statCard(label, value, sub string) {
+	<div class="card bg-base-200 shadow-sm">
+		<div class="card-body py-4 px-5">
+			<p class="text-xs text-base-content/50 uppercase tracking-widest">{ label }</p>
+			<p class="text-3xl font-semibold">{ value }</p>
+			<p class="text-xs text-base-content/40">{ sub }</p>
+		</div>
+	</div>
+}
