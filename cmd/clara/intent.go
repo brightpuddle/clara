@@ -629,7 +629,14 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 		Script:       absPath,
 	}
 
-	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") ||
+	if strings.HasSuffix(absPath, ".star") {
+		intent.WorkflowType = orchestrator.WorkflowTypeStarlark
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return err
+		}
+		intent.Script = string(data)
+	} else if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") ||
 		strings.HasSuffix(path, ".json") {
 		data, err := os.ReadFile(absPath)
 		if err != nil {

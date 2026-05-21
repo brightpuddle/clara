@@ -389,7 +389,15 @@ func buildHandler(
 				WorkflowType: orchestrator.WorkflowTypeNative,
 				Script:       absPath,
 			}
-			if strings.HasSuffix(absPath, ".yaml") || strings.HasSuffix(absPath, ".yml") || strings.HasSuffix(absPath, ".json") {
+			if strings.HasSuffix(absPath, ".star") {
+				intent.WorkflowType = orchestrator.WorkflowTypeStarlark
+				data, err := os.ReadFile(absPath)
+				if err != nil {
+					writeResp(&ipc.Response{Error: "read script file: " + err.Error()})
+					return
+				}
+				intent.Script = string(data)
+			} else if strings.HasSuffix(absPath, ".yaml") || strings.HasSuffix(absPath, ".yml") || strings.HasSuffix(absPath, ".json") {
 				data, err := os.ReadFile(absPath)
 				if err != nil {
 					writeResp(&ipc.Response{Error: "read intent file: " + err.Error()})
