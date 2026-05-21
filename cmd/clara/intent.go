@@ -446,6 +446,9 @@ func followSingleIntentLog(
 	verbose bool,
 	dbPath string,
 ) error {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	theme := theme.DetectTheme()
 	printer := newIntentWatchPrinter(&theme, false, verbose)
 
@@ -503,7 +506,7 @@ func followSingleIntentLog(
 	// 'done' is never closed — the follow exits only when ctx is cancelled (Ctrl-C).
 
 	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	scanDone := make(chan struct{})
 	go func() {
 		defer close(scanDone)
@@ -519,11 +522,12 @@ func followSingleIntentLog(
 		}
 	}()
 
-	// Exit when the run finishes or the context is cancelled.
+	// Exit when the run finishes, the scanner finishes, or the context is cancelled.
 	select {
 	case <-done:
 		// Give the scanner a moment to flush any final events.
 		time.Sleep(500 * time.Millisecond)
+	case <-scanDone:
 	case <-ctx.Done():
 	}
 
@@ -541,6 +545,9 @@ func followAllIntentLogs(
 	filter intentlog.Filter,
 	verbose bool,
 ) error {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	theme := theme.DetectTheme()
 	printer := newIntentWatchPrinter(&theme, true, verbose)
 
@@ -587,7 +594,7 @@ func flushFileEvents(
 	}
 
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		var e intentlog.Event
@@ -680,9 +687,6 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 			break
 		}
 	}
-
-	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
 	startedAt := time.Now()

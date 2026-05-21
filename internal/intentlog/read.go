@@ -109,7 +109,7 @@ func ClearEvents(dir string, intentID string) error {
 func readAll(f *os.File, filter Filter) ([]Event, error) {
 	var events []Event
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for scanner.Scan() {
 		var e Event
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
@@ -129,7 +129,7 @@ func readTail(f *os.File, filter Filter, n int) ([]Event, error) {
 	start, count := 0, 0
 
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
 	for scanner.Scan() {
 		var e Event
 		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
