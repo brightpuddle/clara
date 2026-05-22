@@ -16,6 +16,7 @@ build/
 *.swp
 *.swo
 .pi-lens
+.antigravitycli
 
 # macOS
 .DS_Store
