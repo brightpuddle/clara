@@ -13,11 +13,9 @@ import (
 	"sync"
 
 	"github.com/brightpuddle/clara/internal/config"
-	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/pkg/contract"
-	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -71,7 +69,6 @@ func (l *pluginLoader) resolvePluginPath(name, explicitPath string) (string, boo
 
 func (l *pluginLoader) loadAll() error {
 	l.log.Debug().Msg("plugin loader starting")
-	tasksDirs := l.cfg.TaskDirs()
 
 	if len(l.cfg.Plugins) > 0 {
 		// Whitelist mode: load only the explicitly listed plugins.
@@ -110,12 +107,6 @@ func (l *pluginLoader) loadAll() error {
 					Str("dir", dir).
 					Msg("failed to load integrations")
 			}
-		}
-	}
-
-	for _, dir := range tasksDirs {
-		if err := l.loadIntents(dir); err != nil {
-			l.log.Error().Stack().Err(err).Str("dir", dir).Msg("failed to load starlark tasks")
 		}
 	}
 
@@ -386,136 +377,6 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 		Int("tools", len(tools)).
 		Msg("successfully loaded native integration")
 	return nil
-}
-
-func (l *pluginLoader) loadIntents(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	namespaces := l.reg.Namespaces()
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		if strings.ToLower(filepath.Ext(name)) != ".star" {
-			continue
-		}
-
-		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			l.log.Error().Err(err).Str("path", path).Msg("failed to read starlark intent file")
-			continue
-		}
-
-		l.log.Info().Str("name", name).Str("path", path).Msg("loading starlark intent")
-
-		intent, err := orchestrator.LoadIntentFile(path, data, namespaces)
-		if err != nil {
-			l.log.Error().Err(err).Str("path", path).Msg("failed to compile starlark intent")
-			continue
-		}
-
-		if err := l.sup.RegisterIntent(path, intent); err != nil {
-			l.log.Error().Err(err).Str("name", name).Str("path", path).
-				Msg("failed to register starlark intent; duplicate intent ID — first occurrence wins")
-		}
-	}
-
-	return nil
-}
-
-// reloadIntent reloads a single .star file, replacing any previously registered
-// intent with the same ID. It is safe to call concurrently.
-func (l *pluginLoader) reloadIntent(path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		l.log.Error().Err(err).Str("path", path).Msg("failed to read starlark intent file")
-		return
-	}
-	namespaces := l.reg.Namespaces()
-	intent, err := orchestrator.LoadIntentFile(path, data, namespaces)
-	if err != nil {
-		l.log.Error().Err(err).Str("path", path).Msg("failed to compile starlark intent")
-		return
-	}
-	if err := l.sup.RegisterIntent(path, intent); err != nil {
-		l.log.Error().Err(err).Str("path", path).Msg("failed to register starlark intent")
-		return
-	}
-	l.log.Info().Str("path", path).Msg("starlark intent reloaded")
-}
-
-// removeIntent unregisters the intent whose ID is derived from the given path.
-func (l *pluginLoader) removeIntent(path string) {
-	id := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	if err := l.sup.UnregisterIntent(id); err != nil {
-		l.log.Debug().Err(err).Str("id", id).Msg("could not unregister removed intent")
-		return
-	}
-	l.log.Info().Str("id", id).Str("path", path).Msg("starlark intent removed")
-}
-
-// watchTasks starts an fsnotify watcher on dirs and hot-reloads .star intents
-// as files are created, modified, or deleted. It blocks until ctx is done.
-func (l *pluginLoader) watchTasks(ctx context.Context, dirs []string) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		l.log.Error().Err(err).Msg("failed to create fsnotify watcher")
-		return
-	}
-	defer watcher.Close()
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			l.log.Error().Err(err).Str("dir", dir).Msg("failed to create tasks dir for watching")
-			continue
-		}
-
-		if err := watcher.Add(dir); err != nil {
-			l.log.Error().Err(err).Str("dir", dir).Msg("failed to watch tasks dir")
-			continue
-		}
-
-		l.log.Info().Str("dir", dir).Msg("watching tasks directory for changes")
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return
-			}
-			// Only care about .star files.
-			if strings.ToLower(filepath.Ext(event.Name)) != ".star" {
-				continue
-			}
-			switch {
-			case event.Has(fsnotify.Create) || event.Has(fsnotify.Write):
-				l.reloadIntent(event.Name)
-			case event.Has(fsnotify.Remove) || event.Has(fsnotify.Rename):
-				l.removeIntent(event.Name)
-			}
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				return
-			}
-			l.log.Error().Err(err).Msg("tasks dir watcher error")
-		}
-	}
 }
 
 // buildHCLogAdapter creates an hclog.Logger that redirects to Clara's zerolog.

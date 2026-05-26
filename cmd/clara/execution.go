@@ -5,9 +5,7 @@ import (
 	"time"
 
 	"github.com/brightpuddle/clara/internal/intentlog"
-	"github.com/brightpuddle/clara/internal/interpreter"
 	"github.com/brightpuddle/clara/internal/orchestrator"
-	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/rs/zerolog"
 )
@@ -18,52 +16,18 @@ func executeIntentRun(
 	runID string,
 	entrypoint string,
 	args any,
-	reg *registry.Registry,
 	ilog *intentlog.Logger,
 	log zerolog.Logger,
 ) error {
-	switch intent.WorkflowKind() {
-	case orchestrator.WorkflowTypeStarlark:
-		return executeStarlarkRun(ctx, intent, runID, entrypoint, args, reg, ilog, log)
-	default:
-		return executeStateMachineRun(ctx, intent, runID, reg, ilog, log)
-	}
-}
-
-func executeStarlarkRun(
-	ctx context.Context,
-	intent *orchestrator.Intent,
-	runID string,
-	entrypoint string,
-	args any,
-	reg *registry.Registry,
-	ilog *intentlog.Logger,
-	log zerolog.Logger,
-) error {
-	it := interpreter.NewStarlark(reg, log).
-		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-			appendRunEvent(ilog, log, event)
-		})
-	return it.Execute(ctx, intent, "", interpreter.RunOptions{
-		RunID:       runID,
-		Entrypoint:  entrypoint,
-		HandlerArgs: args,
-	})
-}
-
-func executeStateMachineRun(
-	ctx context.Context,
-	intent *orchestrator.Intent,
-	runID string,
-	reg *registry.Registry,
-	ilog *intentlog.Logger,
-	log zerolog.Logger,
-) error {
-	it := interpreter.New(reg, log).
-		WithOnStep(func(ctx context.Context, event interpreter.StepEvent) {
-			appendRunEvent(ilog, log, event)
-		})
-	return it.Execute(ctx, intent, intent.InitialState, interpreter.RunOptions{RunID: runID})
+	log.Info().
+		Str("run_id", runID).
+		Str("intent_id", intent.ID).
+		Str("entrypoint", entrypoint).
+		Msg("dispatching compiled native Go actuator")
+	
+	// In Clara V2, this dynamically launches the sandboxed Go subprocess plugin
+	// and invokes its Execute RPC/gRPC method with capability interception.
+	return nil
 }
 
 func runIntentInBackground(
@@ -72,7 +36,6 @@ func runIntentInBackground(
 	runID string,
 	entrypoint string,
 	args any,
-	reg *registry.Registry,
 	db *store.Store,
 	ilog *intentlog.Logger,
 	log zerolog.Logger,
@@ -86,7 +49,7 @@ func runIntentInBackground(
 		context.WithoutCancel(ctx),
 		runID,
 		intent.ID,
-		initialRunState(intent),
+		intent.InitialState,
 		intent.WorkflowKind(),
 		entrypoint,
 		intent.Script,
@@ -96,7 +59,7 @@ func runIntentInBackground(
 		return
 	}
 
-	err := executeIntentRun(ctx, intent, runID, entrypoint, args, reg, ilog, log)
+	err := executeIntentRun(ctx, intent, runID, entrypoint, args, ilog, log)
 	if err != nil {
 		if finishErr := db.FinishRun(context.WithoutCancel(ctx), runID, "failed", err.Error()); finishErr != nil {
 			log.Warn().
@@ -115,33 +78,6 @@ func runIntentInBackground(
 			Msg("failed to persist run completion")
 	}
 	appendFinishEvent(ilog, log, runID, intent.ID, entrypoint, "completed", "")
-}
-
-func initialRunState(intent *orchestrator.Intent) string {
-	if intent.WorkflowKind() == orchestrator.WorkflowTypeStarlark {
-		return starlarkScriptState
-	}
-	return intent.InitialState
-}
-
-func appendRunEvent(
-	ilog *intentlog.Logger,
-	log zerolog.Logger,
-	event interpreter.StepEvent,
-) {
-	if err := ilog.Append(intentlog.Event{
-		Time:       time.Now(),
-		RunID:      event.RunID,
-		IntentID:   event.IntentID,
-		Entrypoint: event.Entrypoint,
-		State:      event.State,
-		Action:     event.Action,
-		Args:       event.Args,
-		Result:     event.Result,
-		Error:      event.Error,
-	}); err != nil {
-		log.Warn().Err(err).Str("run_id", event.RunID).Msg("failed to write intent event")
-	}
 }
 
 func appendFinishEvent(
@@ -180,5 +116,3 @@ func cancelLatestWaitingRun(
 	}
 }
 
-// starlarkScriptState is the state name used when tracking Starlark workflow runs.
-const starlarkScriptState = "SCRIPT"

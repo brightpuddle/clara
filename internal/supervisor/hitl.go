@@ -26,6 +26,90 @@ type SwappablePrompter interface {
 	Prompt(ctx context.Context, req ApprovalRequest) (ResolutionOption, error)
 }
 
+// ApprovalStore holds pending HITL approval requests in memory, indexed by
+// RequestID. Decisions are delivered via a channel per request.
+type ApprovalStore struct {
+	mu      sync.RWMutex
+	pending map[string]*pendingApproval
+}
+
+type pendingApproval struct {
+	req    ApprovalRequest
+	decide chan int // receives 1-based option index from CLI
+}
+
+// NewApprovalStore creates an empty ApprovalStore.
+func NewApprovalStore() *ApprovalStore {
+	return &ApprovalStore{pending: make(map[string]*pendingApproval)}
+}
+
+// Submit adds an approval request and blocks until a decision is received or
+// ctx is cancelled. Returns the chosen ResolutionOption.
+func (s *ApprovalStore) Submit(ctx context.Context, req ApprovalRequest) (ResolutionOption, error) {
+	pa := &pendingApproval{req: req, decide: make(chan int, 1)}
+	s.mu.Lock()
+	s.pending[req.RequestID] = pa
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.pending, req.RequestID)
+		s.mu.Unlock()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ResolutionOption{}, ctx.Err()
+	case idx := <-pa.decide:
+		if idx < 1 || idx > len(req.Options) {
+			return ResolutionOption{}, errors.Newf("invalid option index %d", idx)
+		}
+		return req.Options[idx-1], nil
+	}
+}
+
+// List returns all pending ApprovalRequests.
+func (s *ApprovalStore) List() []ApprovalRequest {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]ApprovalRequest, 0, len(s.pending))
+	for _, pa := range s.pending {
+		out = append(out, pa.req)
+	}
+	return out
+}
+
+// Get returns the ApprovalRequest for id, or false if not found.
+func (s *ApprovalStore) Get(id string) (ApprovalRequest, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	pa, ok := s.pending[id]
+	if !ok {
+		return ApprovalRequest{}, false
+	}
+	return pa.req, true
+}
+
+// Decide delivers option index idx (1-based) to the blocked Submit call.
+// Returns an error if the request is not found or the index is out of range.
+func (s *ApprovalStore) Decide(id string, idx int) error {
+	s.mu.RLock()
+	pa, ok := s.pending[id]
+	s.mu.RUnlock()
+	if !ok {
+		return errors.Newf("approval request %q not found", id)
+	}
+	if idx < 1 || idx > len(pa.req.Options) {
+		return errors.Newf("option %d out of range (1-%d)", idx, len(pa.req.Options))
+	}
+	select {
+	case pa.decide <- idx:
+		return nil
+	default:
+		return errors.New("approval already decided")
+	}
+}
+
 // ActiveRouter acts as the central HITL gateway in Clara V2, routing requests to the best available prompters.
 type ActiveRouter struct {
 	mu        sync.RWMutex
@@ -82,3 +166,4 @@ func (r *ActiveRouter) Prompt(ctx context.Context, req ApprovalRequest) (Resolut
 
 	return prompter.Prompt(ctx, req)
 }
+

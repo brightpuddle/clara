@@ -691,7 +691,7 @@ func runOneOff(ctx context.Context, path string, verbose bool) error {
 	runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
 	startedAt := time.Now()
 
-	go runIntentInBackground(ctx, intent, runID, "main", nil, reg, db, ilog, logger)
+	go runIntentInBackground(ctx, intent, runID, "main", nil, db, ilog, logger)
 
 	logPath := ilog.FilePath(intent.ID)
 	filter := intentlog.Filter{RunID: runID, Since: startedAt}

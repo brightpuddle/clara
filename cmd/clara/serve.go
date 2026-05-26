@@ -19,6 +19,7 @@ import (
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
+	"github.com/brightpuddle/clara/internal/loghub"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/server"
@@ -145,7 +146,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			context.WithoutCancel(runCtx),
 			runID,
 			intent.ID,
-			initialRunState(intent),
+			intent.InitialState,
 			intent.WorkflowKind(),
 			entrypoint,
 			intent.Script,
@@ -153,7 +154,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		); err != nil {
 			return errors.Wrap(err, "initialize intent run")
 		}
-		return executeIntentRun(runCtx, intent, runID, entrypoint, args, reg, ilog, logger)
+		return executeIntentRun(runCtx, intent, runID, entrypoint, args, ilog, logger)
 	}, logger).
 		WithOnRunFinished(func(ctx context.Context, runID, intentID, status, errorText string) {
 			if status == "waiting" {
@@ -179,7 +180,11 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, ilog, logger)
 	httpServer.WebUI = ui
 
-	handler := buildHandler(reg, sup, db, ilog, loader, logger, shutdown)
+	approvals := supervisor.NewApprovalStore()
+	handler := &daemonHandler{
+		base: buildHandler(reg, sup, db, ilog, loader, logger, shutdown, approvals),
+		hub:  loghub.New(),
+	}
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 	if err != nil {
 		return errors.Wrap(err, "create control socket server")
@@ -206,9 +211,6 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
-		watchTasks: func(ctx context.Context) {
-			loader.watchTasks(ctx, cfg.TaskDirs())
-		},
 	}, logger)
 }
 
@@ -219,7 +221,6 @@ type daemonServiceHooks struct {
 	stopHTTPServer  func()
 	startControl    func(context.Context) error
 	startSupervisor func(context.Context) error
-	watchTasks      func(context.Context)
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
@@ -257,18 +258,11 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 			logger.Error().Err(err).Msg("control server error")
 		}
 	})
-
 	wg.Go(func() {
 		if err := hooks.startSupervisor(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error().Err(err).Msg("supervisor error")
 		}
 	})
-
-	if hooks.watchTasks != nil {
-		wg.Go(func() {
-			hooks.watchTasks(ctx)
-		})
-	}
 
 	wg.Wait()
 	return nil
@@ -282,6 +276,7 @@ func buildHandler(
 	loader *pluginLoader,
 	log zerolog.Logger,
 	shutdown func(),
+	approvals *supervisor.ApprovalStore,
 ) ipc.HandlerFunc {
 	return func(ctx context.Context, req *ipc.Request, w ipc.ResponseWriter) {
 		writeResp := func(resp *ipc.Response) {
@@ -413,7 +408,7 @@ func buildHandler(
 			runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
 			startedAt := time.Now()
 			
-			go runIntentInBackground(ctx, intent, runID, "main", nil, reg, db, ilog, log)
+			go runIntentInBackground(ctx, intent, runID, "main", nil, db, ilog, log)
 			
 			writeResp(&ipc.Response{
 				Message: "intent " + intent.ID + " started",
@@ -451,7 +446,7 @@ func buildHandler(
 			if isOnDemand {
 				runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
 				startedAt := time.Now()
-				go runIntentInBackground(ctx, intent, runID, taskName, args, reg, db, ilog, log)
+				go runIntentInBackground(ctx, intent, runID, taskName, args, db, ilog, log)
 				msg := "intent " + id + " started"
 				if taskName != "" {
 					msg = "intent " + id + " task " + taskName + " started"
@@ -856,6 +851,69 @@ func buildHandler(
 			}
 			_ = reg.RemoveServer(name)
 			writeResp(&ipc.Response{Message: "MCP server " + name + " removed from config and stopped"})
+
+		case ipc.MethodApprovalList:
+			list := approvals.List()
+			writeResp(&ipc.Response{Data: list})
+
+		case ipc.MethodApprovalShow:
+			id, _ := req.Params["id"].(string)
+			if id == "" {
+				writeResp(&ipc.Response{Error: "missing id parameter"})
+				return
+			}
+			ar, ok := approvals.Get(id)
+			if !ok {
+				writeResp(&ipc.Response{Error: "approval " + id + " not found"})
+				return
+			}
+			writeResp(&ipc.Response{Data: ar})
+
+		case ipc.MethodApprovalDecide:
+			id, _ := req.Params["id"].(string)
+			optRaw := req.Params["option"]
+			optNum := 0
+			switch v := optRaw.(type) {
+			case float64:
+				optNum = int(v)
+			case int:
+				optNum = v
+			}
+			if id == "" || optNum == 0 {
+				writeResp(&ipc.Response{Error: "missing id or option parameter"})
+				return
+			}
+			if err := approvals.Decide(id, optNum); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: fmt.Sprintf("decision recorded for %s", id)})
+
+		case ipc.MethodRequest:
+			prompt, _ := req.Params["prompt"].(string)
+			if prompt == "" {
+				writeResp(&ipc.Response{Error: "missing prompt parameter"})
+				return
+			}
+			// Dispatch a clara.user.prompt CloudEvent to the event bus.
+			sup.EmitPromptEvent(prompt)
+			writeResp(&ipc.Response{Message: "request dispatched to evaluator"})
+
+		case ipc.MethodActuatorList:
+			list := sup.ActuatorInfos()
+			writeResp(&ipc.Response{Data: list})
+
+		case ipc.MethodActuatorRun:
+			id, _ := req.Params["id"].(string)
+			if id == "" {
+				writeResp(&ipc.Response{Error: "missing id parameter"})
+				return
+			}
+			if err := sup.RunActuator(ctx, id, req.Params["payload"]); err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Message: "actuator " + id + " dispatched"})
 
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})

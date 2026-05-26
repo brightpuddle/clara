@@ -675,3 +675,57 @@ func NormalizeNotificationParams(params any) map[string]any {
 func atomicAdd64(addr *int64, delta int64) int64 {
 	return atomic.AddInt64(addr, delta)
 }
+
+// ActuatorInfo describes a running actuator for CLI listing.
+type ActuatorInfo struct {
+	ID          string `json:"id"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
+
+// ActuatorInfos returns information about all deployed actuators (currently
+// modelled as active intents with a native workflow kind).
+func (s *Supervisor) ActuatorInfos() []ActuatorInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	infos := make([]ActuatorInfo, 0, len(s.intents))
+	for id, managed := range s.intents {
+		status := "idle"
+		if managed.active {
+			status = "active"
+		}
+		infos = append(infos, ActuatorInfo{
+			ID:          id,
+			Description: managed.intent.Description,
+			Status:      status,
+		})
+	}
+	return infos
+}
+
+// EmitPromptEvent publishes a clara.user.prompt CloudEvent to the event bus.
+func (s *Supervisor) EmitPromptEvent(prompt string) {
+	s.bus.PublishCloud(CloudEvent{
+		Type:   "clara.user.prompt",
+		Source: "cli",
+		Data:   map[string]any{"prompt": prompt},
+	})
+}
+
+// RunActuator dispatches a manual actuator run by intent ID.
+// payload is optional additional data passed as the event Data field.
+func (s *Supervisor) RunActuator(ctx context.Context, id string, payload any) error {
+	s.mu.RLock()
+	_, ok := s.intents[id]
+	s.mu.RUnlock()
+	if !ok {
+		return errors.Newf("actuator %q not found", id)
+	}
+	// Publish a synthetic event that the evaluator will route to this actuator.
+	s.bus.PublishCloud(CloudEvent{
+		Type:   "clara.actuator.run",
+		Source: "cli",
+		Data:   map[string]any{"actuator_id": id, "payload": payload},
+	})
+	return nil
+}
