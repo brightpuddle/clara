@@ -78,9 +78,20 @@ func (b *Builder) CompileAndVerify(
 	}
 
 	// Make sure a go.mod exists in the subfolder so it behaves as an isolated compilation module.
+	// The replace directive points at the local Clara source tree so generated actuators can
+	// import pkg/sdk without requiring a published module version.
 	goModPath := filepath.Join(subDir, "go.mod")
 	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
-		modContent := fmt.Sprintf("module %s\n\ngo 1.24\n\nrequire github.com/brightpuddle/clara v2.0.0\n", actuatorID)
+		// Locate the Clara module root by walking up from the builder's baseDir.
+		claraModuleRoot, err := findModuleRoot(b.baseDir)
+		if err != nil {
+			return CompileResult{}, errors.Wrap(err, "failed to locate clara module root for replace directive")
+		}
+		modContent := fmt.Sprintf(
+			"module %s\n\ngo 1.24\n\nrequire github.com/brightpuddle/clara v0.0.0\n\nreplace github.com/brightpuddle/clara => %s\n",
+			actuatorID,
+			claraModuleRoot,
+		)
 		if err := os.WriteFile(goModPath, []byte(modContent), 0o600); err != nil {
 			return CompileResult{}, errors.Wrap(err, "failed to initialize sandbox go.mod")
 		}
@@ -174,6 +185,23 @@ func (b *Builder) CommitToGit(ctx context.Context, repoPath string, actuatorID s
 	_ = commitCmd.Run()
 
 	return nil
+}
+
+// findModuleRoot walks up the directory tree from startDir until it finds a go.mod file,
+// returning the directory that contains it. This is used to resolve the replace directive
+// for the local Clara module in sandbox go.mod files.
+func findModuleRoot(startDir string) (string, error) {
+	dir := startDir
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", errors.New("go.mod not found: reached filesystem root")
+		}
+		dir = parent
+	}
 }
 
 // Helper function to copy files if cross-device renaming occurs.
