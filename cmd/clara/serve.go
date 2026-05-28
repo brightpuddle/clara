@@ -198,11 +198,23 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	} else {
 		builder.WithHub(handler.hub)
 	}
+	llmRawCfg, _ := cfg.Integrations["llm"]
+	llmClient, err := supervisor.NewLLMAdapter(logger, llmRawCfg)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to create LLM adapter; evaluator will ignore all events")
+		llmClient = nil
+	}
+	var evaluatorLLM supervisor.LLMClient
+	if llmClient != nil {
+		evaluatorLLM = llmClient
+	} else {
+		evaluatorLLM = supervisor.NoopLLMClient()
+	}
 	evaluator := supervisor.NewEvaluator(
 		logger,
 		handler.hub,
 		sup.EventBus(),
-		supervisor.NoopLLMClient(),
+		evaluatorLLM,
 		builder,
 		cfg.DataDir+"/bin",
 	)

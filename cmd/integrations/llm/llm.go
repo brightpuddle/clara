@@ -24,8 +24,30 @@ type Config struct {
 }
 
 type ModelConfig struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
+	Provider string         `json:"provider"`
+	Model    string         `json:"model"`
+	Thinking *ThinkingConfig `json:"thinking,omitempty"`
+}
+
+// ThinkingConfig controls reasoning behaviour for models that support it.
+//
+// Gemini 3.x series — set Level to one of: "minimal", "low", "medium", "high".
+// Gemini 2.5 series — set Budget to a token count (0 = off, -1 = dynamic).
+// Ollama thinking models — set Enabled to true/false.
+//
+// Only one of Level / Budget / Enabled is meaningful per provider; the others
+// are ignored so a single config block can be shared across providers without
+// error.
+type ThinkingConfig struct {
+	// Level is the Gemini 3.x thinkingLevel string: "minimal"|"low"|"medium"|"high".
+	Level string `json:"level,omitempty"`
+	// Budget is the Gemini 2.5 thinkingBudget token count. -1 = dynamic, 0 = off.
+	// Use a pointer so that an explicit 0 (thinking off) is distinguishable from
+	// the field being absent.
+	Budget *int `json:"budget,omitempty"`
+	// Enabled is the Ollama think boolean. When nil the field is omitted from
+	// the request and Ollama uses its model default.
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type ProviderConfig struct {
@@ -206,7 +228,7 @@ func (p *LLMPlugin) Generate(
 			continue
 		}
 
-		resp, err := p.callProviderGenerate(m.Provider, provider, m.Model, req)
+		resp, err := p.callProviderGenerate(m.Provider, provider, m, req)
 		if err == nil {
 			return resp, nil
 		}
@@ -241,7 +263,7 @@ func (p *LLMPlugin) GenerateVision(
 			continue
 		}
 
-		resp, err := p.callProviderVision(m.Provider, provider, m.Model, req)
+		resp, err := p.callProviderVision(m.Provider, provider, m, req)
 		if err == nil {
 			return resp, nil
 		}
@@ -283,16 +305,16 @@ func (p *LLMPlugin) Embed(category string, input []string) ([][]float32, error) 
 func (p *LLMPlugin) callProviderGenerate(
 	providerName string,
 	cfg ProviderConfig,
-	model string,
+	m ModelConfig,
 	req contract.GenerateRequest,
 ) (contract.GenerateResponse, error) {
 	switch providerName {
 	case "gemini":
-		return p.callGeminiGenerate(cfg, model, req)
+		return p.callGeminiGenerate(cfg, m, req)
 	case "ollama":
-		return p.callOllamaGenerate(cfg, model, req)
+		return p.callOllamaGenerate(cfg, m, req)
 	case "openai":
-		return p.callOpenAIGenerate(cfg, model, req)
+		return p.callOpenAIGenerate(cfg, m.Model, req)
 	default:
 		return contract.GenerateResponse{}, fmt.Errorf("unsupported provider: %s", providerName)
 	}
@@ -301,17 +323,17 @@ func (p *LLMPlugin) callProviderGenerate(
 func (p *LLMPlugin) callProviderVision(
 	providerName string,
 	cfg ProviderConfig,
-	model string,
+	m ModelConfig,
 	req contract.VisionRequest,
 ) (contract.GenerateResponse, error) {
 	switch providerName {
 	case "gemini":
-		return p.callGeminiVision(cfg, model, req)
+		return p.callGeminiVision(cfg, m, req)
 	case "ollama":
 		// Ollama handles vision via chat API too
-		return p.callOllamaVision(cfg, model, req)
+		return p.callOllamaVision(cfg, m, req)
 	case "openai":
-		return p.callOpenAIVision(cfg, model, req)
+		return p.callOpenAIVision(cfg, m.Model, req)
 	default:
 		return contract.GenerateResponse{}, fmt.Errorf(
 			"unsupported provider for vision: %s",
@@ -342,7 +364,7 @@ func (p *LLMPlugin) callProviderEmbed(
 
 func (p *LLMPlugin) callGeminiGenerate(
 	cfg ProviderConfig,
-	model string,
+	m ModelConfig,
 	req contract.GenerateRequest,
 ) (contract.GenerateResponse, error) {
 	if cfg.APIKey == "" {
@@ -351,7 +373,7 @@ func (p *LLMPlugin) callGeminiGenerate(
 
 	url := fmt.Sprintf(
 		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		model,
+		m.Model,
 		cfg.APIKey,
 	)
 
@@ -362,11 +384,16 @@ func (p *LLMPlugin) callGeminiGenerate(
 		Role  string `json:"role"`
 		Parts []Part `json:"parts"`
 	}
+	type ThinkingConfigWire struct {
+		ThinkingLevel  string `json:"thinkingLevel,omitempty"`
+		ThinkingBudget *int   `json:"thinkingBudget,omitempty"`
+	}
 	type GeminiReq struct {
 		Contents         []Content `json:"contents"`
 		GenerationConfig struct {
-			Temperature     float32 `json:"temperature,omitempty"`
-			MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
+			Temperature     float32             `json:"temperature,omitempty"`
+			MaxOutputTokens int                 `json:"maxOutputTokens,omitempty"`
+			ThinkingConfig  *ThinkingConfigWire `json:"thinkingConfig,omitempty"`
 		} `json:"generationConfig,omitempty"`
 	}
 
@@ -390,6 +417,16 @@ func (p *LLMPlugin) callGeminiGenerate(
 	}
 	geminiReq.GenerationConfig.Temperature = req.Temperature
 	geminiReq.GenerationConfig.MaxOutputTokens = req.MaxTokens
+	if m.Thinking != nil {
+		tc := &ThinkingConfigWire{}
+		if m.Thinking.Level != "" {
+			tc.ThinkingLevel = m.Thinking.Level
+		}
+		if m.Thinking.Budget != nil {
+			tc.ThinkingBudget = m.Thinking.Budget
+		}
+		geminiReq.GenerationConfig.ThinkingConfig = tc
+	}
 
 	jsonBody, _ := json.Marshal(geminiReq)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
@@ -433,7 +470,7 @@ func (p *LLMPlugin) callGeminiGenerate(
 
 func (p *LLMPlugin) callGeminiVision(
 	cfg ProviderConfig,
-	model string,
+	m ModelConfig,
 	req contract.VisionRequest,
 ) (contract.GenerateResponse, error) {
 	// For Gemini vision, we need to handle the image part.
@@ -444,7 +481,7 @@ func (p *LLMPlugin) callGeminiVision(
 
 	url := fmt.Sprintf(
 		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		model,
+		m.Model,
 		cfg.APIKey,
 	)
 
@@ -460,11 +497,16 @@ func (p *LLMPlugin) callGeminiVision(
 		Role  string `json:"role"`
 		Parts []Part `json:"parts"`
 	}
+	type ThinkingConfigWire struct {
+		ThinkingLevel  string `json:"thinkingLevel,omitempty"`
+		ThinkingBudget *int   `json:"thinkingBudget,omitempty"`
+	}
 	type GeminiReq struct {
 		Contents         []Content `json:"contents"`
 		GenerationConfig struct {
-			Temperature     float32 `json:"temperature,omitempty"`
-			MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
+			Temperature     float32             `json:"temperature,omitempty"`
+			MaxOutputTokens int                 `json:"maxOutputTokens,omitempty"`
+			ThinkingConfig  *ThinkingConfigWire `json:"thinkingConfig,omitempty"`
 		} `json:"generationConfig,omitempty"`
 	}
 
@@ -519,6 +561,16 @@ func (p *LLMPlugin) callGeminiVision(
 	}
 	geminiReq.GenerationConfig.Temperature = req.Temperature
 	geminiReq.GenerationConfig.MaxOutputTokens = req.MaxTokens
+	if m.Thinking != nil {
+		tc := &ThinkingConfigWire{}
+		if m.Thinking.Level != "" {
+			tc.ThinkingLevel = m.Thinking.Level
+		}
+		if m.Thinking.Budget != nil {
+			tc.ThinkingBudget = m.Thinking.Budget
+		}
+		geminiReq.GenerationConfig.ThinkingConfig = tc
+	}
 
 	jsonBody, _ := json.Marshal(geminiReq)
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
@@ -634,7 +686,7 @@ func (p *LLMPlugin) callGeminiEmbed(
 
 func (p *LLMPlugin) callOllamaGenerate(
 	cfg ProviderConfig,
-	model string,
+	m ModelConfig,
 	req contract.GenerateRequest,
 ) (contract.GenerateResponse, error) {
 	if cfg.BaseURL == "" {
@@ -643,12 +695,15 @@ func (p *LLMPlugin) callOllamaGenerate(
 
 	url := fmt.Sprintf("%s/api/chat", strings.TrimSuffix(cfg.BaseURL, "/"))
 	body := map[string]any{
-		"model":    model,
+		"model":    m.Model,
 		"messages": req.Messages,
 		"stream":   false,
 		"options": map[string]any{
 			"temperature": req.Temperature,
 		},
+	}
+	if m.Thinking != nil && m.Thinking.Enabled != nil {
+		body["think"] = *m.Thinking.Enabled
 	}
 
 	jsonBody, _ := json.Marshal(body)
@@ -693,7 +748,7 @@ func (p *LLMPlugin) callOllamaGenerate(
 
 func (p *LLMPlugin) callOllamaVision(
 	cfg ProviderConfig,
-	model string,
+	m ModelConfig,
 	req contract.VisionRequest,
 ) (contract.GenerateResponse, error) {
 	if cfg.BaseURL == "" {
@@ -709,8 +764,8 @@ func (p *LLMPlugin) callOllamaVision(
 	}
 
 	var messages []OllamaMsg
-	for _, m := range req.Messages {
-		messages = append(messages, OllamaMsg{Role: m.Role, Content: m.Content})
+	for _, msg := range req.Messages {
+		messages = append(messages, OllamaMsg{Role: msg.Role, Content: msg.Content})
 	}
 
 	// Add image to last message
@@ -730,12 +785,15 @@ func (p *LLMPlugin) callOllamaVision(
 	}
 
 	body := map[string]any{
-		"model":    model,
+		"model":    m.Model,
 		"messages": messages,
 		"stream":   false,
 		"options": map[string]any{
 			"temperature": req.Temperature,
 		},
+	}
+	if m.Thinking != nil && m.Thinking.Enabled != nil {
+		body["think"] = *m.Thinking.Enabled
 	}
 
 	jsonBody, _ := json.Marshal(body)
