@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 	"github.com/rs/zerolog"
 
+	"github.com/brightpuddle/clara/internal/loghub"
 	"github.com/brightpuddle/clara/pkg/sdk"
 )
 
@@ -31,6 +32,7 @@ type AnalysisResult struct {
 // Evaluator manages fast-path routing and triggers dynamic self-modification loops in Clara V2.
 type Evaluator struct {
 	log     zerolog.Logger
+	hub     *loghub.Hub
 	bus     *EventBus
 	llm     LLMClient
 	builder *Builder
@@ -47,13 +49,21 @@ type heuristicRoute struct {
 
 // NewEvaluator creates a new Evaluator.
 // binDir is the directory where actuator binaries live (e.g. ~/.local/share/clara/bin).
-func NewEvaluator(log zerolog.Logger, bus *EventBus, llm LLMClient, builder *Builder, binDir string) *Evaluator {
+func NewEvaluator(
+	log zerolog.Logger,
+	hub *loghub.Hub,
+	bus *EventBus,
+	llm LLMClient,
+	builder *Builder,
+	binDir string,
+) *Evaluator {
 	if binDir == "" {
 		home, _ := os.UserHomeDir()
 		binDir = filepath.Join(home, ".local", "share", "clara", "bin")
 	}
 	return &Evaluator{
 		log:        log.With().Str("component", "evaluator").Logger(),
+		hub:        hub,
 		bus:        bus,
 		llm:        llm,
 		builder:    builder,
@@ -73,9 +83,21 @@ func (e *Evaluator) RegisterHeuristic(eventType string, actuatorID string, ttl t
 	e.log.Debug().Str("type", eventType).Str("actuator", actuatorID).Msg("registered fast-path heuristic")
 }
 
+// pushEval publishes an evaluator decision to the log hub (no-op if hub is nil).
+func (e *Evaluator) pushEval(level, msg string, fields map[string]any) {
+	if e.hub != nil {
+		e.hub.PushEvaluator(level, msg, fields)
+	}
+}
+
 // OnEvent processes an incoming event. It prioritizes fast-path heuristics and falls back to LLM analysis.
 func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 	e.log.Info().Str("event_id", ev.ID).Str("type", ev.Type).Msg("processing ingress event")
+	e.pushEval("info", "processing ingress event", map[string]any{
+		"event_id": ev.ID,
+		"type":     ev.Type,
+		"source":   ev.Source,
+	})
 
 	// 1. Fast-Path Heuristic Check
 	e.mu.RLock()
@@ -84,56 +106,78 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 
 	if exists && time.Now().Before(route.expiresAt) {
 		e.log.Info().Str("type", ev.Type).Str("actuator", route.actuatorID).Msg("fast-path heuristic hit, bypassing LLM")
+		e.pushEval("info", "fast-path heuristic hit", map[string]any{
+			"event_type": ev.Type,
+			"actuator":   route.actuatorID,
+		})
 		return e.executeActuator(ctx, route.actuatorID, ev)
 	}
 
 	// 2. Slow-Path LLM Decision Loop
 	e.log.Debug().Str("type", ev.Type).Msg("heuristic cache miss/expired; invoking core LLM evaluator")
-	
+	e.pushEval("debug", "heuristic miss; invoking LLM", map[string]any{"event_type": ev.Type})
+
 	// Fetch historical state memory or metadata here (e.g. from core SQLite store)
 	history := []string{"system bootstrap", "last execution succeeded"}
-	
+
 	decision, err := e.llm.AnalyzeEvent(ctx, ev, history)
 	if err != nil {
+		e.pushEval("error", "LLM analysis failed", map[string]any{"error": err.Error()})
 		return errors.Wrap(err, "failed core LLM event analysis")
 	}
 
 	switch decision.Action {
 	case "invoke":
 		e.log.Info().Str("actuator", decision.ActuatorID).Msg("LLM directed invocation of existing actuator")
-		
+		e.pushEval("info", "LLM: invoke actuator", map[string]any{
+			"actuator":  decision.ActuatorID,
+			"event_id":  ev.ID,
+			"heuristic": decision.HeuristicTTL.String(),
+		})
+
 		// Cache the decision as a heuristic for high throughput on subsequent events
 		ttl := decision.HeuristicTTL
 		if ttl <= 0 {
 			ttl = 1 * time.Hour // Default cache TTL
 		}
 		e.RegisterHeuristic(ev.Type, decision.ActuatorID, ttl)
-		
+
 		return e.executeActuator(ctx, decision.ActuatorID, ev)
 
 	case "build":
 		e.log.Warn().Str("actuator", decision.ActuatorID).Msg("LLM directed builder mode entry: compiling new logic")
-		
+		e.pushEval("warn", "LLM: builder mode", map[string]any{
+			"actuator": decision.ActuatorID,
+			"event_id": ev.ID,
+		})
+
 		// Run compiler loop
 		res, err := e.builder.CompileAndVerify(ctx, decision.ActuatorID, decision.ProposedCode)
 		if err != nil {
+			e.pushEval("error", "builder error", map[string]any{"error": err.Error()})
 			return errors.Wrap(err, "builder execution failure")
 		}
 
 		if !res.Success {
 			e.log.Error().Str("diagnostics", res.CompilerError).Msg("compilation failed, routing diagnostics back to LLM")
+			e.pushEval("error", "compilation failed", map[string]any{"diagnostics": res.CompilerError})
 			return errors.Newf("compilation failed: %s", res.CompilerError)
 		}
 
 		e.log.Info().Str("binary", res.BinaryPath).Msg("actuator successfully compiled and loaded")
-		
+		e.pushEval("info", "actuator compiled", map[string]any{
+			"actuator": decision.ActuatorID,
+			"binary":   res.BinaryPath,
+		})
+
 		// Register rule to fast-path
 		e.RegisterHeuristic(ev.Type, decision.ActuatorID, 24*time.Hour)
-		
+
 		return e.executeActuator(ctx, decision.ActuatorID, ev)
 
 	case "ignore":
 		e.log.Debug().Str("type", ev.Type).Msg("LLM evaluated event as ignorable noise")
+		e.pushEval("debug", "LLM: ignore event", map[string]any{"event_type": ev.Type})
 		return nil
 
 	default:
@@ -211,11 +255,23 @@ func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev C
 			Str("actuator", actuatorID).
 			Str("output", result.Output).
 			Msg("actuator execution succeeded")
+		if e.hub != nil {
+			e.hub.PushActuator(actuatorID, "info", "execution succeeded", map[string]any{
+				"output":   result.Output,
+				"event_id": ev.ID,
+			})
+		}
 	} else {
 		e.log.Warn().
 			Str("actuator", actuatorID).
 			Str("output", result.Output).
 			Msg("actuator execution reported failure")
+		if e.hub != nil {
+			e.hub.PushActuator(actuatorID, "warn", "execution reported failure", map[string]any{
+				"output":   result.Output,
+				"event_id": ev.ID,
+			})
+		}
 	}
 
 	if result.Retry {

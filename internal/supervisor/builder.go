@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/cockroachdb/errors"
+
+	"github.com/brightpuddle/clara/internal/loghub"
 )
 
 // CompileResult carries the outcome of a sandboxed compilation attempt.
@@ -21,6 +23,7 @@ type CompileResult struct {
 // Builder manages the sandboxed compilation workspace for self-modifying Actuator plugins.
 type Builder struct {
 	baseDir string // base workspace directory, e.g. ~/.local/share/clara/workspace/
+	hub     *loghub.Hub
 }
 
 // NewBuilder creates a new Builder with a verified workspace directory.
@@ -38,6 +41,18 @@ func NewBuilder(baseDir string) (*Builder, error) {
 	}
 
 	return &Builder{baseDir: baseDir}, nil
+}
+
+// WithHub sets the log hub for the builder.
+func (b *Builder) WithHub(hub *loghub.Hub) *Builder {
+	b.hub = hub
+	return b
+}
+
+func (b *Builder) pushEval(level, msg string, fields map[string]any) {
+	if b.hub != nil {
+		b.hub.PushEvaluator(level, msg, fields)
+	}
 }
 
 // CompileAndVerify compiles a proposed Go plugin inside a restricted native workspace.
@@ -78,6 +93,10 @@ func (b *Builder) CompileAndVerify(
 	
 	testOutput, err := testCmd.CombinedOutput()
 	if err != nil {
+		b.pushEval("error", "builder: test suite failed", map[string]any{
+			"actuator":    actuatorID,
+			"diagnostics": string(testOutput),
+		})
 		return CompileResult{
 			Success:       false,
 			CompilerError: fmt.Sprintf("Test suite failures:\n%s", string(testOutput)),
@@ -94,6 +113,10 @@ func (b *Builder) CompileAndVerify(
 
 	buildOutput, err := buildCmd.CombinedOutput()
 	if err != nil {
+		b.pushEval("error", "builder: compilation failed", map[string]any{
+			"actuator":    actuatorID,
+			"diagnostics": string(buildOutput),
+		})
 		return CompileResult{
 			Success:       false,
 			CompilerError: fmt.Sprintf("Compiler errors:\n%s", string(buildOutput)),
@@ -118,6 +141,11 @@ func (b *Builder) CompileAndVerify(
 	if err := os.Chmod(finalPath, 0o700); err != nil {
 		return CompileResult{}, errors.Wrap(err, "failed to set executable permission on actuator binary")
 	}
+
+	b.pushEval("info", "builder: actuator compiled", map[string]any{
+		"actuator": actuatorID,
+		"binary":   finalPath,
+	})
 
 	return CompileResult{
 		Success:    true,
