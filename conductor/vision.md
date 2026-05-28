@@ -117,10 +117,11 @@ Event Bus  →  Evaluator  →  [heuristic hit]  →  Actuator (gRPC subprocess)
 - **`executeActuator`** in `evaluator.go:132` — returns nil. Needs to actually
   launch the compiled binary as a go-plugin gRPC subprocess and call
   `Execute(ctx, event)`.
-- **`pkg/sdk/`** — Actuator SDK package does not exist yet. Must define the
-  `Actuator` interface, `ActuatorManifest`, `Capability`, `Event`, `Result`,
-  `State`, and the `Serve(impl Actuator)` bootstrap. This is the contract the
-  Builder's LLM codegen will produce against.
+- **`pkg/sdk/`** ✓ — Actuator SDK package created (`pkg/sdk/actuator.go`,
+  `pkg/sdk/plugin.go`, `pkg/sdk/serve.go`). Defines `Actuator` interface,
+  `ActuatorManifest`, `Capability`, `Event`, `Result`, `State`, and
+  `Serve(impl Actuator)`. Uses net/rpc via `hashicorp/go-plugin` (parallel
+  to `pkg/contract`). This is the contract the Builder's LLM codegen targets.
 - **Evaluator ↔ Builder ↔ Supervisor wiring** — `Evaluator` and `Builder` are
   instantiated but not connected to the live event stream in `serve.go`. The
   daemon does not yet subscribe the Evaluator to CloudEvents from the bus.
@@ -140,7 +141,7 @@ Event Bus  →  Evaluator  →  [heuristic hit]  →  Actuator (gRPC subprocess)
 - **`loghub` not yet published** — the daemon creates a `loghub.Hub` but
   nothing calls `hub.PushEvent`, `hub.PushEvaluator`, or `hub.PushActuator`
   yet. The ring buffers are empty.
-- **`pkg/sdk/` Actuator contract** — `pluginLoader` in `cmd/clara/plugins.go`
+- **`pkg/sdk/` Actuator contract** ✓ — SDK created; `pluginLoader` in `cmd/clara/plugins.go`
   still loads legacy `contract.Integration` plugins. A parallel loader for
   Actuator binaries (using the SDK contract) does not exist yet.
 

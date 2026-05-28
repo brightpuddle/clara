@@ -190,6 +190,14 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		return errors.Wrap(err, "create control socket server")
 	}
 
+	builderDir := cfg.DataDir + "/workspace"
+	builder, err := supervisor.NewBuilder(builderDir)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to create builder; evaluator builder mode disabled")
+		builder = nil
+	}
+	evaluator := supervisor.NewEvaluator(logger, sup.EventBus(), supervisor.NoopLLMClient(), builder)
+
 	return runDaemonServices(daemonCtx, daemonServiceHooks{
 		startMCPServers: func(ctx context.Context) error {
 			if err := reg.StartServers(ctx); err != nil {
@@ -211,16 +219,37 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
+		startEvaluator: func(ctx context.Context) error {
+			sub, unsubscribe := sup.EventBus().SubscribeCloud()
+			defer unsubscribe()
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case ce, ok := <-sub:
+					if !ok {
+						return nil
+					}
+					if err := evaluator.OnEvent(ctx, ce); err != nil {
+						logger.Error().Err(err).
+							Str("event_id", ce.ID).
+							Str("event_type", ce.Type).
+							Msg("evaluator error")
+					}
+				}
+			}
+		},
 	}, logger)
 }
 
 type daemonServiceHooks struct {
-	startMCPServers func(context.Context) error
-	stopMCPServers  func()
-	startHTTPServer func(context.Context) error
-	stopHTTPServer  func()
-	startControl    func(context.Context) error
-	startSupervisor func(context.Context) error
+	startMCPServers  func(context.Context) error
+	stopMCPServers   func()
+	startHTTPServer  func(context.Context) error
+	stopHTTPServer   func()
+	startControl     func(context.Context) error
+	startSupervisor  func(context.Context) error
+	startEvaluator   func(context.Context) error
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
@@ -263,6 +292,14 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 			logger.Error().Err(err).Msg("supervisor error")
 		}
 	})
+
+	if hooks.startEvaluator != nil {
+		wg.Go(func() {
+			if err := hooks.startEvaluator(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Error().Err(err).Msg("evaluator error")
+			}
+		})
+	}
 
 	wg.Wait()
 	return nil

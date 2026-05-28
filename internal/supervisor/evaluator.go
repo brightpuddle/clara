@@ -128,6 +128,17 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 	}
 }
 
+// noopLLMClient is a placeholder LLM client that ignores all events until a real adapter is wired in.
+type noopLLMClient struct{}
+
+func (noopLLMClient) AnalyzeEvent(_ context.Context, _ CloudEvent, _ []string) (AnalysisResult, error) {
+	return AnalysisResult{Action: "ignore"}, nil
+}
+
+// NoopLLMClient returns an LLMClient that ignores all events.
+// Use this as a placeholder until a real LLM adapter is available.
+func NoopLLMClient() LLMClient { return noopLLMClient{} }
+
 // executeActuator starts the target actuator subprocess via gRPC plugin loaders
 func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev CloudEvent) error {
 	e.log.Debug().Str("actuator", actuatorID).Msg("dispatching to actuator execution engine")
