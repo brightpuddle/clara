@@ -1,30 +1,25 @@
 package supervisor
 
-// llm_adapter.go provides a concrete LLMClient implementation that calls LLM
-// providers directly over HTTP. The system prompt for AnalyzeEvent includes the
-// full pkg/sdk source so the LLM understands the compilation target when it
-// emits builder-mode code proposals.
+// llm_adapter.go — concrete LLMClient implementation for the Evaluator.
 //
-// Configuration mirrors the llm integration plugin schema:
+// It drives the same provider backends as the llm integration plugin (Gemini,
+// Ollama, OpenAI-compatible) but lives in-process so the Evaluator has no
+// dependency on the plugin subprocess. Configuration is the same YAML/JSON
+// block that the llm integration uses:
 //
 //	integrations:
 //	  llm:
-//	    evaluator_category: "reasoning"   # which category to use (default: "fast")
 //	    categories:
-//	      fast:
-//	        - provider: openai
-//	          model: gpt-4o-mini
-//	      reasoning:
-//	        - provider: openai
-//	          model: o3-mini
+//	      evaluator:
+//	        - provider: gemini
+//	          model: gemini-2.0-flash
 //	    providers:
-//	      openai:
-//	        base_url: "https://api.openai.com/v1"
-//	        key: "<api-key>"
-//	      ollama:
-//	        base_url: "http://localhost:11434"
 //	      gemini:
-//	        api_key: "<api-key>"
+//	        api_key: "..."
+//
+// AnalyzeEvent builds a structured prompt that includes the pkg/sdk source
+// verbatim (embedded at compile time) so the LLM understands the compilation
+// target when it proposes new Actuator code.
 
 import (
 	"bytes"
@@ -35,16 +30,15 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog"
 )
 
-// pkgSDKSource is embedded verbatim in the evaluator system prompt so the LLM
-// knows the exact interface it must compile against when generating actuator code.
-const pkgSDKSource = `
-// ---- pkg/sdk/actuator.go ----
+// sdkSource is the pkg/sdk/actuator.go source embedded verbatim into the
+// Evaluator system prompt so the LLM knows the exact contract it must target
+// when generating new Actuator code.
+const sdkSource = `// pkg/sdk/actuator.go — Actuator contract for Clara V2.
 package sdk
 
 import (
@@ -58,102 +52,74 @@ type Actuator interface {
 }
 
 type ActuatorManifest struct {
-	ID           string       ` + "`json:\"id\"`" + `
-	Description  string       ` + "`json:\"description\"`" + `
-	Capabilities []Capability ` + "`json:\"capabilities\"`" + `
+	ID           string       ` + "`" + `json:"id"` + "`" + `
+	Description  string       ` + "`" + `json:"description"` + "`" + `
+	Capabilities []Capability ` + "`" + `json:"capabilities"` + "`" + `
 }
 
 type Capability struct {
-	Resource    string ` + "`json:\"resource\"`" + `
-	Description string ` + "`json:\"description\"`" + `
+	Resource    string ` + "`" + `json:"resource"` + "`" + `
+	Description string ` + "`" + `json:"description"` + "`" + `
 }
 
 type Event struct {
-	ID     string         ` + "`json:\"id\"`" + `
-	Source string         ` + "`json:\"source\"`" + `
-	Type   string         ` + "`json:\"type\"`" + `
-	Time   time.Time      ` + "`json:\"time\"`" + `
-	Data   map[string]any ` + "`json:\"data\"`" + `
+	ID     string         ` + "`" + `json:"id"` + "`" + `
+	Source string         ` + "`" + `json:"source"` + "`" + `
+	Type   string         ` + "`" + `json:"type"` + "`" + `
+	Time   time.Time      ` + "`" + `json:"time"` + "`" + `
+	Data   map[string]any ` + "`" + `json:"data"` + "`" + `
 }
 
 type Result struct {
-	Success bool          ` + "`json:\"success\"`" + `
-	Output  string        ` + "`json:\"output,omitempty\"`" + `
-	Retry   bool          ` + "`json:\"retry,omitempty\"`" + `
-	Delay   time.Duration ` + "`json:\"delay,omitempty\"`" + `
-	Data    map[string]any ` + "`json:\"data,omitempty\"`" + `
+	Success bool           ` + "`" + `json:"success"` + "`" + `
+	Output  string         ` + "`" + `json:"output,omitempty"` + "`" + `
+	Retry   bool           ` + "`" + `json:"retry,omitempty"` + "`" + `
+	Delay   time.Duration  ` + "`" + `json:"delay,omitempty"` + "`" + `
+	Data    map[string]any ` + "`" + `json:"data,omitempty"` + "`" + `
 }
 
-// ---- pkg/sdk/serve.go ----
-package sdk
-
-import "github.com/hashicorp/go-plugin"
-
-// Serve starts the actuator binary's plugin server. Call this from main().
-func Serve(impl Actuator) {
-	plugin.Serve(&plugin.ServeConfig{
-		HandshakeConfig: HandshakeConfig,
-		Plugins: map[string]plugin.Plugin{
-			"actuator": &ActuatorPlugin{Impl: impl},
-		},
-	})
-}
+// Serve wires impl into hashicorp/go-plugin and blocks until the daemon kills it.
+func Serve(impl Actuator) { ... }
 `
 
-// evaluatorSystemPrompt is the system prompt used for all AnalyzeEvent calls.
-const evaluatorSystemPrompt = `You are the Evaluator for Clara, an autonomous self-modifying assistant daemon.
+// evaluatorSystemPrompt is the fixed system prompt for AnalyzeEvent calls.
+const evaluatorSystemPrompt = `You are the Clara Evaluator — the routing brain of an autonomous assistant daemon.
 
-Your job: given a CloudEvent and a list of known actuator IDs, decide what to do.
-
-## Response format
-
-Respond with a single JSON object (no markdown fences):
+Your job is to decide what to do with an incoming CloudEvent. You must respond
+with a single JSON object (no markdown, no prose) matching this schema:
 
 {
-  "action": "invoke" | "build" | "ignore",
-  "actuator_id": "<string>",
-  "heuristic_ttl_seconds": <number>,
+  "action":       "invoke" | "build" | "ignore",
+  "actuator_id":  "<stable kebab-case id>",
   "proposed_code": {
-    "main.go": "<full Go source>"
-  }
+    "<filename>.go": "<full Go source>"
+  },
+  "heuristic_ttl": <nanoseconds as integer>
 }
 
-### action values
-- "invoke"  — an existing actuator handles this event; set actuator_id to its ID.
-- "build"   — no actuator exists; generate a new one; set actuator_id to a kebab-case
-              identifier and populate proposed_code["main.go"] with complete Go source.
+Rules:
+- "invoke"  — an existing actuator binary can handle this event. Set actuator_id.
+- "build"   — no existing actuator fits; generate a new one. Set actuator_id and
+              proposed_code (map of filename → full Go source). The code MUST
+              import and implement the sdk.Actuator interface shown below.
 - "ignore"  — the event is noise; no action needed.
+- heuristic_ttl is optional. Omit or set 0 to use the default (1 hour).
 
-### proposed_code rules (build action only)
-The generated main.go MUST:
-1. Be a standalone Go binary (package main).
-2. Import and call sdk.Serve() with an implementation of sdk.Actuator.
-3. Declare all required capabilities in Manifest().
-4. Compile with: go build -o <actuator_id> .
-5. Have no external dependencies beyond the clara SDK and the Go standard library.
+Actuator SDK contract (compile target):
 
-## Clara SDK (compile target)
-` + pkgSDKSource
+` + "```go\n" + sdkSource + "```" + `
 
-// thinkTagPattern strips <think>...</think> blocks emitted by some reasoning models.
-var thinkTagPattern = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
+Every generated actuator must call sdk.Serve(&MyActuator{}) from main().
+`
 
-// --------------------------------------------------------------------------
-// Config types (mirrors the llm integration plugin schema)
-// --------------------------------------------------------------------------
+// thinkRe strips <think>…</think> reasoning blocks emitted by some models.
+var thinkRe = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
+
+// ─── config types (mirrors llm integration plugin) ───────────────────────────
 
 type llmAdapterModelConfig struct {
-	Provider string              `json:"provider"`
-	Model    string              `json:"model"`
-	Thinking *llmAdapterThinking `json:"thinking,omitempty"`
-}
-
-// llmAdapterThinking mirrors ThinkingConfig in the llm integration plugin.
-// See cmd/integrations/llm/llm.go for the canonical documentation.
-type llmAdapterThinking struct {
-	Level   string `json:"level,omitempty"`
-	Budget  *int   `json:"budget,omitempty"`
-	Enabled *bool  `json:"enabled,omitempty"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 }
 
 type llmAdapterProviderConfig struct {
@@ -163,287 +129,146 @@ type llmAdapterProviderConfig struct {
 }
 
 type llmAdapterConfig struct {
-	EvaluatorCategory string                              `json:"evaluator_category"`
-	Categories        map[string][]llmAdapterModelConfig  `json:"categories"`
-	Providers         map[string]llmAdapterProviderConfig `json:"providers"`
+	Categories map[string][]llmAdapterModelConfig    `json:"categories"`
+	Providers  map[string]llmAdapterProviderConfig   `json:"providers"`
 }
 
-// --------------------------------------------------------------------------
-// LLMAdapter — concrete LLMClient
-// --------------------------------------------------------------------------
+// ─── LLMAdapter ──────────────────────────────────────────────────────────────
 
-// LLMAdapter implements LLMClient by calling LLM providers over HTTP.
+// LLMAdapter is a concrete LLMClient that calls LLM APIs directly (no plugin
+// subprocess) using the same provider logic as the llm integration plugin.
 type LLMAdapter struct {
 	log    zerolog.Logger
 	config llmAdapterConfig
 }
 
-// NewLLMAdapter creates an LLMAdapter from the raw integrations["llm"] config map.
-// Returns (nil, nil) when no llm config is provided; the caller should fall back
-// to NoopLLMClient() in that case.
+// NewLLMAdapter creates an LLMAdapter from the raw map[string]any config block
+// for the "llm" integration (as read from ~/.config/clara/config.yaml).
+//
+// Returns an error only when rawCfg is non-nil but malformed; nil rawCfg is
+// silently treated as an empty config (will fail at request time with a clear
+// error).
 func NewLLMAdapter(log zerolog.Logger, rawCfg map[string]any) (*LLMAdapter, error) {
-	if len(rawCfg) == 0 {
-		return nil, nil
+	a := &LLMAdapter{
+		log: log.With().Str("component", "llm_adapter").Logger(),
 	}
-
+	if rawCfg == nil {
+		return a, nil
+	}
 	b, err := json.Marshal(rawCfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "marshal llm config")
 	}
-
-	var cfg llmAdapterConfig
-	if err := json.Unmarshal(b, &cfg); err != nil {
+	if err := json.Unmarshal(b, &a.config); err != nil {
 		return nil, errors.Wrap(err, "unmarshal llm config")
 	}
-
-	if cfg.EvaluatorCategory == "" {
-		cfg.EvaluatorCategory = "fast"
-	}
-
-	return &LLMAdapter{
-		log:    log.With().Str("component", "llm_adapter").Logger(),
-		config: cfg,
-	}, nil
+	return a, nil
 }
 
-// AnalyzeEvent implements LLMClient. It serialises the event and history into a
-// user message, calls the configured LLM, and parses the JSON response into an
+// AnalyzeEvent implements LLMClient. It calls the "evaluator" category (falling
+// back to "reasoning", then "fast") and parses the JSON response into an
 // AnalysisResult.
 func (a *LLMAdapter) AnalyzeEvent(
 	ctx context.Context,
 	ev CloudEvent,
 	history []string,
 ) (AnalysisResult, error) {
-	userMsg, err := a.buildUserMessage(ev, history)
+	evJSON, _ := json.MarshalIndent(ev, "", "  ")
+
+	userMsg := fmt.Sprintf(
+		"Event:\n```json\n%s\n```\n\nHistory:\n%s",
+		string(evJSON),
+		strings.Join(history, "\n"),
+	)
+
+	text, err := a.generate(ctx, userMsg)
 	if err != nil {
-		return AnalysisResult{}, errors.Wrap(err, "build user message")
+		return AnalysisResult{}, err
 	}
 
-	raw, err := a.generate(ctx, []llmMessage{
-		{Role: "system", Content: evaluatorSystemPrompt},
-		{Role: "user", Content: userMsg},
-	})
-	if err != nil {
-		return AnalysisResult{}, errors.Wrap(err, "llm generate")
-	}
+	text = strings.TrimSpace(thinkRe.ReplaceAllString(text, ""))
 
-	// Strip think tags before parsing
-	raw = strings.TrimSpace(thinkTagPattern.ReplaceAllString(raw, ""))
-
-	return parseAnalysisResult(raw)
-}
-
-// --------------------------------------------------------------------------
-// Internal helpers
-// --------------------------------------------------------------------------
-
-type llmMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-func (a *LLMAdapter) buildUserMessage(ev CloudEvent, history []string) (string, error) {
-	evJSON, err := json.MarshalIndent(ev, "", "  ")
-	if err != nil {
-		return "", errors.Wrap(err, "marshal cloud event")
-	}
-
-	var sb strings.Builder
-	sb.WriteString("## Incoming CloudEvent\n\n```json\n")
-	sb.Write(evJSON)
-	sb.WriteString("\n```\n\n")
-
-	if len(history) > 0 {
-		sb.WriteString("## History\n\n")
-		for _, h := range history {
-			sb.WriteString("- ")
-			sb.WriteString(h)
-			sb.WriteString("\n")
+	// Strip markdown code fences if present.
+	if strings.HasPrefix(text, "```") {
+		lines := strings.SplitN(text, "\n", 2)
+		if len(lines) == 2 {
+			text = lines[1]
 		}
-		sb.WriteString("\n")
+		text = strings.TrimSuffix(strings.TrimSpace(text), "```")
 	}
 
-	sb.WriteString("Respond with the JSON decision object only.")
-	return sb.String(), nil
+	var result AnalysisResult
+	if err := json.Unmarshal([]byte(text), &result); err != nil {
+		return AnalysisResult{}, errors.Wrapf(err, "parse LLM response as AnalysisResult: %q", text)
+	}
+	return result, nil
 }
 
-// generate picks the first working model in the evaluator category and returns
-// the raw text completion.
-func (a *LLMAdapter) generate(ctx context.Context, messages []llmMessage) (string, error) {
-	category := a.config.EvaluatorCategory
-	models, ok := a.config.Categories[category]
-	if !ok || len(models) == 0 {
-		return "", fmt.Errorf("no models configured for evaluator category %q", category)
-	}
-
+// generate sends a chat completion request to the first working model in the
+// "evaluator" → "reasoning" → "fast" category preference list.
+func (a *LLMAdapter) generate(ctx context.Context, userMsg string) (string, error) {
+	categories := []string{"evaluator", "reasoning", "fast"}
 	var lastErr error
-	for _, m := range models {
-		pCfg, ok := a.config.Providers[m.Provider]
-		if !ok {
-			lastErr = fmt.Errorf("provider %q not configured", m.Provider)
+	for _, cat := range categories {
+		models, ok := a.config.Categories[cat]
+		if !ok || len(models) == 0 {
 			continue
 		}
-
-		text, err := a.callProvider(ctx, m.Provider, pCfg, m, messages)
-		if err == nil {
+		for _, m := range models {
+			provider, ok := a.config.Providers[m.Provider]
+			if !ok {
+				lastErr = errors.Newf("provider %q not configured", m.Provider)
+				continue
+			}
+			text, err := a.callProvider(ctx, m.Provider, provider, m.Model, userMsg)
+			if err != nil {
+				a.log.Warn().Err(err).Str("provider", m.Provider).Str("model", m.Model).
+					Msg("LLM call failed; trying next model")
+				lastErr = err
+				continue
+			}
 			return text, nil
 		}
-		a.log.Warn().Err(err).Str("provider", m.Provider).Str("model", m.Model).
-			Msg("llm provider call failed; trying next")
-		lastErr = err
 	}
-
-	return "", errors.Wrapf(lastErr, "all models in category %q failed", category)
+	if lastErr != nil {
+		return "", errors.Wrap(lastErr, "all LLM models failed")
+	}
+	return "", errors.New("no LLM models configured in categories [evaluator, reasoning, fast]")
 }
 
 func (a *LLMAdapter) callProvider(
 	ctx context.Context,
 	providerName string,
 	cfg llmAdapterProviderConfig,
-	m llmAdapterModelConfig,
-	messages []llmMessage,
+	model string,
+	userMsg string,
 ) (string, error) {
 	switch providerName {
-	case "openai":
-		return a.callOpenAI(ctx, cfg, m.Model, messages)
-	case "ollama":
-		return a.callOllama(ctx, cfg, m, messages)
 	case "gemini":
-		return a.callGemini(ctx, cfg, m, messages)
+		return a.callGemini(ctx, cfg, model, userMsg)
+	case "ollama":
+		return a.callOllama(ctx, cfg, model, userMsg)
+	case "openai":
+		return a.callOpenAI(ctx, cfg, model, userMsg)
 	default:
-		return "", fmt.Errorf("unsupported provider: %s", providerName)
+		return "", errors.Newf("unsupported provider: %q", providerName)
 	}
 }
 
-// --- OpenAI-compatible ---
-
-func (a *LLMAdapter) callOpenAI(
-	ctx context.Context,
-	cfg llmAdapterProviderConfig,
-	model string,
-	messages []llmMessage,
-) (string, error) {
-	baseURL := cfg.BaseURL
-	if baseURL == "" {
-		baseURL = "https://api.openai.com/v1"
-	}
-	url := strings.TrimSuffix(baseURL, "/") + "/chat/completions"
-
-	body := map[string]any{
-		"model":    model,
-		"messages": messages,
-	}
-	b, _ := json.Marshal(body)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
-	if err != nil {
-		return "", errors.Wrap(err, "create openai request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	key := cfg.Key
-	if key == "" {
-		key = cfg.APIKey
-	}
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", errors.Wrap(err, "post to openai")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("openai status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var out struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", errors.Wrap(err, "decode openai response")
-	}
-	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("openai returned no choices")
-	}
-	return out.Choices[0].Message.Content, nil
-}
-
-// --- Ollama ---
-
-func (a *LLMAdapter) callOllama(
-	ctx context.Context,
-	cfg llmAdapterProviderConfig,
-	m llmAdapterModelConfig,
-	messages []llmMessage,
-) (string, error) {
-	baseURL := cfg.BaseURL
-	if baseURL == "" {
-		baseURL = "http://localhost:11434"
-	}
-	url := strings.TrimSuffix(baseURL, "/") + "/api/chat"
-
-	body := map[string]any{
-		"model":    m.Model,
-		"messages": messages,
-		"stream":   false,
-	}
-	if m.Thinking != nil && m.Thinking.Enabled != nil {
-		body["think"] = *m.Thinking.Enabled
-	}
-	b, _ := json.Marshal(body)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
-	if err != nil {
-		return "", errors.Wrap(err, "create ollama request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", errors.Wrap(err, "post to ollama")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("ollama status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var out struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", errors.Wrap(err, "decode ollama response")
-	}
-	content := strings.TrimSpace(thinkTagPattern.ReplaceAllString(out.Message.Content, ""))
-	return content, nil
-}
-
-// --- Gemini ---
+// ─── Gemini ──────────────────────────────────────────────────────────────────
 
 func (a *LLMAdapter) callGemini(
 	ctx context.Context,
 	cfg llmAdapterProviderConfig,
-	m llmAdapterModelConfig,
-	messages []llmMessage,
+	model string,
+	userMsg string,
 ) (string, error) {
 	if cfg.APIKey == "" {
-		return "", fmt.Errorf("gemini api_key not configured")
+		return "", errors.New("gemini api_key not configured")
 	}
-
 	url := fmt.Sprintf(
 		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-		m.Model,
-		cfg.APIKey,
+		model, cfg.APIKey,
 	)
 
 	type Part struct {
@@ -453,118 +278,145 @@ func (a *LLMAdapter) callGemini(
 		Role  string `json:"role"`
 		Parts []Part `json:"parts"`
 	}
-	type ThinkingConfigWire struct {
-		ThinkingLevel  string `json:"thinkingLevel,omitempty"`
-		ThinkingBudget *int   `json:"thinkingBudget,omitempty"`
+	reqBody := map[string]any{
+		"system_instruction": map[string]any{
+			"parts": []Part{{Text: evaluatorSystemPrompt}},
+		},
+		"contents": []Content{
+			{Role: "user", Parts: []Part{{Text: userMsg}}},
+		},
 	}
-	type GenerationConfig struct {
-		ThinkingConfig *ThinkingConfigWire `json:"thinkingConfig,omitempty"`
-	}
-	type GeminiBody struct {
-		Contents         []Content         `json:"contents"`
-		GenerationConfig *GenerationConfig `json:"generationConfig,omitempty"`
-	}
+	return a.doPost(ctx, url, nil, reqBody, func(b []byte) (string, error) {
+		var resp struct {
+			Candidates []struct {
+				Content struct {
+					Parts []Part `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+		if err := json.Unmarshal(b, &resp); err != nil {
+			return "", errors.Wrap(err, "decode gemini response")
+		}
+		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+			return "", errors.New("gemini returned no candidates")
+		}
+		return resp.Candidates[0].Content.Parts[0].Text, nil
+	})
+}
 
-	var contents []Content
-	for _, msg := range messages {
-		role := msg.Role
-		if role == "assistant" {
-			role = "model"
-		}
-		if role == "system" {
-			role = "user"
-		}
-		contents = append(contents, Content{Role: role, Parts: []Part{{Text: msg.Content}}})
-	}
+// ─── Ollama ──────────────────────────────────────────────────────────────────
 
-	payload := GeminiBody{Contents: contents}
-	if m.Thinking != nil {
-		tc := &ThinkingConfigWire{}
-		if m.Thinking.Level != "" {
-			tc.ThinkingLevel = m.Thinking.Level
-		}
-		if m.Thinking.Budget != nil {
-			tc.ThinkingBudget = m.Thinking.Budget
-		}
-		payload.GenerationConfig = &GenerationConfig{ThinkingConfig: tc}
+func (a *LLMAdapter) callOllama(
+	ctx context.Context,
+	cfg llmAdapterProviderConfig,
+	model string,
+	userMsg string,
+) (string, error) {
+	base := cfg.BaseURL
+	if base == "" {
+		base = "http://localhost:11434"
 	}
+	url := strings.TrimSuffix(base, "/") + "/api/chat"
+	reqBody := map[string]any{
+		"model":  model,
+		"stream": false,
+		"messages": []map[string]string{
+			{"role": "system", "content": evaluatorSystemPrompt},
+			{"role": "user", "content": userMsg},
+		},
+	}
+	return a.doPost(ctx, url, nil, reqBody, func(b []byte) (string, error) {
+		var resp struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(b, &resp); err != nil {
+			return "", errors.Wrap(err, "decode ollama response")
+		}
+		return strings.TrimSpace(thinkRe.ReplaceAllString(resp.Message.Content, "")), nil
+	})
+}
 
-	b, _ := json.Marshal(payload)
+// ─── OpenAI-compatible ───────────────────────────────────────────────────────
+
+func (a *LLMAdapter) callOpenAI(
+	ctx context.Context,
+	cfg llmAdapterProviderConfig,
+	model string,
+	userMsg string,
+) (string, error) {
+	base := cfg.BaseURL
+	if base == "" {
+		base = "https://api.openai.com/v1"
+	}
+	url := strings.TrimSuffix(base, "/") + "/chat/completions"
+	reqBody := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": evaluatorSystemPrompt},
+			{"role": "user", "content": userMsg},
+		},
+	}
+	key := cfg.Key
+	if key == "" {
+		key = cfg.APIKey
+	}
+	headers := map[string]string{}
+	if key != "" {
+		headers["Authorization"] = "Bearer " + key
+	}
+	return a.doPost(ctx, url, headers, reqBody, func(b []byte) (string, error) {
+		var resp struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal(b, &resp); err != nil {
+			return "", errors.Wrap(err, "decode openai response")
+		}
+		if len(resp.Choices) == 0 {
+			return "", errors.New("openai returned no choices")
+		}
+		return resp.Choices[0].Message.Content, nil
+	})
+}
+
+// ─── shared HTTP helper ───────────────────────────────────────────────────────
+
+func (a *LLMAdapter) doPost(
+	ctx context.Context,
+	url string,
+	headers map[string]string,
+	body any,
+	parse func([]byte) (string, error),
+) (string, error) {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return "", errors.Wrap(err, "marshal request")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
-		return "", errors.Wrap(err, "create gemini request")
+		return "", errors.Wrap(err, "create request")
 	}
 	req.Header.Set("Content-Type", "application/json")
-
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", errors.Wrap(err, "post to gemini")
+		return "", errors.Wrap(err, "HTTP POST")
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", errors.Wrap(err, "read response body")
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("gemini status %d: %s", resp.StatusCode, string(body))
+		return "", errors.Newf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
-
-	var out struct {
-		Candidates []struct {
-			Content struct {
-				Parts []Part `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", errors.Wrap(err, "decode gemini response")
-	}
-	if len(out.Candidates) == 0 || len(out.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("gemini returned no candidates")
-	}
-	return out.Candidates[0].Content.Parts[0].Text, nil
-}
-
-// --------------------------------------------------------------------------
-// Response parsing
-// --------------------------------------------------------------------------
-
-// rawAnalysisResult is the wire format returned by the LLM.
-type rawAnalysisResult struct {
-	Action               string            `json:"action"`
-	ActuatorID           string            `json:"actuator_id"`
-	HeuristicTTLSeconds  float64           `json:"heuristic_ttl_seconds"`
-	ProposedCode         map[string]string `json:"proposed_code"`
-}
-
-func parseAnalysisResult(raw string) (AnalysisResult, error) {
-	// Strip markdown code fences if the model wrapped output anyway.
-	raw = strings.TrimSpace(raw)
-	if strings.HasPrefix(raw, "```") {
-		lines := strings.SplitN(raw, "\n", 2)
-		if len(lines) == 2 {
-			raw = lines[1]
-		}
-		raw = strings.TrimSuffix(raw, "```")
-		raw = strings.TrimSpace(raw)
-	}
-
-	var r rawAnalysisResult
-	if err := json.Unmarshal([]byte(raw), &r); err != nil {
-		return AnalysisResult{}, errors.Wrapf(err, "parse LLM JSON response: %q", raw)
-	}
-
-	if r.Action == "" {
-		r.Action = "ignore"
-	}
-
-	ttl := time.Duration(r.HeuristicTTLSeconds) * time.Second
-	if ttl <= 0 {
-		ttl = 1 * time.Hour
-	}
-
-	return AnalysisResult{
-		Action:       r.Action,
-		ActuatorID:   r.ActuatorID,
-		HeuristicTTL: ttl,
-		ProposedCode: r.ProposedCode,
-	}, nil
+	return parse(respBody)
 }
