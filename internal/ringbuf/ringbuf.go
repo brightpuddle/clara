@@ -56,6 +56,24 @@ func (r *RingBuffer) Push(entry json.RawMessage) {
 	r.subsMu.Unlock()
 }
 
+// Snapshot returns up to tail historical entries (oldest first) without
+// subscribing to future entries. Use this for non-follow reads.
+func (r *RingBuffer) Snapshot(tail int) []json.RawMessage {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	count := r.size
+	if tail >= 0 && tail < count {
+		count = tail
+	}
+	out := make([]json.RawMessage, count)
+	startOffset := r.size - count
+	for i := 0; i < count; i++ {
+		idx := (r.head + startOffset + i) % r.cap
+		out[i] = r.entries[idx]
+	}
+	return out
+}
+
 // Subscribe returns a channel that first receives up to tail historical entries
 // (oldest first) and then receives new entries as they arrive.
 // The channel is closed when ctx is cancelled.

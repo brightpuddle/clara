@@ -47,29 +47,36 @@ func (h *daemonHandler) HandleStream(ctx context.Context, req *ipc.StreamRequest
 		return
 	}
 
-	sub := buf.Subscribe(ctx, req.Tail)
-	for entry := range sub {
-		// Apply event-stream filters.
+	writeEntry := func(entry []byte) bool {
 		if req.Method == ipc.MethodEventLogs {
 			if req.FilterType != "" || req.FilterSource != "" {
 				var m map[string]string
 				if err := json.Unmarshal(entry, &m); err == nil {
 					if req.FilterType != "" && m["type"] != req.FilterType {
-						continue
+						return true
 					}
 					if req.FilterSource != "" && m["source"] != req.FilterSource {
-						continue
+						return true
 					}
 				}
 			}
 		}
-		if err := w.WriteRaw(entry); err != nil {
-			return
+		return w.WriteRaw(entry) == nil
+	}
+
+	if !req.Follow {
+		for _, entry := range buf.Snapshot(req.Tail) {
+			if !writeEntry(entry) {
+				return
+			}
 		}
-		if !req.Follow {
-			// Non-follow: only drain the historical tail then stop.
-			// The Subscribe channel delivers history then blocks; since
-			// we don't want to block, we use a select after each write.
+		return
+	}
+
+	sub := buf.Subscribe(ctx, req.Tail)
+	for entry := range sub {
+		if !writeEntry(entry) {
+			return
 		}
 	}
 }
