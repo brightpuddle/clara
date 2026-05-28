@@ -2,11 +2,17 @@ package supervisor
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/hashicorp/go-plugin"
 	"github.com/rs/zerolog"
+
+	"github.com/brightpuddle/clara/pkg/sdk"
 )
 
 // LLMClient represents the interface to execute evaluator queries against the LLM kernel.
@@ -24,11 +30,12 @@ type AnalysisResult struct {
 
 // Evaluator manages fast-path routing and triggers dynamic self-modification loops in Clara V2.
 type Evaluator struct {
-	log       zerolog.Logger
-	bus       *EventBus
-	llm       LLMClient
-	builder   *Builder
-	
+	log     zerolog.Logger
+	bus     *EventBus
+	llm     LLMClient
+	builder *Builder
+	binDir  string // directory containing actuator binaries
+
 	mu         sync.RWMutex
 	heuristics map[string]heuristicRoute // eventType -> actuatorID/route info
 }
@@ -39,12 +46,18 @@ type heuristicRoute struct {
 }
 
 // NewEvaluator creates a new Evaluator.
-func NewEvaluator(log zerolog.Logger, bus *EventBus, llm LLMClient, builder *Builder) *Evaluator {
+// binDir is the directory where actuator binaries live (e.g. ~/.local/share/clara/bin).
+func NewEvaluator(log zerolog.Logger, bus *EventBus, llm LLMClient, builder *Builder, binDir string) *Evaluator {
+	if binDir == "" {
+		home, _ := os.UserHomeDir()
+		binDir = filepath.Join(home, ".local", "share", "clara", "bin")
+	}
 	return &Evaluator{
 		log:        log.With().Str("component", "evaluator").Logger(),
 		bus:        bus,
 		llm:        llm,
 		builder:    builder,
+		binDir:     binDir,
 		heuristics: make(map[string]heuristicRoute),
 	}
 }
@@ -139,9 +152,92 @@ func (noopLLMClient) AnalyzeEvent(_ context.Context, _ CloudEvent, _ []string) (
 // Use this as a placeholder until a real LLM adapter is available.
 func NoopLLMClient() LLMClient { return noopLLMClient{} }
 
+// pluginCmd returns an exec.Cmd for launching an actuator binary subprocess.
+// The context is honoured: if ctx is cancelled the subprocess is killed.
+func pluginCmd(ctx context.Context, binaryPath string) *exec.Cmd {
+	return exec.CommandContext(ctx, binaryPath) //nolint:gosec // path validated by caller
+}
+
 // executeActuator starts the target actuator subprocess via gRPC plugin loaders
 func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev CloudEvent) error {
-	e.log.Debug().Str("actuator", actuatorID).Msg("dispatching to actuator execution engine")
-	// In Clara V2, this dynamically starts the compiled binary as a hashicorp/go-plugin gRPC subprocess
+	binaryPath := filepath.Join(e.binDir, actuatorID)
+	if _, err := os.Stat(binaryPath); err != nil {
+		return errors.Wrapf(err, "actuator binary not found for %q at %s", actuatorID, binaryPath)
+	}
+
+	e.log.Info().
+		Str("actuator", actuatorID).
+		Str("binary", binaryPath).
+		Msg("launching actuator subprocess")
+
+	client := plugin.NewClient(&plugin.ClientConfig{
+		HandshakeConfig: sdk.HandshakeConfig,
+		Plugins:         sdk.PluginMap,
+		Cmd:             pluginCmd(ctx, binaryPath),
+		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC},
+	})
+	defer client.Kill()
+
+	rpcClient, err := client.Client()
+	if err != nil {
+		return errors.Wrap(err, "failed to connect to actuator subprocess")
+	}
+
+	raw, err := rpcClient.Dispense("actuator")
+	if err != nil {
+		return errors.Wrap(err, "failed to dispense actuator")
+	}
+
+	actuator, ok := raw.(sdk.Actuator)
+	if !ok {
+		return errors.New("dispensed plugin does not implement sdk.Actuator")
+	}
+
+	sdkEvent := sdk.Event{
+		ID:     ev.ID,
+		Source: ev.Source,
+		Type:   ev.Type,
+		Time:   ev.Time,
+		Data:   ev.Data,
+	}
+
+	result, err := actuator.Execute(ctx, sdkEvent)
+	if err != nil {
+		return errors.Wrapf(err, "actuator %q execution error", actuatorID)
+	}
+
+	if result.Success {
+		e.log.Info().
+			Str("actuator", actuatorID).
+			Str("output", result.Output).
+			Msg("actuator execution succeeded")
+	} else {
+		e.log.Warn().
+			Str("actuator", actuatorID).
+			Str("output", result.Output).
+			Msg("actuator execution reported failure")
+	}
+
+	if result.Retry {
+		e.log.Info().
+			Str("actuator", actuatorID).
+			Dur("delay", result.Delay).
+			Msg("actuator requested retry; re-queuing event")
+		go func() {
+			if result.Delay > 0 {
+				timer := time.NewTimer(result.Delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+			}
+			if err := e.executeActuator(ctx, actuatorID, ev); err != nil {
+				e.log.Error().Err(err).Str("actuator", actuatorID).Msg("retry execution failed")
+			}
+		}()
+	}
+
 	return nil
 }

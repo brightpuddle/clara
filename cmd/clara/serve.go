@@ -196,7 +196,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Warn().Err(err).Msg("failed to create builder; evaluator builder mode disabled")
 		builder = nil
 	}
-	evaluator := supervisor.NewEvaluator(logger, sup.EventBus(), supervisor.NoopLLMClient(), builder)
+	evaluator := supervisor.NewEvaluator(logger, sup.EventBus(), supervisor.NoopLLMClient(), builder, cfg.DataDir+"/bin")
 
 	return runDaemonServices(daemonCtx, daemonServiceHooks{
 		startMCPServers: func(ctx context.Context) error {
