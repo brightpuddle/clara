@@ -191,7 +191,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	}
 
 	builderDir := cfg.DataDir + "/workspace"
-	builder, err := supervisor.NewBuilder(builderDir)
+	builder, err := supervisor.NewBuilder(builderDir, "") // repoRoot resolved automatically
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to create builder; evaluator builder mode disabled")
 		builder = nil

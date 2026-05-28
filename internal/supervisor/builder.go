@@ -13,6 +13,47 @@ import (
 	"github.com/brightpuddle/clara/internal/loghub"
 )
 
+// resolveRepoRoot finds the Clara module root using the following strategy (in order):
+//  1. The explicitly supplied repoRoot argument (non-empty string).
+//  2. The CLARA_REPO_ROOT environment variable.
+//  3. Walking up from the running executable's directory.
+//  4. Walking up from the current working directory.
+//
+// Returns an error only if none of the strategies locate a go.mod.
+func resolveRepoRoot(explicit string) (string, error) {
+	// 1. Explicit override.
+	if explicit != "" {
+		if _, err := os.Stat(filepath.Join(explicit, "go.mod")); err == nil {
+			return explicit, nil
+		}
+	}
+
+	// 2. Environment variable.
+	if env := os.Getenv("CLARA_REPO_ROOT"); env != "" {
+		if _, err := os.Stat(filepath.Join(env, "go.mod")); err == nil {
+			return env, nil
+		}
+	}
+
+	// 3. Walk up from the running executable.
+	if exe, err := os.Executable(); err == nil {
+		if root, err := findModuleRoot(filepath.Dir(exe)); err == nil {
+			return root, nil
+		}
+	}
+
+	// 4. Walk up from the current working directory.
+	if cwd, err := os.Getwd(); err == nil {
+		if root, err := findModuleRoot(cwd); err == nil {
+			return root, nil
+		}
+	}
+
+	return "", errors.New(
+		"cannot locate clara module root: set CLARA_REPO_ROOT or run from within the source tree",
+	)
+}
+
 // CompileResult carries the outcome of a sandboxed compilation attempt.
 type CompileResult struct {
 	Success       bool   `json:"success"`
@@ -22,12 +63,16 @@ type CompileResult struct {
 
 // Builder manages the sandboxed compilation workspace for self-modifying Actuator plugins.
 type Builder struct {
-	baseDir string // base workspace directory, e.g. ~/.local/share/clara/workspace/
-	hub     *loghub.Hub
+	baseDir  string // base workspace directory, e.g. ~/.local/share/clara/workspace/
+	repoRoot string // Clara module root (for go.mod replace directive)
+	hub      *loghub.Hub
 }
 
 // NewBuilder creates a new Builder with a verified workspace directory.
-func NewBuilder(baseDir string) (*Builder, error) {
+// repoRoot is the path to the Clara source tree (go.mod lives there). If empty,
+// resolveRepoRoot will locate it automatically via CLARA_REPO_ROOT env var or
+// by walking up from the running binary / current working directory.
+func NewBuilder(baseDir, repoRoot string) (*Builder, error) {
 	if len(baseDir) > 0 && baseDir[0] == '~' {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -40,7 +85,12 @@ func NewBuilder(baseDir string) (*Builder, error) {
 		return nil, errors.Wrap(err, "failed to create builder base directory")
 	}
 
-	return &Builder{baseDir: baseDir}, nil
+	root, err := resolveRepoRoot(repoRoot)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to resolve clara module root")
+	}
+
+	return &Builder{baseDir: baseDir, repoRoot: root}, nil
 }
 
 // WithHub sets the log hub for the builder.
@@ -82,15 +132,10 @@ func (b *Builder) CompileAndVerify(
 	// import pkg/sdk without requiring a published module version.
 	goModPath := filepath.Join(subDir, "go.mod")
 	if _, err := os.Stat(goModPath); os.IsNotExist(err) {
-		// Locate the Clara module root by walking up from the builder's baseDir.
-		claraModuleRoot, err := findModuleRoot(b.baseDir)
-		if err != nil {
-			return CompileResult{}, errors.Wrap(err, "failed to locate clara module root for replace directive")
-		}
 		modContent := fmt.Sprintf(
 			"module %s\n\ngo 1.24\n\nrequire github.com/brightpuddle/clara v0.0.0\n\nreplace github.com/brightpuddle/clara => %s\n",
 			actuatorID,
-			claraModuleRoot,
+			b.repoRoot,
 		)
 		if err := os.WriteFile(goModPath, []byte(modContent), 0o600); err != nil {
 			return CompileResult{}, errors.Wrap(err, "failed to initialize sandbox go.mod")

@@ -151,6 +151,14 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 			"event_id": ev.ID,
 		})
 
+		if e.builder == nil {
+			e.pushEval("error", "builder unavailable", map[string]any{
+				"actuator": decision.ActuatorID,
+				"reason":   "builder was not initialised (check workspace directory config)",
+			})
+			return errors.New("builder not configured: cannot compile new actuator")
+		}
+
 		// Run compiler loop
 		res, err := e.builder.CompileAndVerify(ctx, decision.ActuatorID, decision.ProposedCode)
 		if err != nil {
