@@ -142,7 +142,24 @@ func (b *Builder) CompileAndVerify(
 		}
 	}
 
-	// 3. Execute `go test` in the sandbox directory to verify logical correctness.
+	// 3. Run `go mod tidy` to populate go.sum and resolve transitive dependencies
+	// before any build or test commands are run.
+	tidyCmd := exec.CommandContext(ctx, "go", "mod", "tidy")
+	tidyCmd.Dir = subDir
+	tidyCmd.Env = append(os.Environ(), "GO111MODULE=on")
+
+	if tidyOutput, err := tidyCmd.CombinedOutput(); err != nil {
+		b.pushEval("error", "builder: go mod tidy failed", map[string]any{
+			"actuator":    actuatorID,
+			"diagnostics": string(tidyOutput),
+		})
+		return CompileResult{
+			Success:       false,
+			CompilerError: fmt.Sprintf("go mod tidy failed:\n%s", string(tidyOutput)),
+		}, nil
+	}
+
+	// 4. Execute `go test` in the sandbox directory to verify logical correctness.
 	testCmd := exec.CommandContext(ctx, "go", "test", "-v", "./...")
 	testCmd.Dir = subDir
 	testCmd.Env = append(os.Environ(), "GO111MODULE=on")
@@ -159,7 +176,7 @@ func (b *Builder) CompileAndVerify(
 		}, nil
 	}
 
-	// 4. Compile the native binary using `go build`.
+	// 5. Compile the native binary using `go build`.
 	binaryName := actuatorID
 	outputPath := filepath.Join(subDir, binaryName)
 	
@@ -179,7 +196,7 @@ func (b *Builder) CompileAndVerify(
 		}, nil
 	}
 
-	// 5. Success! Move the compiled binary to the final active bin folder.
+	// 6. Success! Move the compiled binary to the final active bin folder.
 	finalBinDir := filepath.Join(b.baseDir, "bin")
 	if err := os.MkdirAll(finalBinDir, 0o700); err != nil {
 		return CompileResult{}, errors.Wrap(err, "failed to create final bin directory")

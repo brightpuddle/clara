@@ -45,6 +45,14 @@ type Config struct {
 	// DataDir overrides the default runtime data directory.
 	DataDir string `yaml:"data_dir"`
 
+	// BuilderRepoRoot is the path to the Clara source tree. The builder uses
+	// this to write a `replace github.com/brightpuddle/clara => <path>`
+	// directive into sandbox go.mod files so generated actuators can import
+	// pkg/sdk without a published module version. If empty, the builder falls
+	// back to the CLARA_REPO_ROOT environment variable, then walks up from the
+	// running binary's directory.
+	BuilderRepoRoot string `yaml:"builder_repo_root"`
+
 	// TaskDirs overrides the default directories where .star intent files are watched.
 	// When non-empty, the default (~/.config/clara/tasks) is not used unless
 	// explicitly listed. Paths are searched in order; if the same intent ID

@@ -101,8 +101,9 @@ Rules:
 - "invoke"  — an existing actuator binary can handle this event. Set actuator_id.
 - "build"   — no existing actuator fits; generate a new one. Set actuator_id and
               proposed_code (map of filename → full Go source). The code MUST
-              import and implement the sdk.Actuator interface shown below.
+              import "github.com/brightpuddle/clara/pkg/sdk" and implement the sdk.Actuator interface shown below.
 - "ignore"  — the event is noise; no action needed.
+- When generating Go source code for the "build" action, the import path for the Clara Actuator SDK MUST be exactly "github.com/brightpuddle/clara/pkg/sdk". Do NOT use "github.com/clara/sdk", "github.com/clara-v2/pkg/sdk", or any other path.
 - heuristic_ttl is optional. Omit or set 0 to use the default (1 hour).
 
 Actuator SDK contract (compile target):
