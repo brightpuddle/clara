@@ -27,6 +27,7 @@ type Supervisor struct {
 	log        zerolog.Logger
 	onFinished RunFinishedFunc
 	bus        *EventBus
+	binDir     string
 
 	mu       sync.RWMutex
 	rootCtx  context.Context
@@ -110,6 +111,14 @@ func New(
 
 func (s *Supervisor) WithOnRunFinished(fn RunFinishedFunc) *Supervisor {
 	s.onFinished = fn
+	return s
+}
+
+// WithBinDir configures the directory where compiled actuator binaries are located.
+func (s *Supervisor) WithBinDir(dir string) *Supervisor {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.binDir = dir
 	return s
 }
 
@@ -684,22 +693,48 @@ type ActuatorInfo struct {
 }
 
 // ActuatorInfos returns information about all deployed actuators (currently
-// modelled as active intents with a native workflow kind).
+// modelled as active intents with a native workflow kind, and scanned binaries).
 func (s *Supervisor) ActuatorInfos() []ActuatorInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	infos := make([]ActuatorInfo, 0, len(s.intents))
+	seen := make(map[string]bool)
 	for id, managed := range s.intents {
 		status := "idle"
 		if managed.active {
 			status = "active"
 		}
+		seen[id] = true
 		infos = append(infos, ActuatorInfo{
 			ID:          id,
 			Description: managed.intent.Description,
 			Status:      status,
 		})
 	}
+
+	// Also scan binDir for compiled actuator binaries.
+	binDir := s.binDir
+	if binDir == "" {
+		home, _ := os.UserHomeDir()
+		binDir = filepath.Join(home, ".local", "share", "clara", "bin")
+	}
+	if entries, err := os.ReadDir(binDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
+			name := entry.Name()
+			if seen[name] {
+				continue
+			}
+			infos = append(infos, ActuatorInfo{
+				ID:          name,
+				Description: "Compiled Actuator binary",
+				Status:      "idle",
+			})
+		}
+	}
+
 	return infos
 }
 
@@ -712,15 +747,26 @@ func (s *Supervisor) EmitPromptEvent(prompt string) {
 	})
 }
 
-// RunActuator dispatches a manual actuator run by intent ID.
+// RunActuator dispatches a manual actuator run.
 // payload is optional additional data passed as the event Data field.
 func (s *Supervisor) RunActuator(ctx context.Context, id string, payload any) error {
 	s.mu.RLock()
 	_, ok := s.intents[id]
 	s.mu.RUnlock()
+
+	// If not found in legacy intents, check if the binary exists in binDir
 	if !ok {
-		return errors.Newf("actuator %q not found", id)
+		binDir := s.binDir
+		if binDir == "" {
+			home, _ := os.UserHomeDir()
+			binDir = filepath.Join(home, ".local", "share", "clara", "bin")
+		}
+		binaryPath := filepath.Join(binDir, id)
+		if _, err := os.Stat(binaryPath); err != nil {
+			return errors.Newf("actuator %q not found", id)
+		}
 	}
+
 	// Publish a synthetic event that the evaluator will route to this actuator.
 	s.bus.PublishCloud(CloudEvent{
 		Type:   "clara.actuator.run",

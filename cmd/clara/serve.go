@@ -156,6 +156,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		}
 		return executeIntentRun(runCtx, intent, runID, entrypoint, args, ilog, logger)
 	}, logger).
+		WithBinDir(cfg.DataDir + "/bin").
 		WithOnRunFinished(func(ctx context.Context, runID, intentID, status, errorText string) {
 			if status == "waiting" {
 				return

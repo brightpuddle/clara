@@ -257,15 +257,6 @@ var actuatorRunCmd = &cobra.Command{
 			}
 			params["payload"] = payload
 		}
-		if actuatorRunFollow {
-			return streamLogs(
-				cfg.ControlSocketPath(),
-				ipc.MethodActuatorRun,
-				0,
-				true,
-				map[string]string{"actuator_id": args[0]},
-			)
-		}
 		resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
 			Method: ipc.MethodActuatorRun,
 			Params: params,
@@ -277,6 +268,16 @@ var actuatorRunCmd = &cobra.Command{
 			return fmt.Errorf("%s", resp.Error)
 		}
 		fmt.Println(resp.Message)
+
+		if actuatorRunFollow {
+			return streamLogs(
+				cfg.ControlSocketPath(),
+				ipc.MethodActuatorLogs,
+				0,
+				true,
+				map[string]string{"actuator_id": args[0]},
+			)
+		}
 		return nil
 	},
 }

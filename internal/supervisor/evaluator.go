@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,6 +100,20 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		"source":   ev.Source,
 	})
 
+	// Direct route for manual actuator runs (clara actuator run)
+	if ev.Type == "clara.actuator.run" {
+		actuatorID, _ := ev.Data["actuator_id"].(string)
+		if actuatorID == "" {
+			return errors.New("missing actuator_id in clara.actuator.run event data")
+		}
+		e.log.Info().Str("actuator", actuatorID).Msg("manual actuator run triggered via event")
+		e.pushEval("info", "manual actuator run", map[string]any{
+			"actuator": actuatorID,
+			"event_id": ev.ID,
+		})
+		return e.executeActuator(ctx, actuatorID, ev)
+	}
+
 	// 1. Fast-Path Heuristic Check
 	e.mu.RLock()
 	route, exists := e.heuristics[ev.Type]
@@ -117,8 +132,25 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 	e.log.Debug().Str("type", ev.Type).Msg("heuristic cache miss/expired; invoking core LLM evaluator")
 	e.pushEval("debug", "heuristic miss; invoking LLM", map[string]any{"event_type": ev.Type})
 
+	var availableActuators []string
+	if entries, err := os.ReadDir(e.binDir); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+				availableActuators = append(availableActuators, entry.Name())
+			}
+		}
+	}
+
 	// Fetch historical state memory or metadata here (e.g. from core SQLite store)
 	history := []string{"system bootstrap", "last execution succeeded"}
+	if len(availableActuators) > 0 {
+		history = append(history, "Available Actuator IDs (you must use EXACTLY one of these IDs when using the 'invoke' action):")
+		for _, act := range availableActuators {
+			history = append(history, "  - "+act)
+		}
+	} else {
+		history = append(history, "No actuators are currently compiled/available.")
+	}
 
 	decision, err := e.llm.AnalyzeEvent(ctx, ev, history)
 	if err != nil {
@@ -128,9 +160,19 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 
 	switch decision.Action {
 	case "invoke":
-		e.log.Info().Str("actuator", decision.ActuatorID).Msg("LLM directed invocation of existing actuator")
+		actuatorID := decision.ActuatorID
+		// Try to normalize/fuzzy-match if the requested actuator ID doesn't exist
+		if _, err := os.Stat(filepath.Join(e.binDir, actuatorID)); err != nil {
+			normalized := strings.TrimSuffix(actuatorID, "-actuator")
+			if _, err2 := os.Stat(filepath.Join(e.binDir, normalized)); err2 == nil {
+				e.log.Info().Str("original", actuatorID).Str("normalized", normalized).Msg("normalized actuator ID from LLM decision")
+				actuatorID = normalized
+			}
+		}
+
+		e.log.Info().Str("actuator", actuatorID).Msg("LLM directed invocation of existing actuator")
 		e.pushEval("info", "LLM: invoke actuator", map[string]any{
-			"actuator":  decision.ActuatorID,
+			"actuator":  actuatorID,
 			"event_id":  ev.ID,
 			"heuristic": decision.HeuristicTTL.String(),
 		})
@@ -140,9 +182,9 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		if ttl <= 0 {
 			ttl = 1 * time.Hour // Default cache TTL
 		}
-		e.RegisterHeuristic(ev.Type, decision.ActuatorID, ttl)
+		e.RegisterHeuristic(ev.Type, actuatorID, ttl)
 
-		return e.executeActuator(ctx, decision.ActuatorID, ev)
+		return e.executeActuator(ctx, actuatorID, ev)
 
 	case "build":
 		e.log.Warn().Str("actuator", decision.ActuatorID).Msg("LLM directed builder mode entry: compiling new logic")

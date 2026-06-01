@@ -110,7 +110,6 @@ var streamMethods = map[string]bool{
 	MethodEventLogs:     true,
 	MethodEvaluatorLogs: true,
 	MethodActuatorLogs:  true,
-	MethodActuatorRun:   true,
 }
 
 func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
