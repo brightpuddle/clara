@@ -104,6 +104,36 @@ var approvalsDecideCmd = &cobra.Command{
 	},
 }
 
+var approvalsSubmitCmd = &cobra.Command{
+	Use:   "submit [id] [context]",
+	Short: "Submit a dummy approval request for manual testing",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := loadConfig(); err != nil {
+			return err
+		}
+		id := "dummy-approval"
+		contextStr := "Dummy approval request for manual HITL testing"
+		if len(args) > 0 {
+			id = args[0]
+		}
+		if len(args) > 1 {
+			contextStr = args[1]
+		}
+		resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+			Method: ipc.MethodApprovalSubmit,
+			Params: map[string]any{
+				"id":      id,
+				"context": contextStr,
+			},
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(resp.Message)
+		return nil
+	},
+}
+
 // ---------------------------------------------------------------------------
 // `clara request` command
 // ---------------------------------------------------------------------------
@@ -132,6 +162,6 @@ Builder Mode and generates a new compiled Actuator automatically.`,
 }
 
 func init() {
-	approvalsCmd.AddCommand(approvalsListCmd, approvalsShowCmd, approvalsDecideCmd)
+	approvalsCmd.AddCommand(approvalsListCmd, approvalsShowCmd, approvalsDecideCmd, approvalsSubmitCmd)
 	rootCmd.AddCommand(approvalsCmd, requestCmd)
 }

@@ -311,7 +311,7 @@ clara actuator logs echo -n 5
 request, confirming the full Event → Evaluator → executeActuator path.
 **Notes:**
 
-- [ ] Pass  [ ] Fail
+- [x] Pass  [ ] Fail
 
 ---
 
@@ -330,7 +330,7 @@ clara approvals list    # expect empty list, not error
 **Pass:** Returns `[]` or empty list without error.
 **Notes:**
 
-- [ ] Pass  [ ] Fail
+- [x] Pass  [ ] Fail
 
 ---
 
@@ -350,7 +350,7 @@ clara approvals list              # item is gone
 **Pass:** All four commands succeed and the item is removed after `decide`.
 **Notes:**
 
-- [ ] Pass  [ ] Fail
+- [x] Pass  [ ] Fail
 
 ---
 
@@ -360,11 +360,11 @@ This is the most critical test — validates the complete self-modifying loop.
 
 ### Pre-flight for Group 6
 
-- [ ] Daemon started with a working LLM config (Group 3 tests passed)
-- [ ] `CLARA_REPO_ROOT` set, or daemon running from within the repo, or the
+- [x] Daemon started with a working LLM config (Group 3 tests passed)
+- [x] `CLARA_REPO_ROOT` set, or daemon running from within the repo, or the
       executable auto-resolve found the repo root (check startup logs for
       "failed to resolve clara module root" — if present, set the env var)
-- [ ] `~/.local/share/clara/workspace/` directory exists (created automatically
+- [x] `~/.local/share/clara/workspace/` directory exists (created automatically
       by `NewBuilder`, but verify)
 
 ### Test 6.1 — Builder compiles a new actuator
@@ -390,7 +390,7 @@ ls ~/.local/share/clara/workspace/
 
 **Notes:**
 
-- [ ] Pass  [ ] Fail
+- [x] Pass  [ ] Fail
 
 ---
 
@@ -408,7 +408,7 @@ clara evaluator logs -n 5
 build → register heuristic → invoke loop is complete.
 **Notes:**
 
-- [ ] Pass  [ ] Fail
+- [x] Pass  [ ] Fail
 
 ---
 

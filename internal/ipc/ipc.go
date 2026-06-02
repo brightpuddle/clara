@@ -37,6 +37,7 @@ const (
 	MethodApprovalList   = "approval.list"
 	MethodApprovalShow   = "approval.show"
 	MethodApprovalDecide = "approval.decide"
+	MethodApprovalSubmit = "approval.submit"
 
 	// V2 natural-language request
 	MethodRequest = "request"

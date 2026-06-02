@@ -949,6 +949,27 @@ func buildHandler(
 			}
 			writeResp(&ipc.Response{Message: fmt.Sprintf("decision recorded for %s", id)})
 
+		case ipc.MethodApprovalSubmit:
+			id, _ := req.Params["id"].(string)
+			contextStr, _ := req.Params["context"].(string)
+			if id == "" {
+				id = "dummy-approval"
+			}
+			if contextStr == "" {
+				contextStr = "Dummy approval request for manual HITL testing"
+			}
+			go func() {
+				_, _ = approvals.Submit(context.Background(), supervisor.ApprovalRequest{
+					RequestID: id,
+					Context:   contextStr,
+					Options: []supervisor.ResolutionOption{
+						{ID: "allow", Description: "Allow the action", ActionCode: "allow"},
+						{ID: "deny", Description: "Deny the action", ActionCode: "deny"},
+					},
+				})
+			}()
+			writeResp(&ipc.Response{Message: "approval " + id + " submitted in background"})
+
 		case ipc.MethodRequest:
 			prompt, _ := req.Params["prompt"].(string)
 			if prompt == "" {

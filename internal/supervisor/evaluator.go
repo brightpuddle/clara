@@ -220,6 +220,14 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 			"binary":   res.BinaryPath,
 		})
 
+		// Copy binary to e.binDir so both the evaluator and subsequent lookups can access it.
+		destPath := filepath.Join(e.binDir, decision.ActuatorID)
+		if err := os.MkdirAll(e.binDir, 0o700); err == nil {
+			if data, err := os.ReadFile(res.BinaryPath); err == nil {
+				_ = os.WriteFile(destPath, data, 0o755)
+			}
+		}
+
 		// Register rule to fast-path
 		e.RegisterHeuristic(ev.Type, decision.ActuatorID, 24*time.Hour)
 
