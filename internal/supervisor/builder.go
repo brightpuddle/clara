@@ -85,6 +85,16 @@ func NewBuilder(baseDir, repoRoot string) (*Builder, error) {
 		return nil, errors.Wrap(err, "failed to create builder base directory")
 	}
 
+	// Initialize git repository in workspace directory if not present.
+	gitDir := filepath.Join(baseDir, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		initCmd := exec.Command("git", "init")
+		initCmd.Dir = baseDir
+		if err := initCmd.Run(); err != nil {
+			return nil, errors.Wrap(err, "failed to initialize git repo in workspace")
+		}
+	}
+
 	root, err := resolveRepoRoot(repoRoot)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to resolve clara module root")

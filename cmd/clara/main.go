@@ -41,15 +41,6 @@ var statusCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
-// runCmd mirrors 'clara intent run' at the top level for quick access.
-var runCmd = &cobra.Command{
-	Use:          "run <intent-file>",
-	Short:        "Execute an intent file (alias for 'clara intent run')",
-	Args:         cobra.ExactArgs(1),
-	RunE:         runIntentRun,
-	SilenceUsage: true,
-}
-
 func init() {
 	rootCmd.PersistentFlags().StringVarP(
 		&cfgFile, "config", "c", "", "path to config file",
@@ -61,18 +52,12 @@ func init() {
 		return loadConfig()
 	}
 
-	// Mirror the verbose flag onto the top-level run command.
-	runCmd.Flags().BoolVarP(&intentRunVerbose, "verbose", "v", false, "show full tool args/results")
-
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(agentCmd)
-	rootCmd.AddCommand(intentCmd)
 	rootCmd.AddCommand(toolCmd)
 	rootCmd.AddCommand(pluginCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(runCmd)
-
 }
 
 func main() {

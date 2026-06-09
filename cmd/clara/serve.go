@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -154,7 +153,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		); err != nil {
 			return errors.Wrap(err, "initialize intent run")
 		}
-		return executeIntentRun(runCtx, intent, runID, entrypoint, args, ilog, logger)
+		return nil
 	}, logger).
 		WithBinDir(cfg.DataDir + "/bin").
 		WithOnRunFinished(func(ctx context.Context, runID, intentID, status, errorText string) {
@@ -237,7 +236,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		stopHTTPServer: func() {
 			_ = httpServer.Stop(context.Background())
 		},
-		startControl:   controlServer.ListenAndServe,
+		startControl: controlServer.ListenAndServe,
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
@@ -266,13 +265,13 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 }
 
 type daemonServiceHooks struct {
-	startMCPServers  func(context.Context) error
-	stopMCPServers   func()
-	startHTTPServer  func(context.Context) error
-	stopHTTPServer   func()
-	startControl     func(context.Context) error
-	startSupervisor  func(context.Context) error
-	startEvaluator   func(context.Context) error
+	startMCPServers func(context.Context) error
+	stopMCPServers  func()
+	startHTTPServer func(context.Context) error
+	stopHTTPServer  func()
+	startControl    func(context.Context) error
+	startSupervisor func(context.Context) error
+	startEvaluator  func(context.Context) error
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
@@ -382,170 +381,8 @@ func buildHandler(
 				},
 			})
 
-		case ipc.MethodList:
-			intents := sup.IntentInfos()
-			type taskEntry struct {
-				IntentID    string         `json:"intent_id"`
-				Path        string         `json:"path,omitempty"`
-				Description string         `json:"description,omitempty"`
-				Handler     string         `json:"handler"`
-				Mode        string         `json:"mode"`
-				Schedule    string         `json:"schedule,omitempty"`
-				Interval    string         `json:"interval,omitempty"`
-				Trigger     string         `json:"trigger,omitempty"`
-				TriggerArgs map[string]any `json:"trigger_args,omitempty"`
-				Active      bool           `json:"active"`
-				Error       string         `json:"error,omitempty"`
-			}
-			var list []taskEntry
-			for _, intent := range intents {
-				if intent.Error != "" {
-					list = append(list, taskEntry{
-						IntentID:    intent.ID,
-						Path:        intent.Path,
-						Description: intent.Description,
-						Error:       intent.Error,
-					})
-					continue
-				}
-				for _, task := range intent.Tasks {
-					list = append(list, taskEntry{
-						IntentID:    intent.ID,
-						Path:        intent.Path,
-						Description: intent.Description,
-						Handler:     task.Handler,
-						Mode:        task.Mode,
-						Schedule:    task.Schedule,
-						Interval:    task.Interval,
-						Trigger:     task.Trigger,
-						TriggerArgs: task.TriggerArgs,
-						Active:      intent.Active,
-					})
-				}
-			}
-			if list == nil {
-				list = []taskEntry{}
-			}
-			writeResp(&ipc.Response{Data: list})
-
-		case ipc.MethodRun:
-			path, _ := req.Params["path"].(string)
-			if path == "" {
-				writeResp(&ipc.Response{Error: "missing path parameter"})
-				return
-			}
-			absPath, err := filepath.Abs(path)
-			if err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			intent := &orchestrator.Intent{
-				ID:           strings.TrimSuffix(filepath.Base(absPath), filepath.Ext(absPath)),
-				WorkflowType: orchestrator.WorkflowTypeNative,
-				Script:       absPath,
-			}
-			if strings.HasSuffix(absPath, ".star") {
-				intent.WorkflowType = orchestrator.WorkflowTypeStarlark
-				data, err := os.ReadFile(absPath)
-				if err != nil {
-					writeResp(&ipc.Response{Error: "read script file: " + err.Error()})
-					return
-				}
-				intent.Script = string(data)
-			} else if strings.HasSuffix(absPath, ".yaml") || strings.HasSuffix(absPath, ".yml") || strings.HasSuffix(absPath, ".json") {
-				data, err := os.ReadFile(absPath)
-				if err != nil {
-					writeResp(&ipc.Response{Error: "read intent file: " + err.Error()})
-					return
-				}
-				intent, err = orchestrator.ParseIntent(data)
-				if err != nil {
-					writeResp(&ipc.Response{Error: "parse intent: " + err.Error()})
-					return
-				}
-			}
-			
-			runID := fmt.Sprintf("%s-oneoff-%d", intent.ID, time.Now().UnixNano())
-			startedAt := time.Now()
-			
-			go runIntentInBackground(ctx, intent, runID, "main", nil, db, ilog, log)
-			
-			writeResp(&ipc.Response{
-				Message: "intent " + intent.ID + " started",
-				Data: map[string]any{
-					"run_id":     runID,
-					"intent_id":  intent.ID,
-					"started_at": startedAt.Format(time.RFC3339Nano),
-				},
-			})
-
-		case ipc.MethodStart:
-			id, _ := req.Params["id"].(string)
-			if id == "" {
-				writeResp(&ipc.Response{Error: "missing intent id"})
-				return
-			}
-			intent, ok := sup.Intent(id)
-			if !ok {
-				writeResp(&ipc.Response{Error: "intent " + id + " not found"})
-				return
-			}
-			taskName, _ := req.Params["task"].(string)
-
-			// Support arguments in either top-level Args or Params["args"]
-			args := req.Args
-			if args == nil {
-				if a, ok := req.Params["args"].(map[string]any); ok {
-					args = a
-				}
-			}
-
-			// Dispatch by task mode: on-demand fires a single run; auto tasks
-			// (schedule/worker/event) activate the persistent loop.
-			isOnDemand := intentTaskIsOnDemand(intent, taskName)
-			if isOnDemand {
-				runID := fmt.Sprintf("%s-manual-%d", intent.ID, time.Now().UnixNano())
-				startedAt := time.Now()
-				go runIntentInBackground(ctx, intent, runID, taskName, args, db, ilog, log)
-				msg := "intent " + id + " started"
-				if taskName != "" {
-					msg = "intent " + id + " task " + taskName + " started"
-				}
-				writeResp(&ipc.Response{
-					Message: msg,
-					Data: map[string]any{
-						"run_id":     runID,
-						"started_at": startedAt.Format(time.RFC3339Nano),
-					},
-				})
-				return
-			}
-			if err := sup.StartIntent(id, taskName); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			if taskName != "" {
-				writeResp(&ipc.Response{Message: "intent " + id + " task " + taskName + " started"})
-			} else {
-				writeResp(&ipc.Response{Message: "intent " + id + " started"})
-			}
-
-		case ipc.MethodStop:
-			id, _ := req.Params["id"].(string)
-			if id == "" {
-				writeResp(&ipc.Response{Error: "missing intent id"})
-				return
-			}
-			taskName, _ := req.Params["task"].(string)
-			if err := sup.StopIntent(id, taskName); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			if taskName != "" {
-				writeResp(&ipc.Response{Message: "intent " + id + " task " + taskName + " stopped"})
-			} else {
-				writeResp(&ipc.Response{Message: "intent " + id + " stopped"})
-			}
+		case ipc.MethodList, ipc.MethodRun, ipc.MethodStart, ipc.MethodStop:
+			writeResp(&ipc.Response{Error: "method deprecated and removed in Clara V2"})
 
 		case ipc.MethodToolList:
 			filter, _ := req.Params["filter"].(string)
