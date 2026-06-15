@@ -2,6 +2,8 @@ package supervisor
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,14 +22,19 @@ import (
 // LLMClient represents the interface to execute evaluator queries against the LLM kernel.
 type LLMClient interface {
 	AnalyzeEvent(ctx context.Context, ev CloudEvent, history []string) (AnalysisResult, error)
+	RefineCode(
+		ctx context.Context,
+		compilerError string,
+		failedCode map[string]string,
+	) (AnalysisResult, error)
 }
 
 // AnalysisResult represents the decision of the LLM Evaluator.
 type AnalysisResult struct {
-	Action            string            `json:"action"`                       // "invoke", "build", "ignore"
-	ActuatorID        string            `json:"actuator_id"`                  // ID of the actuator to run or compile
-	ProposedCode      map[string]string `json:"proposed_code,omitempty"`      // Code to build on "build" action (filename -> content)
-	HeuristicTTL      time.Duration     `json:"heuristic_ttl,omitempty"`      // How long to cache this routing decision in the fast-path
+	Action       string            `json:"action"`                  // "invoke", "build", "ignore"
+	ActuatorID   string            `json:"actuator_id"`             // ID of the actuator to run or compile
+	ProposedCode map[string]string `json:"proposed_code,omitempty"` // Code to build on "build" action (filename -> content)
+	HeuristicTTL time.Duration     `json:"heuristic_ttl,omitempty"` // How long to cache this routing decision in the fast-path
 }
 
 // Evaluator manages fast-path routing and triggers dynamic self-modification loops in Clara V2.
@@ -39,8 +46,9 @@ type Evaluator struct {
 	builder *Builder
 	binDir  string // directory containing actuator binaries
 
-	mu         sync.RWMutex
-	heuristics map[string]heuristicRoute // eventType -> actuatorID/route info
+	mu            sync.RWMutex
+	heuristics    map[string]heuristicRoute // eventType -> actuatorID/route info
+	manifestCache map[string]sdk.ActuatorManifest
 }
 
 type heuristicRoute struct {
@@ -63,13 +71,14 @@ func NewEvaluator(
 		binDir = filepath.Join(home, ".local", "share", "clara", "bin")
 	}
 	return &Evaluator{
-		log:        log.With().Str("component", "evaluator").Logger(),
-		hub:        hub,
-		bus:        bus,
-		llm:        llm,
-		builder:    builder,
-		binDir:     binDir,
-		heuristics: make(map[string]heuristicRoute),
+		log:           log.With().Str("component", "evaluator").Logger(),
+		hub:           hub,
+		bus:           bus,
+		llm:           llm,
+		builder:       builder,
+		binDir:        binDir,
+		heuristics:    make(map[string]heuristicRoute),
+		manifestCache: make(map[string]sdk.ActuatorManifest),
 	}
 }
 
@@ -81,7 +90,10 @@ func (e *Evaluator) RegisterHeuristic(eventType string, actuatorID string, ttl t
 		actuatorID: actuatorID,
 		expiresAt:  time.Now().Add(ttl),
 	}
-	e.log.Debug().Str("type", eventType).Str("actuator", actuatorID).Msg("registered fast-path heuristic")
+	e.log.Debug().
+		Str("type", eventType).
+		Str("actuator", actuatorID).
+		Msg("registered fast-path heuristic")
 }
 
 // pushEval publishes an evaluator decision to the log hub (no-op if hub is nil).
@@ -120,7 +132,10 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 	e.mu.RUnlock()
 
 	if exists && time.Now().Before(route.expiresAt) {
-		e.log.Info().Str("type", ev.Type).Str("actuator", route.actuatorID).Msg("fast-path heuristic hit, bypassing LLM")
+		e.log.Info().
+			Str("type", ev.Type).
+			Str("actuator", route.actuatorID).
+			Msg("fast-path heuristic hit, bypassing LLM")
 		e.pushEval("info", "fast-path heuristic hit", map[string]any{
 			"event_type": ev.Type,
 			"actuator":   route.actuatorID,
@@ -129,24 +144,51 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 	}
 
 	// 2. Slow-Path LLM Decision Loop
-	e.log.Debug().Str("type", ev.Type).Msg("heuristic cache miss/expired; invoking core LLM evaluator")
+	e.log.Debug().
+		Str("type", ev.Type).
+		Msg("heuristic cache miss/expired; invoking core LLM evaluator")
 	e.pushEval("debug", "heuristic miss; invoking LLM", map[string]any{"event_type": ev.Type})
 
-	var availableActuators []string
+	var manifests []sdk.ActuatorManifest
 	if entries, err := os.ReadDir(e.binDir); err == nil {
 		for _, entry := range entries {
 			if !entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
-				availableActuators = append(availableActuators, entry.Name())
+				actuatorID := entry.Name()
+				m, err := e.getActuatorManifest(ctx, actuatorID)
+				if err != nil {
+					e.log.Warn().
+						Err(err).
+						Str("actuator", actuatorID).
+						Msg("failed to inspect actuator manifest, using fallback")
+					manifests = append(manifests, sdk.ActuatorManifest{
+						ID:          actuatorID,
+						Description: "Available actuator binary (failed to load detailed manifest description)",
+					})
+				} else {
+					manifests = append(manifests, m)
+				}
 			}
 		}
 	}
 
 	// Fetch historical state memory or metadata here (e.g. from core SQLite store)
 	history := []string{"system bootstrap", "last execution succeeded"}
-	if len(availableActuators) > 0 {
-		history = append(history, "Available Actuator IDs (you must use EXACTLY one of these IDs when using the 'invoke' action):")
-		for _, act := range availableActuators {
-			history = append(history, "  - "+act)
+	if len(manifests) > 0 {
+		history = append(
+			history,
+			"Available Actuators (you must use EXACTLY one of these IDs when using the 'invoke' action):",
+		)
+		for _, m := range manifests {
+			capsJSON, _ := json.Marshal(m.Capabilities)
+			history = append(
+				history,
+				fmt.Sprintf(
+					"  - ID: %s\n    Description: %s\n    Capabilities: %s",
+					m.ID,
+					m.Description,
+					string(capsJSON),
+				),
+			)
 		}
 	} else {
 		history = append(history, "No actuators are currently compiled/available.")
@@ -165,7 +207,10 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		if _, err := os.Stat(filepath.Join(e.binDir, actuatorID)); err != nil {
 			normalized := strings.TrimSuffix(actuatorID, "-actuator")
 			if _, err2 := os.Stat(filepath.Join(e.binDir, normalized)); err2 == nil {
-				e.log.Info().Str("original", actuatorID).Str("normalized", normalized).Msg("normalized actuator ID from LLM decision")
+				e.log.Info().
+					Str("original", actuatorID).
+					Str("normalized", normalized).
+					Msg("normalized actuator ID from LLM decision")
 				actuatorID = normalized
 			}
 		}
@@ -187,7 +232,9 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		return e.executeActuator(ctx, actuatorID, ev)
 
 	case "build":
-		e.log.Warn().Str("actuator", decision.ActuatorID).Msg("LLM directed builder mode entry: compiling new logic")
+		e.log.Warn().
+			Str("actuator", decision.ActuatorID).
+			Msg("LLM directed builder mode entry: compiling new logic")
 		e.pushEval("warn", "LLM: builder mode", map[string]any{
 			"actuator": decision.ActuatorID,
 			"event_id": ev.ID,
@@ -202,16 +249,48 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		}
 
 		// Run compiler loop
-		res, err := e.builder.CompileAndVerify(ctx, decision.ActuatorID, decision.ProposedCode)
-		if err != nil {
-			e.pushEval("error", "builder error", map[string]any{"error": err.Error()})
-			return errors.Wrap(err, "builder execution failure")
-		}
+		maxRetries := 3
+		currentCode := decision.ProposedCode
+		var res CompileResult
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			var err error
+			res, err = e.builder.CompileAndVerify(ctx, decision.ActuatorID, currentCode)
+			if err != nil {
+				e.pushEval("error", "builder error", map[string]any{"error": err.Error()})
+				return errors.Wrap(err, "builder execution failure")
+			}
+			if res.Success {
+				break
+			}
 
-		if !res.Success {
-			e.log.Error().Str("diagnostics", res.CompilerError).Msg("compilation failed, routing diagnostics back to LLM")
-			e.pushEval("error", "compilation failed", map[string]any{"diagnostics": res.CompilerError})
-			return errors.Newf("compilation failed: %s", res.CompilerError)
+			// Log the failure to loghub
+			e.log.Error().
+				Str("diagnostics", res.CompilerError).
+				Msgf("compilation failed (attempt %d/%d), routing diagnostics back to LLM", attempt+1, maxRetries)
+			e.pushEval(
+				"error",
+				fmt.Sprintf("compile failed (attempt %d/%d)", attempt+1, maxRetries),
+				map[string]any{
+					"actuator": decision.ActuatorID,
+					"error":    res.CompilerError,
+				},
+			)
+
+			if attempt == maxRetries-1 {
+				return errors.Newf(
+					"compilation failed after %d attempts: %s",
+					maxRetries,
+					res.CompilerError,
+				)
+			}
+
+			// Query LLM for refinement
+			refinement, err := e.llm.RefineCode(ctx, res.CompilerError, currentCode)
+			if err != nil {
+				e.pushEval("error", "refinement failed", map[string]any{"error": err.Error()})
+				return errors.Wrap(err, "LLM code refinement failed")
+			}
+			currentCode = refinement.ProposedCode
 		}
 
 		e.log.Info().Str("binary", res.BinaryPath).Msg("actuator successfully compiled and loaded")
@@ -226,6 +305,13 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 			if data, err := os.ReadFile(res.BinaryPath); err == nil {
 				_ = os.WriteFile(destPath, data, 0o755)
 			}
+		}
+
+		// Refresh manifest cache for the newly built actuator
+		if m, err := e.inspectActuator(ctx, decision.ActuatorID); err == nil {
+			e.mu.Lock()
+			e.manifestCache[decision.ActuatorID] = m
+			e.mu.Unlock()
 		}
 
 		// Register rule to fast-path
@@ -246,7 +332,19 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 // noopLLMClient is a placeholder LLM client that ignores all events until a real adapter is wired in.
 type noopLLMClient struct{}
 
-func (noopLLMClient) AnalyzeEvent(_ context.Context, _ CloudEvent, _ []string) (AnalysisResult, error) {
+func (noopLLMClient) AnalyzeEvent(
+	_ context.Context,
+	_ CloudEvent,
+	_ []string,
+) (AnalysisResult, error) {
+	return AnalysisResult{Action: "ignore"}, nil
+}
+
+func (noopLLMClient) RefineCode(
+	_ context.Context,
+	_ string,
+	_ map[string]string,
+) (AnalysisResult, error) {
 	return AnalysisResult{Action: "ignore"}, nil
 }
 
@@ -262,6 +360,15 @@ func pluginCmd(ctx context.Context, binaryPath string) *exec.Cmd {
 
 // executeActuator starts the target actuator subprocess via gRPC plugin loaders
 func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev CloudEvent) error {
+	defer func() {
+		if r := recover(); r != nil {
+			e.log.Error().Interface("panic", r).Msg("panic during actuator execution; rolling back")
+			if errRollback := e.rollbackActuator(ctx, actuatorID); errRollback != nil {
+				e.log.Error().Err(errRollback).Msg("failed to rollback actuator after panic")
+			}
+		}
+	}()
+
 	binaryPath := filepath.Join(e.binDir, actuatorID)
 	if _, err := os.Stat(binaryPath); err != nil {
 		return errors.Wrapf(err, "actuator binary not found for %q at %s", actuatorID, binaryPath)
@@ -273,15 +380,22 @@ func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev C
 		Msg("launching actuator subprocess")
 
 	client := plugin.NewClient(&plugin.ClientConfig{
-		HandshakeConfig: sdk.HandshakeConfig,
-		Plugins:         sdk.PluginMap,
-		Cmd:             pluginCmd(ctx, binaryPath),
+		HandshakeConfig:  sdk.HandshakeConfig,
+		Plugins:          sdk.PluginMap,
+		Cmd:              pluginCmd(ctx, binaryPath),
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC},
 	})
 	defer client.Kill()
 
 	rpcClient, err := client.Client()
 	if err != nil {
+		e.log.Error().
+			Err(err).
+			Str("actuator", actuatorID).
+			Msg("failed to start actuator subprocess, rolling back")
+		if errRollback := e.rollbackActuator(ctx, actuatorID); errRollback != nil {
+			e.log.Error().Err(errRollback).Msg("failed to rollback actuator")
+		}
 		return errors.Wrap(err, "failed to connect to actuator subprocess")
 	}
 
@@ -305,6 +419,19 @@ func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev C
 
 	result, err := actuator.Execute(ctx, sdkEvent)
 	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "connection is shut down") ||
+			strings.Contains(errStr, "EOF") ||
+			strings.Contains(errStr, "broken pipe") ||
+			strings.Contains(errStr, "connection refused") {
+			e.log.Error().
+				Err(err).
+				Str("actuator", actuatorID).
+				Msg("actuator connection lost during execution (crash), rolling back")
+			if errRollback := e.rollbackActuator(ctx, actuatorID); errRollback != nil {
+				e.log.Error().Err(errRollback).Msg("failed to rollback actuator")
+			}
+		}
 		return errors.Wrapf(err, "actuator %q execution error", actuatorID)
 	}
 
@@ -354,4 +481,115 @@ func (e *Evaluator) executeActuator(ctx context.Context, actuatorID string, ev C
 	}
 
 	return nil
+}
+
+// rollbackActuator retrieves the last stable compiled binary from the builder's git history
+// and overwrites the active binary in e.binDir, pushing a warning to the log hub.
+func (e *Evaluator) rollbackActuator(ctx context.Context, actuatorID string) error {
+	if e.builder == nil {
+		return errors.New("builder not configured; cannot rollback actuator")
+	}
+
+	binData, err := e.builder.GetLatestStableBinary(ctx, actuatorID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to retrieve latest stable binary for %s", actuatorID)
+	}
+
+	destPath := filepath.Join(e.binDir, actuatorID)
+	if err := os.WriteFile(destPath, binData, 0o755); err != nil {
+		return errors.Wrapf(
+			err,
+			"failed to overwrite binary with rolled-back stable version for %s",
+			actuatorID,
+		)
+	}
+
+	e.pushEval("warn", "actuator rolled back to stable version", map[string]any{
+		"actuator": actuatorID,
+	})
+	if e.hub != nil {
+		e.hub.PushActuator(
+			actuatorID,
+			"warn",
+			"rolled back to stable version due to execution crash or launch failure",
+			nil,
+		)
+	}
+
+	return nil
+}
+
+// inspectActuator runs the compiled actuator subprocess to query its manifest.
+func (e *Evaluator) inspectActuator(
+	ctx context.Context,
+	actuatorID string,
+) (sdk.ActuatorManifest, error) {
+	binaryPath := filepath.Join(e.binDir, actuatorID)
+	if _, err := os.Stat(binaryPath); err != nil {
+		return sdk.ActuatorManifest{}, errors.Wrapf(
+			err,
+			"actuator binary not found for %q at %s",
+			actuatorID,
+			binaryPath,
+		)
+	}
+
+	client := plugin.NewClient(&plugin.ClientConfig{
+		HandshakeConfig:  sdk.HandshakeConfig,
+		Plugins:          sdk.PluginMap,
+		Cmd:              pluginCmd(ctx, binaryPath),
+		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC},
+	})
+	defer client.Kill()
+
+	rpcClient, err := client.Client()
+	if err != nil {
+		return sdk.ActuatorManifest{}, errors.Wrap(
+			err,
+			"failed to connect to actuator subprocess for inspection",
+		)
+	}
+
+	raw, err := rpcClient.Dispense("actuator")
+	if err != nil {
+		return sdk.ActuatorManifest{}, errors.Wrap(
+			err,
+			"failed to dispense actuator for inspection",
+		)
+	}
+
+	actuator, ok := raw.(sdk.Actuator)
+	if !ok {
+		return sdk.ActuatorManifest{}, errors.New(
+			"dispensed plugin does not implement sdk.Actuator",
+		)
+	}
+
+	return actuator.Manifest(), nil
+}
+
+// getActuatorManifest retrieves the manifest for the given actuatorID. It uses the cached copy if
+// available, otherwise launches the binary to query it.
+func (e *Evaluator) getActuatorManifest(
+	ctx context.Context,
+	actuatorID string,
+) (sdk.ActuatorManifest, error) {
+	e.mu.RLock()
+	m, exists := e.manifestCache[actuatorID]
+	e.mu.RUnlock()
+	if exists {
+		return m, nil
+	}
+
+	// Not cached, inspect the binary.
+	manifest, err := e.inspectActuator(ctx, actuatorID)
+	if err != nil {
+		return sdk.ActuatorManifest{}, err
+	}
+
+	e.mu.Lock()
+	e.manifestCache[actuatorID] = manifest
+	e.mu.Unlock()
+
+	return manifest, nil
 }

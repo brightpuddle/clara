@@ -113,6 +113,32 @@ Actuator SDK contract (compile target):
 Every generated actuator must call sdk.Serve(&MyActuator{}) from main().
 `
 
+const refineSystemPrompt = `You are the Clara Evaluator — the routing brain of an autonomous assistant daemon.
+
+Your job is to refine the proposed Go source code of an actuator to fix compilation or verification errors.
+You must respond with a single JSON object (no markdown, no prose) matching this schema:
+
+{
+  "action":       "build",
+  "actuator_id":  "<stable kebab-case id>",
+  "proposed_code": {
+    "<filename>.go": "<full Go source>"
+  }
+}
+
+Rules:
+- You must fix the compilation/verification error provided by the user.
+- The proposed code MUST import "github.com/brightpuddle/clara/pkg/sdk" and implement the sdk.Actuator interface shown below.
+- Keep the structure and behavior of the original actuator, only fixing the errors.
+- When generating Go source code for the "build" action, the import path for the Clara Actuator SDK MUST be exactly "github.com/brightpuddle/clara/pkg/sdk". Do NOT use "github.com/clara/sdk", "github.com/clara-v2/pkg/sdk", or any other path.
+
+Actuator SDK contract (compile target):
+
+` + "```go\n" + sdkSource + "```" + `
+
+Every generated actuator must call sdk.Serve(&MyActuator{}) from main().
+`
+
 // thinkRe strips <think>…</think> reasoning blocks emitted by some models.
 var thinkRe = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
 
@@ -130,8 +156,8 @@ type llmAdapterProviderConfig struct {
 }
 
 type llmAdapterConfig struct {
-	Categories map[string][]llmAdapterModelConfig    `json:"categories"`
-	Providers  map[string]llmAdapterProviderConfig   `json:"providers"`
+	Categories map[string][]llmAdapterModelConfig  `json:"categories"`
+	Providers  map[string]llmAdapterProviderConfig `json:"providers"`
 }
 
 // ─── LLMAdapter ──────────────────────────────────────────────────────────────
@@ -182,7 +208,43 @@ func (a *LLMAdapter) AnalyzeEvent(
 		strings.Join(history, "\n"),
 	)
 
-	text, err := a.generate(ctx, userMsg)
+	text, err := a.generate(ctx, evaluatorSystemPrompt, userMsg)
+	if err != nil {
+		return AnalysisResult{}, err
+	}
+
+	text = strings.TrimSpace(thinkRe.ReplaceAllString(text, ""))
+
+	// Strip markdown code fences if present.
+	if strings.HasPrefix(text, "```") {
+		lines := strings.SplitN(text, "\n", 2)
+		if len(lines) == 2 {
+			text = lines[1]
+		}
+		text = strings.TrimSuffix(strings.TrimSpace(text), "```")
+	}
+
+	var result AnalysisResult
+	if err := json.Unmarshal([]byte(text), &result); err != nil {
+		return AnalysisResult{}, errors.Wrapf(err, "parse LLM response as AnalysisResult: %q", text)
+	}
+	return result, nil
+}
+
+// RefineCode implements LLMClient. It calls the "evaluator" category to refine code that failed compilation/verification.
+func (a *LLMAdapter) RefineCode(
+	ctx context.Context,
+	compilerError string,
+	failedCode map[string]string,
+) (AnalysisResult, error) {
+	codeJSON, _ := json.MarshalIndent(failedCode, "", "  ")
+	userMsg := fmt.Sprintf(
+		"Compilation/verification failed with the following error:\n```\n%s\n```\n\nHere is the current proposed code that failed to compile:\n```json\n%s\n```\n\nPlease refine the code to resolve the error.",
+		compilerError,
+		string(codeJSON),
+	)
+
+	text, err := a.generate(ctx, refineSystemPrompt, userMsg)
 	if err != nil {
 		return AnalysisResult{}, err
 	}
@@ -207,7 +269,7 @@ func (a *LLMAdapter) AnalyzeEvent(
 
 // generate sends a chat completion request to the first working model in the
 // "evaluator" → "reasoning" → "fast" category preference list.
-func (a *LLMAdapter) generate(ctx context.Context, userMsg string) (string, error) {
+func (a *LLMAdapter) generate(ctx context.Context, systemPrompt, userMsg string) (string, error) {
 	categories := []string{"evaluator", "reasoning", "fast"}
 	var lastErr error
 	for _, cat := range categories {
@@ -221,7 +283,7 @@ func (a *LLMAdapter) generate(ctx context.Context, userMsg string) (string, erro
 				lastErr = errors.Newf("provider %q not configured", m.Provider)
 				continue
 			}
-			text, err := a.callProvider(ctx, m.Provider, provider, m.Model, userMsg)
+			text, err := a.callProvider(ctx, m.Provider, provider, m.Model, systemPrompt, userMsg)
 			if err != nil {
 				a.log.Warn().Err(err).Str("provider", m.Provider).Str("model", m.Model).
 					Msg("LLM call failed; trying next model")
@@ -242,15 +304,16 @@ func (a *LLMAdapter) callProvider(
 	providerName string,
 	cfg llmAdapterProviderConfig,
 	model string,
+	systemPrompt string,
 	userMsg string,
 ) (string, error) {
 	switch providerName {
 	case "gemini":
-		return a.callGemini(ctx, cfg, model, userMsg)
+		return a.callGemini(ctx, cfg, model, systemPrompt, userMsg)
 	case "ollama":
-		return a.callOllama(ctx, cfg, model, userMsg)
+		return a.callOllama(ctx, cfg, model, systemPrompt, userMsg)
 	case "openai":
-		return a.callOpenAI(ctx, cfg, model, userMsg)
+		return a.callOpenAI(ctx, cfg, model, systemPrompt, userMsg)
 	default:
 		return "", errors.Newf("unsupported provider: %q", providerName)
 	}
@@ -262,6 +325,7 @@ func (a *LLMAdapter) callGemini(
 	ctx context.Context,
 	cfg llmAdapterProviderConfig,
 	model string,
+	systemPrompt string,
 	userMsg string,
 ) (string, error) {
 	if cfg.APIKey == "" {
@@ -281,7 +345,7 @@ func (a *LLMAdapter) callGemini(
 	}
 	reqBody := map[string]any{
 		"system_instruction": map[string]any{
-			"parts": []Part{{Text: evaluatorSystemPrompt}},
+			"parts": []Part{{Text: systemPrompt}},
 		},
 		"contents": []Content{
 			{Role: "user", Parts: []Part{{Text: userMsg}}},
@@ -311,6 +375,7 @@ func (a *LLMAdapter) callOllama(
 	ctx context.Context,
 	cfg llmAdapterProviderConfig,
 	model string,
+	systemPrompt string,
 	userMsg string,
 ) (string, error) {
 	base := cfg.BaseURL
@@ -322,7 +387,7 @@ func (a *LLMAdapter) callOllama(
 		"model":  model,
 		"stream": false,
 		"messages": []map[string]string{
-			{"role": "system", "content": evaluatorSystemPrompt},
+			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userMsg},
 		},
 	}
@@ -345,6 +410,7 @@ func (a *LLMAdapter) callOpenAI(
 	ctx context.Context,
 	cfg llmAdapterProviderConfig,
 	model string,
+	systemPrompt string,
 	userMsg string,
 ) (string, error) {
 	base := cfg.BaseURL
@@ -355,7 +421,7 @@ func (a *LLMAdapter) callOpenAI(
 	reqBody := map[string]any{
 		"model": model,
 		"messages": []map[string]string{
-			{"role": "system", "content": evaluatorSystemPrompt},
+			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": userMsg},
 		},
 	}

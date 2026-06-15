@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/cockroachdb/errors"
 
@@ -88,11 +90,30 @@ func NewBuilder(baseDir, repoRoot string) (*Builder, error) {
 	// Initialize git repository in workspace directory if not present.
 	gitDir := filepath.Join(baseDir, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
-		initCmd := exec.Command("git", "init")
+		initCmd := exec.Command("git", "init", "-b", "main")
 		initCmd.Dir = baseDir
 		if err := initCmd.Run(); err != nil {
-			return nil, errors.Wrap(err, "failed to initialize git repo in workspace")
+			initCmd2 := exec.Command("git", "init")
+			initCmd2.Dir = baseDir
+			_ = initCmd2.Run()
 		}
+	}
+
+	// Ensure there is at least one commit so we have a valid HEAD.
+	runGitLocal := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = baseDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Clara Builder",
+			"GIT_AUTHOR_EMAIL=clara@brightpuddle.com",
+			"GIT_COMMITTER_NAME=Clara Builder",
+			"GIT_COMMITTER_EMAIL=clara@brightpuddle.com",
+		)
+		return cmd.CombinedOutput()
+	}
+
+	if _, err := runGitLocal("rev-parse", "--verify", "HEAD"); err != nil {
+		_, _ = runGitLocal("commit", "--allow-empty", "-m", "initial commit")
 	}
 
 	root, err := resolveRepoRoot(repoRoot)
@@ -115,6 +136,19 @@ func (b *Builder) pushEval(level, msg string, fields map[string]any) {
 	}
 }
 
+// runGit executes a git command in the Builder base workspace directory.
+func (b *Builder) runGit(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = b.baseDir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=Clara Builder",
+		"GIT_AUTHOR_EMAIL=clara@brightpuddle.com",
+		"GIT_COMMITTER_NAME=Clara Builder",
+		"GIT_COMMITTER_EMAIL=clara@brightpuddle.com",
+	)
+	return cmd.CombinedOutput()
+}
+
 // CompileAndVerify compiles a proposed Go plugin inside a restricted native workspace.
 // It writes the main source file and potential test file, executes `go test`, executes `go build`,
 // and returns full compiler diagnostics on failure so the LLM Evaluator can refine its code.
@@ -123,17 +157,54 @@ func (b *Builder) CompileAndVerify(
 	actuatorID string,
 	codeMap map[string]string, // filename -> file content
 ) (CompileResult, error) {
-	// 1. Create a unique, isolated workspace subdirectory for this compilation pass.
+	// 1. Get the current main branch name
+	var mainBranch string
+	if out, err := b.runGit(ctx, "symbolic-ref", "--short", "HEAD"); err == nil {
+		mainBranch = strings.TrimSpace(string(out))
+	}
+	if mainBranch == "" {
+		mainBranch = "main" // fallback
+	}
+
+	// 2. Checkout a dedicated build branch: build/<actuator_id>-<timestamp>
+	timestamp := time.Now().Format("20060102-150405")
+	buildBranch := fmt.Sprintf("build/%s-%s", actuatorID, timestamp)
+	if out, err := b.runGit(ctx, "checkout", "-b", buildBranch); err != nil {
+		return CompileResult{}, errors.Wrapf(
+			err,
+			"failed to checkout build branch: %s",
+			string(out),
+		)
+	}
+
+	success := false
+	defer func() {
+		if !success {
+			// If compilation or test verification fails, check out the main branch to discard the changes.
+			_, _ = b.runGit(ctx, "checkout", mainBranch)
+			// Discard any untracked or modified files in the workspace
+			_, _ = b.runGit(ctx, "clean", "-fd")
+			_, _ = b.runGit(ctx, "checkout", "--", ".")
+			// Delete the build branch
+			_, _ = b.runGit(ctx, "branch", "-D", buildBranch)
+		}
+	}()
+
+	// 3. Create a unique, isolated workspace subdirectory for this compilation pass.
 	subDir := filepath.Join(b.baseDir, fmt.Sprintf("%s_compile", actuatorID))
 	if err := os.MkdirAll(subDir, 0o700); err != nil {
 		return CompileResult{}, errors.Wrap(err, "failed to create compiler workspace subdirectory")
 	}
 
-	// 2. Write all provided source files into the isolated workspace.
+	// 4. Write all provided source files into the isolated workspace.
 	for filename, content := range codeMap {
 		filePath := filepath.Join(subDir, filename)
 		if err := os.WriteFile(filePath, []byte(content), 0o600); err != nil {
-			return CompileResult{}, errors.Wrapf(err, "failed to write source file %s to workspace", filename)
+			return CompileResult{}, errors.Wrapf(
+				err,
+				"failed to write source file %s to workspace",
+				filename,
+			)
 		}
 	}
 
@@ -152,7 +223,7 @@ func (b *Builder) CompileAndVerify(
 		}
 	}
 
-	// 3. Run `go mod tidy` to populate go.sum and resolve transitive dependencies
+	// 5. Run `go mod tidy` to populate go.sum and resolve transitive dependencies
 	// before any build or test commands are run.
 	tidyCmd := exec.CommandContext(ctx, "go", "mod", "tidy")
 	tidyCmd.Dir = subDir
@@ -169,11 +240,11 @@ func (b *Builder) CompileAndVerify(
 		}, nil
 	}
 
-	// 4. Execute `go test` in the sandbox directory to verify logical correctness.
+	// 6. Execute `go test` in the sandbox directory to verify logical correctness.
 	testCmd := exec.CommandContext(ctx, "go", "test", "-v", "./...")
 	testCmd.Dir = subDir
 	testCmd.Env = append(os.Environ(), "GO111MODULE=on")
-	
+
 	testOutput, err := testCmd.CombinedOutput()
 	if err != nil {
 		b.pushEval("error", "builder: test suite failed", map[string]any{
@@ -186,10 +257,10 @@ func (b *Builder) CompileAndVerify(
 		}, nil
 	}
 
-	// 5. Compile the native binary using `go build`.
+	// 7. Compile the native binary using `go build`.
 	binaryName := actuatorID
 	outputPath := filepath.Join(subDir, binaryName)
-	
+
 	buildCmd := exec.CommandContext(ctx, "go", "build", "-o", binaryName, ".")
 	buildCmd.Dir = subDir
 	buildCmd.Env = append(os.Environ(), "GO111MODULE=on")
@@ -206,7 +277,7 @@ func (b *Builder) CompileAndVerify(
 		}, nil
 	}
 
-	// 6. Success! Move the compiled binary to the final active bin folder.
+	// 8. Success! Move the compiled binary to the final active bin folder.
 	finalBinDir := filepath.Join(b.baseDir, "bin")
 	if err := os.MkdirAll(finalBinDir, 0o700); err != nil {
 		return CompileResult{}, errors.Wrap(err, "failed to create final bin directory")
@@ -222,8 +293,51 @@ func (b *Builder) CompileAndVerify(
 
 	// Change permissions to make it executable.
 	if err := os.Chmod(finalPath, 0o700); err != nil {
-		return CompileResult{}, errors.Wrap(err, "failed to set executable permission on actuator binary")
+		return CompileResult{}, errors.Wrap(
+			err,
+			"failed to set executable permission on actuator binary",
+		)
 	}
+
+	// Commit successful compile changes to git.
+	if out, err := b.runGit(ctx, "add", "."); err != nil {
+		return CompileResult{}, errors.Wrapf(err, "failed to git add changes: %s", string(out))
+	}
+
+	commitMsg := fmt.Sprintf("Add compiled actuator %s", actuatorID)
+	if out, err := b.runGit(ctx, "commit", "-m", commitMsg); err != nil {
+		if !strings.Contains(string(out), "nothing to commit") {
+			return CompileResult{}, errors.Wrapf(err, "failed to commit changes: %s", string(out))
+		}
+	}
+
+	// Switch back to the main branch.
+	if out, err := b.runGit(ctx, "checkout", mainBranch); err != nil {
+		return CompileResult{}, errors.Wrapf(err, "failed to checkout main branch: %s", string(out))
+	}
+
+	// Merge build branch back to main.
+	if out, err := b.runGit(ctx, "merge", "--no-ff", "-m", fmt.Sprintf("Merge branch '%s' for %s", buildBranch, actuatorID), buildBranch); err != nil {
+		_, _ = b.runGit(ctx, "merge", "--abort")
+		return CompileResult{}, errors.Wrapf(
+			err,
+			"failed to merge build branch to main: %s",
+			string(out),
+		)
+	}
+
+	// Tag the merge commit as stable.
+	tagOpt := fmt.Sprintf("stable/%s-%s", actuatorID, timestamp)
+	if out, err := b.runGit(ctx, "tag", tagOpt); err != nil {
+		return CompileResult{}, errors.Wrapf(err, "failed to create stable tag: %s", string(out))
+	}
+
+	// Clean up / delete the build branch.
+	if _, err := b.runGit(ctx, "branch", "-d", buildBranch); err != nil {
+		_, _ = b.runGit(ctx, "branch", "-D", buildBranch)
+	}
+
+	success = true
 
 	b.pushEval("info", "builder: actuator compiled", map[string]any{
 		"actuator": actuatorID,
@@ -237,7 +351,12 @@ func (b *Builder) CompileAndVerify(
 }
 
 // CommitToGit anchors the stable compiled change in the local host git history.
-func (b *Builder) CommitToGit(ctx context.Context, repoPath string, actuatorID string, commitMsg string) error {
+func (b *Builder) CommitToGit(
+	ctx context.Context,
+	repoPath string,
+	actuatorID string,
+	commitMsg string,
+) error {
 	// Validate git repository presence.
 	gitDir := filepath.Join(repoPath, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
@@ -257,6 +376,46 @@ func (b *Builder) CommitToGit(ctx context.Context, repoPath string, actuatorID s
 	_ = commitCmd.Run()
 
 	return nil
+}
+
+// GetLatestStableBinary retrieves the binary content of the last stable tag for an actuator.
+func (b *Builder) GetLatestStableBinary(ctx context.Context, actuatorID string) ([]byte, error) {
+	// List tags for this actuator
+	out, err := b.runGit(ctx, "tag", "--list", fmt.Sprintf("stable/%s-*", actuatorID))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list stable tags")
+	}
+
+	tags := strings.Split(strings.TrimSpace(string(out)), "\n")
+	var validTags []string
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			validTags = append(validTags, t)
+		}
+	}
+
+	if len(validTags) == 0 {
+		return nil, errors.New("no stable version tag found for this actuator")
+	}
+
+	// Sort tags lexicographically to find the latest
+	latestTag := validTags[0]
+	for _, t := range validTags {
+		if t > latestTag {
+			latestTag = t
+		}
+	}
+
+	// Retrieve file content at latestTag:bin/<actuator_id>
+	binaryRelPath := fmt.Sprintf("bin/%s", actuatorID)
+	showArg := fmt.Sprintf("%s:%s", latestTag, binaryRelPath)
+	binData, err := b.runGit(ctx, "show", showArg)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to retrieve binary from git tag %s", latestTag)
+	}
+
+	return binData, nil
 }
 
 // findModuleRoot walks up the directory tree from startDir until it finds a go.mod file,
