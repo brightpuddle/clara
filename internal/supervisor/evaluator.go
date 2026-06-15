@@ -29,12 +29,22 @@ type LLMClient interface {
 	) (AnalysisResult, error)
 }
 
+// PatchInstruction describes a single Aider-style search/replace edit for an existing actuator file.
+// The LLM can return a list of these instead of re-emitting entire files, saving tokens and
+// reducing the blast-radius of generated code changes.
+type PatchInstruction struct {
+	File    string `json:"file"`    // Relative filename inside the actuator workspace subdirectory
+	Search  string `json:"search"`  // Exact block to locate (must appear exactly once in the file)
+	Replace string `json:"replace"` // Block to substitute in place of Search
+}
+
 // AnalysisResult represents the decision of the LLM Evaluator.
 type AnalysisResult struct {
-	Action       string            `json:"action"`                  // "invoke", "build", "ignore"
-	ActuatorID   string            `json:"actuator_id"`             // ID of the actuator to run or compile
-	ProposedCode map[string]string `json:"proposed_code,omitempty"` // Code to build on "build" action (filename -> content)
-	HeuristicTTL time.Duration     `json:"heuristic_ttl,omitempty"` // How long to cache this routing decision in the fast-path
+	Action       string             `json:"action"`                  // "invoke", "build", "patch", "ignore"
+	ActuatorID   string             `json:"actuator_id"`             // ID of the actuator to run or compile
+	ProposedCode map[string]string  `json:"proposed_code,omitempty"` // Code to build on "build" action (filename -> content)
+	Patches      []PatchInstruction `json:"patches,omitempty"`       // Targeted edits on "patch" action
+	HeuristicTTL time.Duration      `json:"heuristic_ttl,omitempty"` // How long to cache this routing decision in the fast-path
 }
 
 // Evaluator manages fast-path routing and triggers dynamic self-modification loops in Clara V2.
@@ -315,6 +325,118 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		}
 
 		// Register rule to fast-path
+		e.RegisterHeuristic(ev.Type, decision.ActuatorID, 24*time.Hour)
+
+		return e.executeActuator(ctx, decision.ActuatorID, ev)
+
+	case "patch":
+		e.log.Info().
+			Str("actuator", decision.ActuatorID).
+			Int("patches", len(decision.Patches)).
+			Msg("LLM directed patch mode: applying search/replace edits")
+		e.pushEval("info", "LLM: patch mode", map[string]any{
+			"actuator": decision.ActuatorID,
+			"patches":  len(decision.Patches),
+			"event_id": ev.ID,
+		})
+
+		if e.builder == nil {
+			e.pushEval("error", "builder unavailable", map[string]any{
+				"actuator": decision.ActuatorID,
+				"reason":   "builder was not initialised (check workspace directory config)",
+			})
+			return errors.New("builder not configured: cannot apply patches")
+		}
+
+		// Apply patches, then compile and verify the result, with the same
+		// multi-turn self-healing loop used for full builds.
+		maxRetries := 3
+		currentPatches := decision.Patches
+		var res CompileResult
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			patchErr := e.builder.ApplyPatches(ctx, decision.ActuatorID, currentPatches)
+			if patchErr != nil {
+				e.pushEval("error", "patch application failed", map[string]any{
+					"actuator": decision.ActuatorID,
+					"error":    patchErr.Error(),
+				})
+				if attempt == maxRetries-1 {
+					return errors.Wrap(patchErr, "patch application failed after max retries")
+				}
+				// Feed the patch error back to the LLM so it can emit a corrected patch.
+				refinement, refErr := e.llm.RefineCode(ctx, patchErr.Error(), nil)
+				if refErr != nil {
+					return errors.Wrap(refErr, "LLM code refinement after patch failure")
+				}
+				currentPatches = refinement.Patches
+				continue
+			}
+
+			// Patches applied; read the resulting files and compile.
+			updatedCode, readErr := e.builder.ReadActuatorFiles(ctx, decision.ActuatorID)
+			if readErr != nil {
+				return errors.Wrap(readErr, "failed to read actuator files after patching")
+			}
+
+			var compErr error
+			res, compErr = e.builder.CompileAndVerify(ctx, decision.ActuatorID, updatedCode)
+			if compErr != nil {
+				e.pushEval("error", "builder error after patch", map[string]any{"error": compErr.Error()})
+				return errors.Wrap(compErr, "builder execution failure after patch")
+			}
+			if res.Success {
+				break
+			}
+
+			e.log.Error().
+				Str("diagnostics", res.CompilerError).
+				Msgf("compile failed after patch (attempt %d/%d)", attempt+1, maxRetries)
+			e.pushEval(
+				"error",
+				fmt.Sprintf("compile failed after patch (attempt %d/%d)", attempt+1, maxRetries),
+				map[string]any{
+					"actuator": decision.ActuatorID,
+					"error":    res.CompilerError,
+				},
+			)
+
+			if attempt == maxRetries-1 {
+				return errors.Newf(
+					"compilation failed after patching (%d attempts): %s",
+					maxRetries,
+					res.CompilerError,
+				)
+			}
+
+			// Ask LLM to refine the patch based on the compiler error.
+			refinement, refErr := e.llm.RefineCode(ctx, res.CompilerError, updatedCode)
+			if refErr != nil {
+				return errors.Wrap(refErr, "LLM code refinement after patch compile failure")
+			}
+			currentPatches = refinement.Patches
+		}
+
+		e.log.Info().Str("binary", res.BinaryPath).Msg("actuator successfully patched and compiled")
+		e.pushEval("info", "actuator patched and compiled", map[string]any{
+			"actuator": decision.ActuatorID,
+			"binary":   res.BinaryPath,
+		})
+
+		// Copy binary to e.binDir.
+		destPath := filepath.Join(e.binDir, decision.ActuatorID)
+		if err := os.MkdirAll(e.binDir, 0o700); err == nil {
+			if data, err := os.ReadFile(res.BinaryPath); err == nil {
+				_ = os.WriteFile(destPath, data, 0o755)
+			}
+		}
+
+		// Refresh manifest cache.
+		if m, err := e.inspectActuator(ctx, decision.ActuatorID); err == nil {
+			e.mu.Lock()
+			e.manifestCache[decision.ActuatorID] = m
+			e.mu.Unlock()
+		}
+
 		e.RegisterHeuristic(ev.Type, decision.ActuatorID, 24*time.Hour)
 
 		return e.executeActuator(ctx, decision.ActuatorID, ev)

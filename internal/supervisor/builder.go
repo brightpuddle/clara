@@ -418,6 +418,112 @@ func (b *Builder) GetLatestStableBinary(ctx context.Context, actuatorID string) 
 	return binData, nil
 }
 
+// ApplyPatches applies a slice of PatchInstructions to the existing source files in the actuator
+// workspace subdirectory.  Each instruction performs an exact, unique search-and-replace:
+//   - If the Search block is not found in the file, an error is returned describing which block
+//     was missing so the self-healing loop can ask the LLM for a corrected patch.
+//   - If the Search block appears more than once, an error is returned to prevent ambiguous edits.
+//
+// The function does NOT compile; call CompileAndVerify separately after a successful patch.
+func (b *Builder) ApplyPatches(
+	ctx context.Context,
+	actuatorID string,
+	patches []PatchInstruction,
+) error {
+	subDir := filepath.Join(b.baseDir, fmt.Sprintf("%s_compile", actuatorID))
+
+	for i, p := range patches {
+		if p.File == "" {
+			return errors.Newf("patch[%d]: missing file name", i)
+		}
+		if p.Search == "" {
+			return errors.Newf("patch[%d] (%s): search block must not be empty", i, p.File)
+		}
+
+		filePath := filepath.Join(subDir, p.File)
+		raw, err := os.ReadFile(filePath)
+		if err != nil {
+			return errors.Wrapf(err, "patch[%d]: cannot read file %q", i, p.File)
+		}
+
+		content := string(raw)
+		count := strings.Count(content, p.Search)
+
+		switch count {
+		case 0:
+			return errors.Newf(
+				"patch[%d] (%s): search block not found — check indentation and whitespace\n"+
+					">>> search block:\n%s\n<<<",
+				i, p.File, p.Search,
+			)
+		case 1:
+			// Exact match: apply the replacement.
+			content = strings.Replace(content, p.Search, p.Replace, 1)
+		default:
+			return errors.Newf(
+				"patch[%d] (%s): search block appears %d times (must be unique) — "+
+					"provide more surrounding context to disambiguate\n"+
+					">>> search block:\n%s\n<<<",
+				i, p.File, count, p.Search,
+			)
+		}
+
+		if err := os.WriteFile(filePath, []byte(content), 0o600); err != nil {
+			return errors.Wrapf(err, "patch[%d]: failed to write patched file %q", i, p.File)
+		}
+
+		b.pushEval("debug", "builder: patch applied", map[string]any{
+			"actuator": actuatorID,
+			"file":     p.File,
+			"patch":    i,
+		})
+
+		// Yield to the context between patches so a cancellation is respected.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
+
+	return nil
+}
+
+// ReadActuatorFiles reads all Go source files from the actuator's compile subdirectory and
+// returns them as a filename→content map suitable for passing to CompileAndVerify.
+func (b *Builder) ReadActuatorFiles(
+	_ context.Context,
+	actuatorID string,
+) (map[string]string, error) {
+	subDir := filepath.Join(b.baseDir, fmt.Sprintf("%s_compile", actuatorID))
+
+	entries, err := os.ReadDir(subDir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read actuator workspace for %q", actuatorID)
+	}
+
+	result := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		// Only include Go source files and go.mod/go.sum; skip binaries and hidden files.
+		if !strings.HasSuffix(name, ".go") &&
+			name != "go.mod" &&
+			name != "go.sum" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(subDir, name))
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read file %q in actuator workspace", name)
+		}
+		result[name] = string(data)
+	}
+
+	return result, nil
+}
+
 // findModuleRoot walks up the directory tree from startDir until it finds a go.mod file,
 // returning the directory that contains it. This is used to resolve the replace directive
 // for the local Clara module in sandbox go.mod files.
