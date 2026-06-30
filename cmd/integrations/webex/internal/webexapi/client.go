@@ -14,10 +14,11 @@ const apiBase = "https://webexapis.com/v1"
 
 // Room represents a Webex space or direct conversation.
 type Room struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Type     string `json:"type"` // "direct" or "group"
-	IsLocked bool   `json:"isLocked"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Type         string `json:"type"` // "direct" or "group"
+	IsLocked     bool   `json:"isLocked"`
+	LastActivity string `json:"lastActivity"`
 }
 
 // Message represents a Webex message.

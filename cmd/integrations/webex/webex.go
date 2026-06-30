@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,12 +23,13 @@ import (
 const description = "Webex integration: read and reply to messages (user account) and send bot notifications."
 
 type Webex struct {
-	cfg      webexapi.Config
-	tokenMgr *webexapi.TokenManager
-	user     *webexapi.Client
-	bot      *webexapi.Client
-	router   *webexapi.Router
-	eventCh  chan contract.Event
+	cfg       webexapi.Config
+	tokenMgr  *webexapi.TokenManager
+	user      *webexapi.Client
+	bot       *webexapi.Client
+	router    *webexapi.Router
+	eventCh   chan contract.Event
+	ingestMgr *webexapi.IngestManager
 }
 
 func newWebex() *Webex {
@@ -54,13 +56,23 @@ func (w *Webex) Configure(raw []byte) error {
 		w.user = webexapi.NewUserClient(tm)
 
 		if tm.HasToken() {
-			go w.ensureUserWebhook()
+			if w.cfg.BaseURL != "" {
+				go w.ensureUserWebhook()
+			} else {
+				w.ingestMgr = webexapi.NewIngestManager(w.user, w.router)
+				w.ingestMgr.Start(context.Background())
+			}
 		}
 	}
 
 	if w.cfg.BotEnabled() {
 		w.bot = webexapi.NewBotClient(w.cfg.BotToken)
-		go w.ensureBotWebhook()
+		if w.cfg.BaseURL != "" {
+			go w.ensureBotWebhook()
+		} else if w.ingestMgr == nil {
+			w.ingestMgr = webexapi.NewIngestManager(w.bot, w.router)
+			w.ingestMgr.Start(context.Background())
+		}
 	}
 
 	// We subscribe to router events and forward them to Clara
