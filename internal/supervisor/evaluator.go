@@ -47,6 +47,52 @@ type AnalysisResult struct {
 	HeuristicTTL time.Duration      `json:"heuristic_ttl,omitempty"` // How long to cache this routing decision in the fast-path
 }
 
+// HeuristicRule defines a fast-path routing rule with predicate matching and TTL control.
+type HeuristicRule struct {
+	ID           string        `json:"id"`
+	EventType    string        `json:"event_type"`              // e.g. "clara.request", "webex.message", "fs.modify", "*"
+	SourcePattern string       `json:"source_pattern,omitempty"` // glob/prefix match on CloudEvent.Source (e.g. "integrations/webex/*")
+	PayloadMatch string        `json:"payload_match,omitempty"`  // key=value match on CloudEvent.Data (e.g. "room_id=Y2lz...")
+	ActuatorID   string        `json:"actuator_id"`
+	TTL          time.Duration `json:"ttl"`                      // 0 = no cache (always force LLM evaluation)
+	ExpiresAt    time.Time     `json:"expires_at"`
+}
+
+// Matches returns true if the incoming CloudEvent satisfies the HeuristicRule conditions.
+func (r HeuristicRule) Matches(ev CloudEvent) bool {
+	// EventType matching (supports "*" wildcard)
+	if r.EventType != "*" && r.EventType != "" && r.EventType != ev.Type {
+		return false
+	}
+
+	// Source matching (glob pattern or prefix match)
+	if r.SourcePattern != "" {
+		matched, err := filepath.Match(r.SourcePattern, ev.Source)
+		if err != nil || !matched {
+			if !strings.HasPrefix(ev.Source, strings.TrimSuffix(r.SourcePattern, "*")) {
+				return false
+			}
+		}
+	}
+
+	// Payload matching ("key=value" string match in ev.Data)
+	if r.PayloadMatch != "" {
+		parts := strings.SplitN(r.PayloadMatch, "=", 2)
+		if len(parts) == 2 {
+			k, v := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+			if ev.Data == nil {
+				return false
+			}
+			val, ok := ev.Data[k]
+			if !ok || fmt.Sprintf("%v", val) != v {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 // Evaluator manages fast-path routing and triggers dynamic self-modification loops in Clara V2.
 type Evaluator struct {
 	log     zerolog.Logger
@@ -57,13 +103,8 @@ type Evaluator struct {
 	binDir  string // directory containing actuator binaries
 
 	mu            sync.RWMutex
-	heuristics    map[string]heuristicRoute // eventType -> actuatorID/route info
+	rules         []HeuristicRule // fast-path heuristic matching rules
 	manifestCache map[string]sdk.ActuatorManifest
-}
-
-type heuristicRoute struct {
-	actuatorID string
-	expiresAt  time.Time
 }
 
 // NewEvaluator creates a new Evaluator.
@@ -87,23 +128,72 @@ func NewEvaluator(
 		llm:           llm,
 		builder:       builder,
 		binDir:        binDir,
-		heuristics:    make(map[string]heuristicRoute),
+		rules:         make([]HeuristicRule, 0),
 		manifestCache: make(map[string]sdk.ActuatorManifest),
 	}
 }
 
 // RegisterHeuristic manually registers a fast-path routing rule.
 func (e *Evaluator) RegisterHeuristic(eventType string, actuatorID string, ttl time.Duration) {
+	e.RegisterRule(HeuristicRule{
+		ID:         fmt.Sprintf("rule-%s-%d", eventType, time.Now().UnixNano()),
+		EventType:  eventType,
+		ActuatorID: actuatorID,
+		TTL:        ttl,
+	})
+}
+
+// RegisterRule adds a detailed match-specific HeuristicRule to the fast-path routing engine.
+// If TTL == 0, the rule is not stored in the fast-path cache.
+func (e *Evaluator) RegisterRule(rule HeuristicRule) {
+	if rule.TTL <= 0 {
+		e.log.Debug().
+			Str("type", rule.EventType).
+			Str("actuator", rule.ActuatorID).
+			Msg("skipping fast-path registration for rule with TTL=0 (uncached)")
+		return
+	}
+
+	rule.ExpiresAt = time.Now().Add(rule.TTL)
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.heuristics[eventType] = heuristicRoute{
-		actuatorID: actuatorID,
-		expiresAt:  time.Now().Add(ttl),
+
+	// Update existing rule matching ID or EventType+SourcePattern+PayloadMatch, else append
+	updated := false
+	for i, r := range e.rules {
+		if (rule.ID != "" && r.ID == rule.ID) ||
+			(r.EventType == rule.EventType && r.SourcePattern == rule.SourcePattern && r.PayloadMatch == rule.PayloadMatch) {
+			e.rules[i] = rule
+			updated = true
+			break
+		}
 	}
+	if !updated {
+		e.rules = append(e.rules, rule)
+	}
+
 	e.log.Debug().
-		Str("type", eventType).
-		Str("actuator", actuatorID).
-		Msg("registered fast-path heuristic")
+		Str("id", rule.ID).
+		Str("type", rule.EventType).
+		Str("actuator", rule.ActuatorID).
+		Dur("ttl", rule.TTL).
+		Msg("registered fast-path heuristic rule")
+}
+
+// ListRules returns all active (non-expired) heuristic rules.
+func (e *Evaluator) ListRules() []HeuristicRule {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	now := time.Now()
+	active := make([]HeuristicRule, 0, len(e.rules))
+	for _, r := range e.rules {
+		if now.Before(r.ExpiresAt) {
+			active = append(active, r)
+		}
+	}
+	return active
 }
 
 // pushEval publishes an evaluator decision to the log hub (no-op if hub is nil).
@@ -129,34 +219,44 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 			return errors.New("missing actuator_id in clara.actuator.run event data")
 		}
 		e.log.Info().Str("actuator", actuatorID).Msg("manual actuator run triggered via event")
-		e.pushEval("info", "manual actuator run", map[string]any{
-			"actuator": actuatorID,
-			"event_id": ev.ID,
-		})
 		return e.executeActuator(ctx, actuatorID, ev)
 	}
 
-	// 1. Fast-Path Heuristic Check
-	e.mu.RLock()
-	route, exists := e.heuristics[ev.Type]
-	e.mu.RUnlock()
+	// 1. Fast-Path Heuristic Rule Check
+	// Interactive requests (clara.request, clara.prompt) always bypass the heuristic cache (TTL=0)
+	if ev.Type != "clara.request" && ev.Type != "clara.prompt" {
+		now := time.Now()
+		e.mu.RLock()
+		var matchedRule *HeuristicRule
+		for _, r := range e.rules {
+			if now.Before(r.ExpiresAt) && r.Matches(ev) {
+				ruleCopy := r
+				matchedRule = &ruleCopy
+				break
+			}
+		}
+		e.mu.RUnlock()
 
-	if exists && time.Now().Before(route.expiresAt) {
-		e.log.Info().
+		if matchedRule != nil {
+			e.log.Info().
+				Str("rule_id", matchedRule.ID).
+				Str("type", ev.Type).
+				Str("actuator", matchedRule.ActuatorID).
+				Msg("fast-path heuristic hit, bypassing LLM")
+			e.pushEval("info", "fast-path heuristic hit", map[string]any{
+				"rule_id":    matchedRule.ID,
+				"event_type": ev.Type,
+				"actuator":   matchedRule.ActuatorID,
+			})
+			return e.executeActuator(ctx, matchedRule.ActuatorID, ev)
+		}
+	} else {
+		e.log.Debug().
 			Str("type", ev.Type).
-			Str("actuator", route.actuatorID).
-			Msg("fast-path heuristic hit, bypassing LLM")
-		e.pushEval("info", "fast-path heuristic hit", map[string]any{
-			"event_type": ev.Type,
-			"actuator":   route.actuatorID,
-		})
-		return e.executeActuator(ctx, route.actuatorID, ev)
+			Msg("user prompt/request event; bypassing fast-path heuristic cache")
 	}
 
 	// 2. Slow-Path LLM Decision Loop
-	e.log.Debug().
-		Str("type", ev.Type).
-		Msg("heuristic cache miss/expired; invoking core LLM evaluator")
 	e.pushEval("debug", "heuristic miss; invoking LLM", map[string]any{"event_type": ev.Type})
 
 	var manifests []sdk.ActuatorManifest
@@ -232,14 +332,24 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 			"heuristic": decision.HeuristicTTL.String(),
 		})
 
-		// Cache the decision as a heuristic for high throughput on subsequent events
-		ttl := decision.HeuristicTTL
-		if ttl <= 0 {
-			ttl = 1 * time.Hour // Default cache TTL
+		// Cache the decision as a heuristic rule if TTL > 0
+		if decision.HeuristicTTL > 0 && ev.Type != "clara.request" && ev.Type != "clara.prompt" {
+			e.RegisterRule(HeuristicRule{
+				ID:         fmt.Sprintf("rule-%s-%d", ev.Type, time.Now().UnixNano()),
+				EventType:  ev.Type,
+				ActuatorID: actuatorID,
+				TTL:        decision.HeuristicTTL,
+			})
+		} else {
+			e.log.Debug().
+				Str("type", ev.Type).
+				Msg("skipping fast-path heuristic caching for uncacheable event or TTL=0")
 		}
-		e.RegisterHeuristic(ev.Type, actuatorID, ttl)
 
 		return e.executeActuator(ctx, actuatorID, ev)
+
+
+
 
 	case "build":
 		e.log.Warn().

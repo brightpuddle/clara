@@ -144,6 +144,88 @@ func TestEvaluator_ManifestInjection(t *testing.T) {
 	}
 }
 
+func TestEvaluator_HeuristicRules(t *testing.T) {
+	log := zerolog.New(io.Discard)
+	bus := NewEventBus()
+	binDir := t.TempDir()
+
+	llm := &mockLLM{
+		result: AnalysisResult{
+			Action:       "ignore",
+			HeuristicTTL: 1 * time.Hour,
+		},
+	}
+
+	eval := NewEvaluator(log, nil, bus, llm, nil, binDir)
+
+	// Register match-specific rule: only match webex events with room_id=special_room
+	eval.RegisterRule(HeuristicRule{
+		ID:            "rule-webex-special",
+		EventType:     "webex.message",
+		SourcePattern: "integrations/webex/*",
+		PayloadMatch:  "room_id=special_room",
+		ActuatorID:    "webex-handler",
+		TTL:           10 * time.Minute,
+	})
+
+	// Rule 1: Matching event
+	evMatch := CloudEvent{
+		ID:     "ev-1",
+		Source: "integrations/webex/bot1",
+		Type:   "webex.message",
+		Time:   time.Now(),
+		Data:   map[string]any{"room_id": "special_room"},
+	}
+
+	// Rule 2: Non-matching payload event
+	evNoMatchPayload := CloudEvent{
+		ID:     "ev-2",
+		Source: "integrations/webex/bot1",
+		Type:   "webex.message",
+		Time:   time.Now(),
+		Data:   map[string]any{"room_id": "other_room"},
+	}
+
+	// Rule 3: User request event (must bypass heuristic cache despite any rules)
+	evUserPrompt := CloudEvent{
+		ID:     "ev-3",
+		Source: "cli/user",
+		Type:   "clara.request",
+		Time:   time.Now(),
+		Data:   map[string]any{"prompt": "do something"},
+	}
+
+	// Verify rule matching directly
+	rules := eval.ListRules()
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(rules))
+	}
+	if !rules[0].Matches(evMatch) {
+		t.Fatalf("expected rule to match evMatch")
+	}
+	if rules[0].Matches(evNoMatchPayload) {
+		t.Fatalf("expected rule NOT to match evNoMatchPayload")
+	}
+
+	// Test TTL=0 rule registration (should not be stored in cache)
+	eval.RegisterRule(HeuristicRule{
+		ID:         "rule-nocache",
+		EventType:  "fs.modify",
+		ActuatorID: "fs-handler",
+		TTL:        0,
+	})
+	if len(eval.ListRules()) != 1 {
+		t.Fatalf("expected TTL=0 rule not to be saved in cache, got %d rules", len(eval.ListRules()))
+	}
+
+	ctx := context.Background()
+	// Process user prompt event, ensuring it goes to LLM and does not hit fast-path
+	_ = eval.OnEvent(ctx, evUserPrompt)
+	if llm.lastHistory == nil {
+		t.Fatalf("expected user prompt event to trigger LLM evaluation")
+	}
+}
+
 func TestEvaluator_SelfHealingLoop(t *testing.T) {
 	log := zerolog.New(io.Discard)
 	bus := NewEventBus()
