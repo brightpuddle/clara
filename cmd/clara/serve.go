@@ -181,14 +181,6 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	httpServer.WebUI = ui
 
 	approvals := supervisor.NewApprovalStore()
-	handler := &daemonHandler{
-		base: buildHandler(reg, sup, db, ilog, loader, logger, shutdown, approvals),
-		hub:  loghub.New(),
-	}
-	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
-	if err != nil {
-		return errors.Wrap(err, "create control socket server")
-	}
 
 	builderDir := cfg.DataDir + "/workspace"
 	builder, err := supervisor.NewBuilder(builderDir, cfg.BuilderRepoRoot)
@@ -196,7 +188,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Warn().Err(err).Msg("failed to create builder; evaluator builder mode disabled")
 		builder = nil
 	} else {
-		builder.WithHub(handler.hub)
+		builder.WithHub(loghub.New())
 	}
 	llmRawCfg, _ := cfg.Integrations["llm"]
 	llmClient, err := supervisor.NewLLMAdapter(logger, llmRawCfg)
@@ -210,14 +202,21 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	} else {
 		evaluatorLLM = supervisor.NoopLLMClient()
 	}
+	hub := loghub.New()
 	evaluator := supervisor.NewEvaluator(
 		logger,
-		handler.hub,
+		hub,
 		sup.EventBus(),
 		evaluatorLLM,
 		builder,
 		cfg.DataDir+"/bin",
 	)
+
+	handler := &daemonHandler{
+		base: buildHandler(reg, sup, db, ilog, loader, logger, shutdown, approvals, evaluator),
+		hub:  hub,
+	}
+	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
 
 	return runDaemonServices(daemonCtx, daemonServiceHooks{
 		startMCPServers: func(ctx context.Context) error {
@@ -336,6 +335,7 @@ func buildHandler(
 	log zerolog.Logger,
 	shutdown func(),
 	approvals *supervisor.ApprovalStore,
+	evaluator *supervisor.Evaluator,
 ) ipc.HandlerFunc {
 	return func(ctx context.Context, req *ipc.Request, w ipc.ResponseWriter) {
 		writeResp := func(resp *ipc.Response) {
@@ -832,6 +832,18 @@ func buildHandler(
 				return
 			}
 			writeResp(&ipc.Response{Message: "actuator " + id + " dispatched"})
+
+		case ipc.MethodAutomationsList:
+			if evaluator == nil {
+				writeResp(&ipc.Response{Error: "evaluator unavailable"})
+				return
+			}
+			summaries, err := evaluator.AutomationsOverview(ctx)
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Data: summaries})
 
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})

@@ -181,6 +181,19 @@ func (e *Evaluator) RegisterRule(rule HeuristicRule) {
 		Msg("registered fast-path heuristic rule")
 }
 
+// AutomationSummary describes an automated pipeline mapping event triggers to actuators.
+type AutomationSummary struct {
+	ActuatorID   string           `json:"actuator_id"`
+	Name         string           `json:"name"`
+	Description  string           `json:"description"`
+	Triggers     []string         `json:"triggers"`
+	Routing      string           `json:"routing"` // "fast-path" or "llm-dynamic"
+	RuleID       string           `json:"rule_id,omitempty"`
+	TTL          string           `json:"ttl,omitempty"`
+	ExpiresIn    string           `json:"expires_in,omitempty"`
+	Capabilities []sdk.Capability `json:"capabilities"`
+}
+
 // ListRules returns all active (non-expired) heuristic rules.
 func (e *Evaluator) ListRules() []HeuristicRule {
 	e.mu.RLock()
@@ -194,6 +207,62 @@ func (e *Evaluator) ListRules() []HeuristicRule {
 		}
 	}
 	return active
+}
+
+// AutomationsOverview compiles a comprehensive list of all active automations (fast-path rules + discovered actuators).
+func (e *Evaluator) AutomationsOverview(ctx context.Context) ([]AutomationSummary, error) {
+	rules := e.ListRules()
+	ruleMap := make(map[string]HeuristicRule) // actuatorID -> HeuristicRule
+	for _, r := range rules {
+		ruleMap[r.ActuatorID] = r
+	}
+
+	var summaries []AutomationSummary
+	entries, err := os.ReadDir(e.binDir)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, errors.Wrap(err, "read binDir for automations")
+	}
+
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		actuatorID := entry.Name()
+		m, err := e.getActuatorManifest(ctx, actuatorID)
+		if err != nil {
+			m = sdk.ActuatorManifest{
+				ID:          actuatorID,
+				Description: "Available actuator binary",
+			}
+		}
+
+		summary := AutomationSummary{
+			ActuatorID:   m.ID,
+			Name:         m.Name,
+			Description:  m.Description,
+			Triggers:     m.Triggers,
+			Capabilities: m.Capabilities,
+			Routing:      "llm-dynamic",
+		}
+		if summary.Name == "" {
+			summary.Name = m.ID
+		}
+
+		if rule, exists := ruleMap[actuatorID]; exists {
+			summary.Routing = "fast-path"
+			summary.RuleID = rule.ID
+			summary.TTL = rule.TTL.String()
+			summary.ExpiresIn = rule.ExpiresAt.Sub(now).Round(time.Second).String()
+			if len(summary.Triggers) == 0 && rule.EventType != "" {
+				summary.Triggers = []string{rule.EventType}
+			}
+		}
+
+		summaries = append(summaries, summary)
+	}
+
+	return summaries, nil
 }
 
 // pushEval publishes an evaluator decision to the log hub (no-op if hub is nil).

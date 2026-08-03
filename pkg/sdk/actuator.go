@@ -21,13 +21,25 @@ type Actuator interface {
 	Execute(ctx context.Context, event Event) (Result, error)
 }
 
-// ActuatorManifest describes an actuator's identity and resource capabilities.
+// ActuatorManifest describes an actuator's identity, triggers, and resource capabilities.
 type ActuatorManifest struct {
 	// ID is the stable, unique identifier for this actuator (e.g. "send-webex-message").
 	ID string `json:"id"`
 
-	// Description is a human-readable summary for the LLM evaluator.
+	// Name is a human-readable display title (e.g. "Webex Message Sender").
+	Name string `json:"name,omitempty"`
+
+	// Description is a human-readable summary for the LLM evaluator and human operator.
 	Description string `json:"description"`
+
+	// Triggers is a list of CloudEvent types this actuator handles (e.g. ["webex.message", "clara.prompt"]).
+	Triggers []string `json:"triggers,omitempty"`
+
+	// Author describes who created this actuator ("human" or "clara-builder").
+	Author string `json:"author,omitempty"`
+
+	// Version is the semantic version or build tag of the actuator.
+	Version string `json:"version,omitempty"`
 
 	// Capabilities is the list of resource capabilities this actuator requires.
 	// Any resource access not declared here is blocked and raises a HITL approval.

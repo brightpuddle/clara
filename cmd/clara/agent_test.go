@@ -16,7 +16,7 @@ func TestBuildHandler_ShutdownCancelsDaemon(t *testing.T) {
 	shutdownCh := make(chan struct{}, 1)
 	handler := buildHandler(nil, nil, nil, nil, nil, zerolog.Nop(), func() {
 		shutdownCh <- struct{}{}
-	}, supervisor.NewApprovalStore())
+	}, supervisor.NewApprovalStore(), nil)
 
 	w := &testResponseWriter{}
 	handler(context.Background(), &ipc.Request{Method: ipc.MethodShutdown}, w)

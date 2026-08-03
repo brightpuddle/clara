@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -283,6 +284,63 @@ var actuatorRunCmd = &cobra.Command{
 }
 
 // ---------------------------------------------------------------------------
+// `clara automations` command group
+// ---------------------------------------------------------------------------
+
+var automationsCmd = &cobra.Command{
+	Use:   "automations",
+	Short: "Inspect active automations, triggers, and actuator mappings",
+}
+
+var automationsListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all active workflow automations and routing policies",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := loadConfig(); err != nil {
+			return err
+		}
+		resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{Method: ipc.MethodAutomationsList})
+		if err != nil {
+			return err
+		}
+		if resp.Error != "" {
+			return fmt.Errorf("%s", resp.Error)
+		}
+		items, _ := resp.Data.([]any)
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+		fmt.Fprintln(tw, "ACTUATOR\tROUTING\tTRIGGERS\tTTL / EXPIRES\tDESCRIPTION")
+		for _, item := range items {
+			m, _ := item.(map[string]any)
+			triggers := ""
+			if tr, ok := m["triggers"].([]any); ok && len(tr) > 0 {
+				strList := make([]string, len(tr))
+				for i, v := range tr {
+					strList[i] = fmt.Sprint(v)
+				}
+				triggers = strings.Join(strList, ", ")
+			} else {
+				triggers = "*"
+			}
+
+			ttlInfo := "-"
+			if m["routing"] == "fast-path" {
+				ttlInfo = fmt.Sprintf("%v (%v left)", m["ttl"], m["expires_in"])
+			}
+
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
+				m["actuator_id"],
+				m["routing"],
+				triggers,
+				ttlInfo,
+				m["description"],
+			)
+		}
+		tw.Flush()
+		return nil
+	},
+}
+
+// ---------------------------------------------------------------------------
 // init: register all commands with the root cobra command
 // ---------------------------------------------------------------------------
 
@@ -306,5 +364,8 @@ func init() {
 	actuatorRunCmd.Flags().BoolVarP(&actuatorRunFollow, "follow", "f", false, "Stream actuator logs after dispatching")
 	actuatorCmd.AddCommand(actuatorListCmd, actuatorLogsCmd, actuatorRunCmd)
 
-	rootCmd.AddCommand(eventCmd, evaluatorCmd, actuatorCmd)
+	// automations commands
+	automationsCmd.AddCommand(automationsListCmd)
+
+	rootCmd.AddCommand(eventCmd, evaluatorCmd, actuatorCmd, automationsCmd)
 }

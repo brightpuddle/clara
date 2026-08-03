@@ -41,6 +41,9 @@ const (
 
 	// V2 natural-language request
 	MethodRequest = "request"
+
+	// V2 automations discovery
+	MethodAutomationsList = "automations.list"
 )
 
 // StreamEntry is a single line-delimited JSON entry written on a streaming
