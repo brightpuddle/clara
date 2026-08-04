@@ -265,6 +265,30 @@ func (e *Evaluator) AutomationsOverview(ctx context.Context) ([]AutomationSummar
 	return summaries, nil
 }
 
+// ChatDialog handles interactive prompt dialogs, analyzing requirements and returning an AnalysisResult proposal.
+func (e *Evaluator) ChatDialog(ctx context.Context, prompt string) (AnalysisResult, error) {
+	ev := CloudEvent{
+		ID:     fmt.Sprintf("chat-%d", time.Now().UnixNano()),
+		Source: "cli/chat",
+		Type:   "clara.request",
+		Time:   time.Now(),
+		Data:   map[string]any{"prompt": prompt},
+	}
+
+	var history []string
+	history = append(history, fmt.Sprintf("Interactive Chat Dialog Prompt: %q", prompt))
+
+	summaries, err := e.AutomationsOverview(ctx)
+	if err == nil && len(summaries) > 0 {
+		history = append(history, "Current Active Automations:")
+		for _, s := range summaries {
+			history = append(history, fmt.Sprintf("  - %s (%s): %s [Triggers: %s]", s.ActuatorID, s.Name, s.Description, strings.Join(s.Triggers, ", ")))
+		}
+	}
+
+	return e.llm.AnalyzeEvent(ctx, ev, history)
+}
+
 // pushEval publishes an evaluator decision to the log hub (no-op if hub is nil).
 func (e *Evaluator) pushEval(level, msg string, fields map[string]any) {
 	if e.hub != nil {

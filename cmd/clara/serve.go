@@ -845,6 +845,23 @@ func buildHandler(
 			}
 			writeResp(&ipc.Response{Data: summaries})
 
+		case ipc.MethodChat:
+			prompt, _ := req.Params["prompt"].(string)
+			if prompt == "" {
+				writeResp(&ipc.Response{Error: "missing prompt parameter"})
+				return
+			}
+			if evaluator == nil {
+				writeResp(&ipc.Response{Error: "evaluator unavailable"})
+				return
+			}
+			result, err := evaluator.ChatDialog(ctx, prompt)
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Data: result})
+
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})
 		}

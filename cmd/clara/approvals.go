@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/brightpuddle/clara/internal/ipc"
@@ -161,7 +164,62 @@ Builder Mode and generates a new compiled Actuator automatically.`,
 	},
 }
 
+// ---------------------------------------------------------------------------
+// `clara chat` interactive REPL command
+// ---------------------------------------------------------------------------
+
+var chatCmd = &cobra.Command{
+	Use:   "chat",
+	Short: "Start an interactive dialog session to plan and create/update automations",
+	Long: `Starts a Read-Eval-Print Loop (REPL) connecting to the daemon's Evaluator.
+Allows discussing workflow needs, reviewing generated actuator proposals/diffs,
+and confirming builds interactively.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := loadConfig(); err != nil {
+			return err
+		}
+
+		fmt.Println("Clara Interactive Assistant REPL")
+		fmt.Println("Type your workflow request, or 'exit'/'quit' to end session.")
+		fmt.Println("---------------------------------------------------------")
+
+		scanner := bufio.NewScanner(os.Stdin)
+		for {
+			fmt.Print("\nclara> ")
+			if !scanner.Scan() {
+				break
+			}
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			if line == "exit" || line == "quit" {
+				fmt.Println("Ending chat session.")
+				break
+			}
+
+			resp, err := sendRequest(cfg.ControlSocketPath(), ipc.Request{
+				Method: ipc.MethodChat,
+				Params: map[string]any{"prompt": line},
+			})
+			if err != nil {
+				fmt.Printf("Error: %v\n", err)
+				continue
+			}
+			if resp.Error != "" {
+				fmt.Printf("Error: %s\n", resp.Error)
+				continue
+			}
+
+			// Render proposal decision
+			data, _ := json.MarshalIndent(resp.Data, "", "  ")
+			fmt.Printf("\nEvaluator Proposal:\n%s\n", string(data))
+		}
+		return nil
+	},
+}
+
 func init() {
 	approvalsCmd.AddCommand(approvalsListCmd, approvalsShowCmd, approvalsDecideCmd, approvalsSubmitCmd)
-	rootCmd.AddCommand(approvalsCmd, requestCmd)
+	rootCmd.AddCommand(approvalsCmd, requestCmd, chatCmd)
 }

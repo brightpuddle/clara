@@ -39,8 +39,9 @@ const (
 	MethodApprovalDecide = "approval.decide"
 	MethodApprovalSubmit = "approval.submit"
 
-	// V2 natural-language request
+	// V2 natural-language request & chat
 	MethodRequest = "request"
+	MethodChat    = "chat"
 
 	// V2 automations discovery
 	MethodAutomationsList = "automations.list"
