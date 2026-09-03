@@ -526,11 +526,10 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             ),
             tool(
                 name: "mail_get_mailboxes",
-                description: "List all available mailboxes for an account.",
+                description: "List all available mailboxes for an account (or across all accounts if account_name is omitted).",
                 properties: [
-                    stringProperty("account_name", "The account name.")
-                ],
-                required: ["account_name"]
+                    stringProperty("account_name", "Optional account name.")
+                ]
             ),
         ]
     }
@@ -1385,18 +1384,35 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
 
     private func mailGetMailboxes(_ args: [String: Any]) async throws -> [[String: Any]] {
         try ensureMailAccess()
-        let accountName = try requiredString(args, "account_name")
-        let script = """
-        tell application "Mail"
-            set theAccount to account "\(accountName)"
-            set mailboxList to every mailbox of theAccount
-            set results to {}
-            repeat with theMailbox in mailboxList
-                set end of results to {name:name of theMailbox}
-            end repeat
-            return results
-        end tell
-        """
+        let accountName = optionalString(args, "account_name")
+        let script: String
+        if let accountName = accountName, !accountName.isEmpty {
+            script = """
+            tell application "Mail"
+                set theAccount to account "\(accountName)"
+                set mailboxList to every mailbox of theAccount
+                set results to {}
+                repeat with theMailbox in mailboxList
+                    set end of results to {name:name of theMailbox, account:accountName}
+                end repeat
+                return results
+            end tell
+            """
+        } else {
+            script = """
+            tell application "Mail"
+                set results to {}
+                repeat with theAccount in accounts
+                    set accName to name of theAccount
+                    set mailboxList to every mailbox of theAccount
+                    repeat with theMailbox in mailboxList
+                        set end of results to {name:name of theMailbox, account:accName}
+                    end repeat
+                end repeat
+                return results
+            end tell
+            """
+        }
         return try executeAppleScript(script, timeout: 120) as? [[String: Any]] ?? []
     }
 
