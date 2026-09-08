@@ -339,7 +339,7 @@ func (r *Registry) registerMCPToolsLocked(
 		if !strings.Contains(nsName, ".") {
 			nsName = r.GetFQToolName(serverName, tool.Name)
 		}
-		
+
 		// CONFLICT RESOLUTION: If local tool exists, do not overwrite it with remote tool.
 		if _, exists := r.tools[nsName]; exists {
 			r.log.Debug().Str("tool", nsName).Msg("skipping remote tool, local takes precedence")

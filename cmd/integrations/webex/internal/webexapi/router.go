@@ -103,7 +103,7 @@ func (r *Router) ResolveInteractive(requestID string, d InteractiveDecision) boo
 	if ok {
 		select {
 		case ch <- d:
-		default: 
+		default:
 		}
 	}
 	return ok

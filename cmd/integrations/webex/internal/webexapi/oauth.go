@@ -78,7 +78,7 @@ func EnsureWebhook(accessToken, targetURL, secret, name, resource string) error 
 	}
 	for _, wh := range existing {
 		if wh.Name == name {
-			// If resource changed, we should ideally delete and recreate, 
+			// If resource changed, we should ideally delete and recreate,
 			// but we use unique names per resource usually.
 			return updateWebhook(accessToken, wh.ID, targetURL, secret)
 		}

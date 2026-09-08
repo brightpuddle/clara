@@ -9,15 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/hex"
+
 	"github.com/brightpuddle/clara/cmd/integrations/webex/internal/webexapi"
 	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog/log"
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/hex"
 )
 
 const description = "Webex integration: read and reply to messages (user account) and send bot notifications."
@@ -311,7 +312,7 @@ func (w *Webex) callInteractiveRequest(args []byte) ([]byte, error) {
 		timeoutSec = 300
 	}
 	requestID := uuid.New().String()
-	
+
 	w.router.RegisterInteractive(requestID)
 	sentMsg, err := w.bot.SendInteractive(a.RoomID, "local", requestID, a.Title, a.Description, a.Options, a.AllowText)
 	if err != nil {
@@ -375,7 +376,7 @@ func (w *Webex) handleOAuthCallback(path string) (int, []byte, error) {
 		return 400, []byte("Invalid path"), nil
 	}
 	q := u.Query()
-	
+
 	if errCode := q.Get("error"); errCode != "" {
 		desc := q.Get("error_description")
 		log.Warn().Str("error", errCode).Str("desc", desc).Msg("webex: OAuth denied")
@@ -494,7 +495,7 @@ func (w *Webex) handleAttachmentAction(id string) {
 
 	requestID, _ := action.Inputs["request_id"].(string)
 	decision, _ := action.Inputs["decision"].(string)
-	
+
 	customText := ""
 	if ct, ok := action.Inputs["custom_text"].(string); ok {
 		customText = ct

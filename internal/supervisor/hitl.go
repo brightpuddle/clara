@@ -166,4 +166,3 @@ func (r *ActiveRouter) Prompt(ctx context.Context, req ApprovalRequest) (Resolut
 
 	return prompter.Prompt(ctx, req)
 }
-

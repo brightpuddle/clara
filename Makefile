@@ -93,8 +93,8 @@ lint:
 
 ## fmt: format all Go code with golines + goimports
 fmt:
-	golines $(GOLINES_FLAGS) -w ./...
-	goimports -w ./...
+	golines $(GOLINES_FLAGS) -w .
+	goimports -w .
 
 ## bridge: build the Swift ClaraBridge binary
 bridge: build/ClaraBridge.app/Contents/MacOS/ClaraBridge

@@ -24,8 +24,8 @@ type Config struct {
 }
 
 type ModelConfig struct {
-	Provider string         `json:"provider"`
-	Model    string         `json:"model"`
+	Provider string          `json:"provider"`
+	Model    string          `json:"model"`
 	Thinking *ThinkingConfig `json:"thinking,omitempty"`
 }
 

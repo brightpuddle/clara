@@ -163,7 +163,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	s.reg.Subscribe(func(serverName, method string, params any) {
 		select {
-		case evChan <- struct{ServerName, Method string; Params any}{serverName, method, params}:
+		case evChan <- struct {
+			ServerName, Method string
+			Params             any
+		}{serverName, method, params}:
 		default:
 		}
 	})

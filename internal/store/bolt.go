@@ -28,7 +28,7 @@ func NewBoltStoreManager(baseDir string) (*BoltStoreManager, error) {
 		}
 		baseDir = filepath.Join(home, baseDir[1:])
 	}
-	
+
 	if err := os.MkdirAll(baseDir, 0o700); err != nil {
 		return nil, errors.Wrap(err, "failed to create state base directory")
 	}

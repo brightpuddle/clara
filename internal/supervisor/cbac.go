@@ -16,8 +16,8 @@ type Capability struct {
 
 // ActuatorManifest defines the declared privileges of a compiled plugin.
 type ActuatorManifest struct {
-	ID                  string       `json:"id"`
-	Description         string       `json:"description"`
+	ID                   string       `json:"id"`
+	Description          string       `json:"description"`
 	RequiredCapabilities []Capability `json:"required_capabilities"`
 }
 

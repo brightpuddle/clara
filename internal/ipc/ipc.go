@@ -4,16 +4,16 @@ package ipc
 
 // Method constants for the control socket protocol.
 const (
-	MethodShutdown     = "shutdown"
-	MethodStatus       = "status"
-	MethodList         = "list"
-	MethodRun          = "run"
-	MethodStart        = "start"
-	MethodStop         = "stop"
-	MethodToolList     = "tool_list"
-	MethodToolShow     = "tool_show"
-	MethodToolCall     = "tool_call"
-	MethodEvents       = "events"
+	MethodShutdown = "shutdown"
+	MethodStatus   = "status"
+	MethodList     = "list"
+	MethodRun      = "run"
+	MethodStart    = "start"
+	MethodStop     = "stop"
+	MethodToolList = "tool_list"
+	MethodToolShow = "tool_show"
+	MethodToolCall = "tool_call"
+	MethodEvents   = "events"
 
 	MethodPluginList   = "plugin.list"
 	MethodPluginLoad   = "plugin.load"
@@ -50,23 +50,24 @@ const (
 // StreamEntry is a single line-delimited JSON entry written on a streaming
 // socket connection (event.logs, evaluator.logs, actuator.logs).
 type StreamEntry struct {
-	Stream    string `json:"stream"`
-	Time      string `json:"time,omitempty"`
-	Type      string `json:"type,omitempty"`   // event type (event stream)
-	Source    string `json:"source,omitempty"` // actuator id or sensor name
-	Level     string `json:"level,omitempty"`  // log level (evaluator/actuator)
-	Msg       string `json:"msg,omitempty"`
-	Data      any    `json:"data,omitempty"`
-	ActuatorID string `json:"id,omitempty"` // actuator stream
+	Stream     string `json:"stream"`
+	Time       string `json:"time,omitempty"`
+	ID         string `json:"id,omitempty"`     // event id or trace id
+	Type       string `json:"type,omitempty"`   // event type (event stream)
+	Source     string `json:"source,omitempty"` // actuator id or sensor name
+	Level      string `json:"level,omitempty"`  // log level (evaluator/actuator)
+	Msg        string `json:"msg,omitempty"`
+	Data       any    `json:"data,omitempty"`
+	ActuatorID string `json:"actuator_id,omitempty"` // actuator stream
 }
 
 // StreamRequest wraps a Request with streaming-specific params.
 type StreamRequest struct {
 	Method string `json:"method"`
 	// Tail is the number of historical entries to replay (-1 = all).
-	Tail   int    `json:"tail"`
+	Tail int `json:"tail"`
 	// Follow keeps the connection open for real-time entries.
-	Follow bool   `json:"follow"`
+	Follow bool `json:"follow"`
 	// Filter params (event stream only)
 	FilterType   string `json:"filter_type,omitempty"`
 	FilterSource string `json:"filter_source,omitempty"`

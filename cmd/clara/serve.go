@@ -250,7 +250,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 					if !ok {
 						return nil
 					}
-					handler.hub.PushEvent(ce.Type, ce.Source, ce.Data)
+					handler.hub.PushEvent(ce.ID, ce.Type, ce.Source, ce.Data)
 					if err := evaluator.OnEvent(ctx, ce); err != nil {
 						logger.Error().Err(err).
 							Str("event_id", ce.ID).

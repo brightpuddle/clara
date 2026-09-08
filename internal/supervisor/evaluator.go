@@ -49,13 +49,13 @@ type AnalysisResult struct {
 
 // HeuristicRule defines a fast-path routing rule with predicate matching and TTL control.
 type HeuristicRule struct {
-	ID           string        `json:"id"`
-	EventType    string        `json:"event_type"`              // e.g. "clara.request", "webex.message", "fs.modify", "*"
-	SourcePattern string       `json:"source_pattern,omitempty"` // glob/prefix match on CloudEvent.Source (e.g. "integrations/webex/*")
-	PayloadMatch string        `json:"payload_match,omitempty"`  // key=value match on CloudEvent.Data (e.g. "room_id=Y2lz...")
-	ActuatorID   string        `json:"actuator_id"`
-	TTL          time.Duration `json:"ttl"`                      // 0 = no cache (always force LLM evaluation)
-	ExpiresAt    time.Time     `json:"expires_at"`
+	ID            string        `json:"id"`
+	EventType     string        `json:"event_type"`               // e.g. "clara.request", "webex.message", "fs.modify", "*"
+	SourcePattern string        `json:"source_pattern,omitempty"` // glob/prefix match on CloudEvent.Source (e.g. "integrations/webex/*")
+	PayloadMatch  string        `json:"payload_match,omitempty"`  // key=value match on CloudEvent.Data (e.g. "room_id=Y2lz...")
+	ActuatorID    string        `json:"actuator_id"`
+	TTL           time.Duration `json:"ttl"` // 0 = no cache (always force LLM evaluation)
+	ExpiresAt     time.Time     `json:"expires_at"`
 }
 
 // Matches returns true if the incoming CloudEvent satisfies the HeuristicRule conditions.
@@ -440,9 +440,6 @@ func (e *Evaluator) OnEvent(ctx context.Context, ev CloudEvent) error {
 		}
 
 		return e.executeActuator(ctx, actuatorID, ev)
-
-
-
 
 	case "build":
 		e.log.Warn().

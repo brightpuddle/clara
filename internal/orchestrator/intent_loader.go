@@ -18,15 +18,15 @@ func LoadIntentFile(path string, data []byte, namespaces []string) (*Intent, err
 			return nil, errors.Wrap(err, "failed to decode intent metadata")
 		}
 	}
-	
+
 	// Default to native Go binary actuators
 	intent.WorkflowType = WorkflowTypeNative
-	
+
 	// Derive the ID from the filename if not explicitly provided
 	if intent.ID == "" {
 		intent.ID = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	}
-	
+
 	if err := intent.Validate(); err != nil {
 		return nil, err
 	}

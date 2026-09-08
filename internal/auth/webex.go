@@ -103,7 +103,7 @@ func AuthorizeWebex(
 	}
 
 	storePath := filepath.Join(home, ".local", "share", "clara", "webex_tokens.json")
-	
+
 	type storedTokens struct {
 		AccessToken  string    `json:"access_token"`
 		RefreshToken string    `json:"refresh_token"`
@@ -119,12 +119,12 @@ func AuthorizeWebex(
 	if err := os.MkdirAll(filepath.Dir(storePath), 0o700); err != nil {
 		return errors.Wrap(err, "create webex token store dir")
 	}
-	
+
 	data, err := json.Marshal(dataToSave)
 	if err != nil {
 		return errors.Wrap(err, "marshal webex tokens")
 	}
-	
+
 	if err := os.WriteFile(storePath, data, 0o600); err != nil {
 		return errors.Wrap(err, "save webex tokens to file")
 	}

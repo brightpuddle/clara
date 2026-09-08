@@ -153,7 +153,7 @@ func (d *Discord) callMessageSend(args []byte) ([]byte, error) {
 	if a.ChannelID == "" {
 		return nil, errors.New("channel_id required")
 	}
-	
+
 	msgID, err := d.bot.SendMessage(a.ChannelID, a.Content, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "discord message.send")
@@ -182,7 +182,7 @@ func (d *Discord) callNotificationSend(args []byte) ([]byte, error) {
 	if a.Level == "" {
 		a.Level = "info"
 	}
-	
+
 	embed := &discordapi.Embed{
 		Title:       a.Title,
 		Description: a.Body,
@@ -221,9 +221,9 @@ func (d *Discord) callInteractiveRequest(args []byte) ([]byte, error) {
 		timeoutSec = 300
 	}
 	requestID := uuid.New().String()
-	
+
 	d.router.RegisterInteractive(requestID)
-	
+
 	_, err := d.bot.SendInteractive(a.ChannelID, "local", requestID, a.Title, a.Description, a.Options, a.AllowText)
 	if err != nil {
 		return nil, errors.Wrap(err, "discord interactive.request: send")

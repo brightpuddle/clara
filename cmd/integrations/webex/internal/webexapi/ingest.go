@@ -203,8 +203,8 @@ func (im *IngestManager) unregisterDevice() {
 }
 
 type mercuryActivity struct {
-	Verb   string `json:"verb"`
-	Actor  struct {
+	Verb  string `json:"verb"`
+	Actor struct {
 		EmailAddress string `json:"emailAddress"`
 		ID           string `json:"id"`
 	} `json:"actor"`
@@ -233,7 +233,7 @@ func (im *IngestManager) handleRawWSMessage(msg []byte) {
 	if act.Verb == "post" && act.Object.ID != "" {
 		// New message posted. Fetch the message text using client.GetMessage to mirror webhook payload
 		messageID := act.Object.ID
-		
+
 		im.seenMsgsMu.Lock()
 		alreadySeen := im.seenMsgs[messageID]
 		im.seenMsgs[messageID] = true
@@ -249,7 +249,7 @@ func (im *IngestManager) handleRawWSMessage(msg []byte) {
 				log.Warn().Err(err).Str("message_id", messageID).Msg("webex: could not fetch message details for websocket event")
 				return
 			}
-			
+
 			evData, _ := json.Marshal(map[string]string{
 				"message_id":   msgDetails.ID,
 				"room_id":      msgDetails.RoomID,

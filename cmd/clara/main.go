@@ -12,6 +12,7 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/ipc"
+	"github.com/brightpuddle/clara/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -26,10 +27,20 @@ var rootCmd = &cobra.Command{
 	Short: "Local agentic orchestrator for macOS",
 	Long: `Clara is a local-first agentic orchestrator for macOS.
 
+Run 'clara' to launch the interactive dashboard (TUI).
 Run 'clara serve' to start the background agent.
 Run 'clara status' to check on a running agent.
 Run 'clara --help' to see all available commands.`,
-	RunE:         runHUD,
+	RunE:         runTUI,
+	SilenceUsage: true,
+}
+
+// dashboardCmd explicitly launches the interactive TUI.
+var dashboardCmd = &cobra.Command{
+	Use:          "dashboard",
+	Aliases:      []string{"tui", "top"},
+	Short:        "Launch interactive terminal dashboard (TUI)",
+	RunE:         runTUI,
 	SilenceUsage: true,
 }
 
@@ -53,6 +64,7 @@ func init() {
 	}
 
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(dashboardCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(toolCmd)
 	rootCmd.AddCommand(pluginCmd)
@@ -77,11 +89,12 @@ func loadConfig() error {
 	return err
 }
 
-// runHUD is the default command. The interactive HUD has been removed in
-// Phase 4; this now prints a brief usage hint instead.
-func runHUD(cmd *cobra.Command, _ []string) error {
-	_ = cmd.Help()
-	return nil
+// runTUI launches the interactive lazygit-style terminal UI.
+func runTUI(cmd *cobra.Command, _ []string) error {
+	if !isTerminalFile(os.Stdout) || outputFmt == "json" {
+		return cmd.Help()
+	}
+	return tui.Run(cfg.ControlSocketPath(), cfgFile)
 }
 
 // wantJSON returns true when output should be machine-readable JSON:

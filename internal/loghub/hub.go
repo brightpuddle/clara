@@ -20,7 +20,7 @@ type Hub struct {
 	Actuator  *ringbuf.RingBuffer
 
 	// Per-actuator sub-buffers for actuator.logs <id>.
-	mu       sync.RWMutex
+	mu        sync.RWMutex
 	actuators map[string]*ringbuf.RingBuffer
 }
 
@@ -38,9 +38,10 @@ func New() *Hub {
 type entry struct {
 	Stream     string `json:"stream"`
 	Time       string `json:"time"`
+	ID         string `json:"id,omitempty"`
 	Type       string `json:"type,omitempty"`
 	Source     string `json:"source,omitempty"`
-	ActuatorID string `json:"id,omitempty"`
+	ActuatorID string `json:"actuator_id,omitempty"`
 	Level      string `json:"level,omitempty"`
 	Msg        string `json:"msg"`
 	Data       any    `json:"data,omitempty"`
@@ -54,10 +55,11 @@ func marshal(e entry) json.RawMessage {
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 // PushEvent publishes a CloudEvent to the event ring buffer.
-func (h *Hub) PushEvent(eventType, source string, data any) {
+func (h *Hub) PushEvent(id, eventType, source string, data any) {
 	h.Event.Push(marshal(entry{
 		Stream: "event",
 		Time:   now(),
+		ID:     id,
 		Type:   eventType,
 		Source: source,
 		Data:   data,
