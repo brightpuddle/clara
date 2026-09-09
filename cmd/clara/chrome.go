@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/brightpuddle/clara"
@@ -18,17 +19,42 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	chromeProfileFlag string
+	chromeSocketFlag  string
+)
+
 var chromeCmd = &cobra.Command{
 	Use:   "chrome",
 	Short: "Manage the Clara Chrome extension",
 }
 
+func resolveSocketPath(profile, customSocket string) string {
+	if customSocket != "" {
+		if strings.HasPrefix(customSocket, "~/") {
+			home, _ := os.UserHomeDir()
+			return filepath.Join(home, customSocket[2:])
+		}
+		return customSocket
+	}
+	home, _ := os.UserHomeDir()
+	if profile != "" {
+		return filepath.Join(home, ".local", "share", "clara", fmt.Sprintf("chrome-%s.sock", profile))
+	}
+	return filepath.Join(home, ".local", "share", "clara", "chrome-bridge.sock")
+}
+
 var chromeNativeHostCmd = &cobra.Command{
-	Use:    "native-host",
+	Use:    "native-host [profile]",
 	Short:  "Run the Chrome Native Messaging host (internal use)",
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runNativeHost(cmd.Context())
+		profile := chromeProfileFlag
+		if len(args) > 0 && profile == "" {
+			profile = args[0]
+		}
+		socketPath := resolveSocketPath(profile, chromeSocketFlag)
+		return runNativeHost(cmd.Context(), profile, socketPath)
 	},
 }
 
@@ -39,38 +65,49 @@ var chromeSetupNativeCmd = &cobra.Command{
 as a native host.
 
 Steps:
-  1. Run:  clara chrome update-extension
+  1. Run:  clara chrome update-extension [--profile <profile>]
   2. Open Chrome → chrome://extensions  →  enable Developer mode
   3. Click "Load unpacked" and select the printed extension directory
   4. Copy the Extension ID shown on that page
-  5. Run:  clara chrome setup-native <EXTENSION_ID>
+  5. Run:  clara chrome setup-native <EXTENSION_ID> [--profile <profile>]
   6. Quit and relaunch Chrome`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		extID := args[0]
+		profile := chromeProfileFlag
+		socketPath := resolveSocketPath(profile, chromeSocketFlag)
+
 		exe, err := os.Executable()
 		if err != nil {
 			return err
 		}
 		exe, _ = filepath.EvalSymlinks(exe)
 
-		// Chrome Native Messaging does not support an "args" field in the
-		// manifest. The "path" must be a standalone executable with no
-		// additional arguments. We write a small wrapper script that execs
-		// the correct clara subcommand and point the manifest at that.
 		home, _ := os.UserHomeDir()
 		dataDir := filepath.Join(home, ".local", "share", "clara")
 		if err := os.MkdirAll(dataDir, 0755); err != nil {
 			return err
 		}
-		wrapperPath := filepath.Join(dataDir, "clara-chrome-native-host")
-		wrapperScript := fmt.Sprintf("#!/bin/sh\nexec %q chrome native-host\n", exe)
+
+		wrapperName := "clara-chrome-native-host"
+		hostName := "com.brightpuddle.clara"
+		nativeArgs := "chrome native-host"
+		if profile != "" {
+			wrapperName = fmt.Sprintf("clara-chrome-native-host-%s", profile)
+			hostName = fmt.Sprintf("com.brightpuddle.clara.%s", profile)
+			nativeArgs = fmt.Sprintf("chrome native-host --socket %q", socketPath)
+		} else if chromeSocketFlag != "" {
+			nativeArgs = fmt.Sprintf("chrome native-host --socket %q", socketPath)
+		}
+
+		wrapperPath := filepath.Join(dataDir, wrapperName)
+		wrapperScript := fmt.Sprintf("#!/bin/sh\nexec %q %s\n", exe, nativeArgs)
 		if err := os.WriteFile(wrapperPath, []byte(wrapperScript), 0755); err != nil {
 			return err
 		}
 
 		manifest := map[string]any{
-			"name":            "com.brightpuddle.clara",
+			"name":            hostName,
 			"description":     "Clara Browser Bridge",
 			"path":            wrapperPath,
 			"type":            "stdio",
@@ -90,7 +127,7 @@ Steps:
 			return err
 		}
 
-		destPath := filepath.Join(destDir, "com.brightpuddle.clara.json")
+		destPath := filepath.Join(destDir, hostName+".json")
 		if err := os.WriteFile(destPath, manifestJSON, 0644); err != nil {
 			return err
 		}
@@ -115,14 +152,18 @@ var chromeUpdateExtCmd = &cobra.Command{
 so Chrome can load them as an unpacked extension.
 
 The default destination is:
-  ~/.local/share/clara/extension/
+  ~/.local/share/clara/extension/ (or ~/.local/share/clara/extension-<profile>/ if --profile is set)
 
 Pass an explicit path to override.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		profile := chromeProfileFlag
 		target := ""
 		if len(args) > 0 {
 			target = args[0]
+		} else if profile != "" {
+			home, _ := os.UserHomeDir()
+			target = filepath.Join(home, ".local", "share", "clara", fmt.Sprintf("extension-%s", profile))
 		} else {
 			target = defaultExtensionDir()
 		}
@@ -149,18 +190,20 @@ Pass an explicit path to override.`,
 				if d.IsDir() {
 					return os.MkdirAll(dest, 0755)
 				}
-				srcFile, err := clara.ExtensionFS.Open(path)
+				srcData, err := clara.ExtensionFS.ReadFile(path)
 				if err != nil {
 					return err
 				}
-				defer srcFile.Close()
-				destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-				if err != nil {
-					return err
+				if profile != "" {
+					if rel == "background.js" {
+						hostName := fmt.Sprintf("com.brightpuddle.clara.%s", profile)
+						srcData = []byte(strings.ReplaceAll(string(srcData), "com.brightpuddle.clara", hostName))
+					} else if rel == "manifest.json" {
+						extName := fmt.Sprintf("Clara Browser Bridge (%s)", profile)
+						srcData = []byte(strings.ReplaceAll(string(srcData), "Clara Browser Bridge", extName))
+					}
 				}
-				defer destFile.Close()
-				_, err = io.Copy(destFile, srcFile)
-				return err
+				return os.WriteFile(dest, srcData, 0644)
 			},
 		)
 		if err != nil {
@@ -169,31 +212,46 @@ Pass an explicit path to override.`,
 
 		fmt.Printf("✓ Extension files written to:\n  %s\n\n", target)
 		fmt.Println("Next: load this directory in Chrome as an unpacked extension,")
-		fmt.Println("then run:  clara chrome setup-native <EXTENSION_ID>")
+		if profile != "" {
+			fmt.Printf("then run:  clara chrome setup-native <EXTENSION_ID> --profile %s\n", profile)
+		} else {
+			fmt.Println("then run:  clara chrome setup-native <EXTENSION_ID>")
+		}
 		return nil
 	},
 }
 
 func init() {
+	chromeNativeHostCmd.Flags().StringVarP(&chromeProfileFlag, "profile", "p", "", "Chrome profile identifier")
+	chromeNativeHostCmd.Flags().StringVarP(&chromeSocketFlag, "socket", "s", "", "Bridge Unix domain socket path")
+
+	chromeSetupNativeCmd.Flags().StringVarP(&chromeProfileFlag, "profile", "p", "", "Chrome profile identifier")
+	chromeSetupNativeCmd.Flags().StringVarP(&chromeSocketFlag, "socket", "s", "", "Bridge Unix domain socket path")
+
+	chromeUpdateExtCmd.Flags().StringVarP(&chromeProfileFlag, "profile", "p", "", "Chrome profile identifier")
+
 	chromeCmd.AddCommand(chromeSetupNativeCmd)
 	chromeCmd.AddCommand(chromeUpdateExtCmd)
 	chromeCmd.AddCommand(chromeNativeHostCmd)
 	rootCmd.AddCommand(chromeCmd)
 }
 
-func runNativeHost(ctx context.Context) error {
+func runNativeHost(ctx context.Context, profile, udsPath string) error {
 	home, _ := os.UserHomeDir()
 	dataDir := filepath.Join(home, ".local", "share", "clara")
-	udsPath := filepath.Join(dataDir, "chrome-bridge.sock")
 
 	// Debug log — written to a file so we can inspect it even when Chrome
 	// captures stderr. Truncated on each fresh launch.
-	debugPath := filepath.Join(dataDir, "chrome-native-host.log")
+	logFile := "chrome-native-host.log"
+	if profile != "" {
+		logFile = fmt.Sprintf("chrome-native-host-%s.log", profile)
+	}
+	debugPath := filepath.Join(dataDir, logFile)
 	debugFile, _ := os.OpenFile(debugPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	dlog := zerolog.New(zerolog.MultiLevelWriter(os.Stderr, debugFile)).
 		With().Timestamp().Logger()
 
-	dlog.Info().Str("uds", udsPath).Msg("native host started")
+	dlog.Info().Str("profile", profile).Str("uds", udsPath).Msg("native host started")
 
 	// 1. Connect to UDS
 	var conn net.Conn

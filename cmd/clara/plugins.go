@@ -49,21 +49,48 @@ func newPluginLoader(
 }
 
 // resolvePluginPath returns the binary path for a plugin. If explicitPath is
-// non-empty it is used directly (skipping the search). Otherwise each
-// directory in cfg.PluginSearchPaths is checked for an executable named name.
+// non-empty it is expanded and verified. If not found or empty, search paths
+// are checked for an executable named name, or its base prefix (e.g. chrome for chrome_nathan).
 func (l *pluginLoader) resolvePluginPath(name, explicitPath string) (string, bool) {
 	if explicitPath != "" {
-		if _, err := os.Stat(explicitPath); err == nil {
-			return explicitPath, true
+		expanded := os.ExpandEnv(explicitPath)
+		if strings.HasPrefix(expanded, "~/") {
+			home, _ := os.UserHomeDir()
+			expanded = filepath.Join(home, expanded[2:])
+		}
+		if _, err := os.Stat(expanded); err == nil {
+			return expanded, true
+		}
+		// If explicitPath was relative or not found directly, check search paths using base name
+		for _, dir := range l.cfg.PluginSearchPaths {
+			p := filepath.Join(dir, filepath.Base(explicitPath))
+			if _, err := os.Stat(p); err == nil {
+				return p, true
+			}
 		}
 		return "", false
 	}
+
+	// 1. Look for exact name match in search paths
 	for _, dir := range l.cfg.PluginSearchPaths {
 		p := filepath.Join(dir, name)
 		if _, err := os.Stat(p); err == nil {
 			return p, true
 		}
 	}
+
+	// 2. If name has a suffix after '_' or '-' (e.g. chrome_nathan -> chrome),
+	// check for the base binary in search paths.
+	if idx := strings.IndexAny(name, "_-"); idx > 0 {
+		baseName := name[:idx]
+		for _, dir := range l.cfg.PluginSearchPaths {
+			p := filepath.Join(dir, baseName)
+			if _, err := os.Stat(p); err == nil {
+				return p, true
+			}
+		}
+	}
+
 	return "", false
 }
 
@@ -252,21 +279,29 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 
 	l.log.Info().Str("name", name).Str("path", path).Msg("loading native integration")
 
+	pluginMap := map[string]plugin.Plugin{
+		"chrome":  &contract.ChromeIntegrationPlugin{},
+		"zk":      &contract.ZkIntegrationPlugin{},
+		"llm":     &contract.LLMIntegrationPlugin{},
+		"web":     &contract.WebIntegrationPlugin{},
+		"macos":   &contract.IntegrationGRPCPlugin{},
+		"tmux":    &contract.TmuxIntegrationPlugin{},
+		"task":    &contract.TaskIntegrationPlugin{},
+		"discord": &contract.DiscordIntegrationPlugin{},
+		"webex":   &contract.WebexIntegrationPlugin{},
+	}
+	if _, exists := pluginMap[name]; !exists {
+		pluginMap[name] = &contract.IntegrationPlugin{}
+	}
+
+	cmd := exec.Command(path)
+	cmd.Env = append(os.Environ(), "CLARA_PLUGIN_NAME="+name)
+
 	client := plugin.NewClient(&plugin.ClientConfig{
-		HandshakeConfig: contract.HandshakeConfig,
-		Plugins: map[string]plugin.Plugin{
-			"chrome":  &contract.ChromeIntegrationPlugin{},
-			"zk":      &contract.ZkIntegrationPlugin{},
-			"llm":     &contract.LLMIntegrationPlugin{},
-			"web":     &contract.WebIntegrationPlugin{},
-			"macos":   &contract.IntegrationGRPCPlugin{},
-			"tmux":    &contract.TmuxIntegrationPlugin{},
-			"task":    &contract.TaskIntegrationPlugin{},
-			"discord": &contract.DiscordIntegrationPlugin{},
-			"webex":   &contract.WebexIntegrationPlugin{},
-		},
+		HandshakeConfig:  contract.HandshakeConfig,
+		Plugins:          pluginMap,
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolNetRPC, plugin.ProtocolGRPC},
-		Cmd:              exec.Command(path),
+		Cmd:              cmd,
 		Logger:           buildHCLogAdapter(l.log, name),
 	})
 

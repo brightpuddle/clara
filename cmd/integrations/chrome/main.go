@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +25,11 @@ const (
 	commandTimeout    = 5 * time.Minute
 	heartbeatInterval = 15 * time.Second
 )
+
+type Config struct {
+	SocketPath string `json:"socket_path"`
+	Profile    string `json:"profile"`
+}
 
 type commandResult struct {
 	Result json.RawMessage
@@ -45,6 +50,8 @@ type Chrome struct {
 	pending        map[string]chan commandResult
 	log            zerolog.Logger
 	currentVersion string
+	socketPath     string
+	profile        string
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
@@ -62,13 +69,31 @@ func NewChrome() *Chrome {
 	return c
 }
 
-func (c *Chrome) Configure(config []byte) error {
-	// Start the bridge in the background if not already running.
-	// In a real scenario, we might want to restart it if config changes,
-	// but for now we just ensure it's running.
+func (c *Chrome) Configure(configData []byte) error {
+	var cfg Config
+	if len(configData) > 0 {
+		if err := json.Unmarshal(configData, &cfg); err != nil {
+			return errors.Wrap(err, "unmarshal chrome config")
+		}
+	}
+	c.profile = cfg.Profile
+	socketPath := cfg.SocketPath
+	if socketPath == "" {
+		home, _ := os.UserHomeDir()
+		if c.profile != "" {
+			socketPath = filepath.Join(home, ".local", "share", "clara", "chrome-"+c.profile+".sock")
+		} else {
+			socketPath = filepath.Join(home, ".local", "share", "clara", "chrome-bridge.sock")
+		}
+	} else if strings.HasPrefix(socketPath, "~/") {
+		home, _ := os.UserHomeDir()
+		socketPath = filepath.Join(home, socketPath[2:])
+	}
+	c.socketPath = socketPath
+
 	go func() {
-		if err := c.serveBridge(c.ctx); err != nil {
-			c.log.Error().Err(err).Msg("Bridge server failed")
+		if err := c.serveBridge(c.ctx, socketPath); err != nil {
+			c.log.Error().Err(err).Str("socket", socketPath).Msg("Bridge server failed")
 		}
 	}()
 	return nil
@@ -424,24 +449,25 @@ func (c *Chrome) execute(
 	}
 }
 
-func (c *Chrome) serveBridge(ctx context.Context) error {
-	home, _ := os.UserHomeDir()
-	dataDir := filepath.Join(home, ".local", "share", "clara")
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+func (c *Chrome) serveBridge(ctx context.Context, udsPath string) error {
+	if err := os.MkdirAll(filepath.Dir(udsPath), 0755); err != nil {
 		return err
 	}
-	udsPath := filepath.Join(dataDir, "chrome-bridge.sock")
 	_ = os.Remove(udsPath)
 
 	udsLn, err := net.Listen("unix", udsPath)
 	if err != nil {
 		return errors.Wrap(err, "listen unix")
 	}
-	defer udsLn.Close()
+	defer func() {
+		udsLn.Close()
+		_ = os.Remove(udsPath)
+	}()
 
 	go func() {
 		<-ctx.Done()
 		udsLn.Close()
+		_ = os.Remove(udsPath)
 	}()
 
 	errCh := make(chan error, 1)
@@ -518,7 +544,7 @@ func (c *Chrome) dispatch(resp bridgeResponse, conn net.Conn) {
 
 	if resp.Type == "hello" {
 		if resp.Version != c.currentVersion {
-			if err := updateExtensionFiles(); err == nil {
+			if err := updateExtensionFiles(c.profile); err == nil {
 				msg, _ := json.Marshal(map[string]any{"type": "update"})
 				_, _ = conn.Write(append(msg, '\n'))
 			}
@@ -556,9 +582,12 @@ func embeddedExtensionVersion() string {
 	return m.Version
 }
 
-func updateExtensionFiles() error {
+func updateExtensionFiles(profile string) error {
 	home, _ := os.UserHomeDir()
 	target := filepath.Join(home, ".local", "share", "clara", "extension")
+	if profile != "" {
+		target = filepath.Join(home, ".local", "share", "clara", "extension-"+profile)
+	}
 	if err := os.MkdirAll(target, 0755); err != nil {
 		return err
 	}
@@ -580,29 +609,36 @@ func updateExtensionFiles() error {
 			if d.IsDir() {
 				return os.MkdirAll(dest, 0755)
 			}
-			srcFile, err := clara.ExtensionFS.Open(path)
+			srcData, err := clara.ExtensionFS.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			defer srcFile.Close()
-			destFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-			if err != nil {
-				return err
+			if profile != "" {
+				if rel == "background.js" {
+					hostName := fmt.Sprintf("com.brightpuddle.clara.%s", profile)
+					srcData = []byte(strings.ReplaceAll(string(srcData), "com.brightpuddle.clara", hostName))
+				} else if rel == "manifest.json" {
+					extName := fmt.Sprintf("Clara Browser Bridge (%s)", profile)
+					srcData = []byte(strings.ReplaceAll(string(srcData), "Clara Browser Bridge", extName))
+				}
 			}
-			defer destFile.Close()
-			_, err = io.Copy(destFile, srcFile)
-			return err
+			return os.WriteFile(dest, srcData, 0644)
 		},
 	)
 }
 
 func main() {
 	chrome := NewChrome()
+	pluginName := os.Getenv("CLARA_PLUGIN_NAME")
+	if pluginName == "" {
+		pluginName = "chrome"
+	}
 
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: contract.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
-			"chrome": &contract.ChromeIntegrationPlugin{Impl: chrome},
+			"chrome":   &contract.ChromeIntegrationPlugin{Impl: chrome},
+			pluginName: &contract.ChromeIntegrationPlugin{Impl: chrome},
 		},
 	})
 }

@@ -75,11 +75,11 @@ type ActuatorsVM struct {
 
 // ActuatorDetailVM holds data for an actuator detail page.
 type ActuatorDetailVM struct {
-	Base        BaseVM
-	Summary     supervisor.AutomationSummary
-	RecentLogs  []string
-	RunResult   string
-	RunSuccess  bool
+	Base       BaseVM
+	Summary    supervisor.AutomationSummary
+	RecentLogs []string
+	RunResult  string
+	RunSuccess bool
 }
 
 // ApprovalsVM holds data for the HITL approvals page.
