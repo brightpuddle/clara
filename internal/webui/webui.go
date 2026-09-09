@@ -1,75 +1,104 @@
 // Package webui provides a browser-based management UI for the Clara agent.
-// It serves at /ui/ on the same HTTP server used for MCP and webhooks, so no
-// additional port is needed.
+// It serves at /ui/ on the HTTP server, rendering server-side HTML using Templ,
+// styled with Tailwind CSS v4, DaisyUI v5 (Material 3 themed), and enhanced with HTMX and Alpine.js.
 //
-// The UI is built with Echo (router), Templ (SSR templates), HTMX (partial
-// updates), and Tailwind CSS + DaisyUI (styling).
-//
-//go:generate go run github.com/a-h/templ/cmd/templ@latest generate -f ./templ
+//go:generate templ generate -path ./templ
 package webui
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/brightpuddle/clara/internal/config"
-	"github.com/brightpuddle/clara/internal/intentlog"
-	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/supervisor"
+	"github.com/brightpuddle/clara/internal/webui/manifest"
+	ui "github.com/brightpuddle/clara/internal/webui/templ"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog"
 )
 
-//go:embed static
-var staticFiles embed.FS
+//go:embed all:dist
+var distEmbedFS embed.FS
+
+// EvaluatorInspector provides access to discovered actuators and fast-path heuristics.
+type EvaluatorInspector interface {
+	AutomationsOverview(ctx context.Context) ([]supervisor.AutomationSummary, error)
+}
 
 // IntegrationLister is implemented by *pluginLoader in cmd/clara.
 type IntegrationLister interface {
 	List() []map[string]any
 }
 
-// IntentSupervisor is implemented by *supervisor.Supervisor.
-type IntentSupervisor interface {
-	IntentInfos() []supervisor.IntentInfo
-	Intent(id string) (*orchestrator.Intent, bool)
-	StartIntent(id, task string) error
-}
-
-// WebUI is the Clara management UI. Call Mount to attach its routes to an
-// existing net/http mux.
+// WebUI is the Clara management UI.
 type WebUI struct {
-	cfg     *config.Config
-	cfgPath string // writable config file path
-	sup     IntentSupervisor
-	reg     *registry.Registry
-	integ   IntegrationLister
-	ilog    *intentlog.Logger
-	log     zerolog.Logger
+	cfg       *config.Config
+	cfgPath   string
+	sup       *supervisor.Supervisor
+	reg       *registry.Registry
+	integ     IntegrationLister
+	evaluator EvaluatorInspector
+	approvals *supervisor.ApprovalStore
+	log       zerolog.Logger
+	manifest  manifest.Manifest
+	isDev     bool
+	devHost   string
 }
 
-// New constructs a WebUI. cfgPath is the writable config file path used by the
-// config editor. When empty, saving is disabled.
+// New constructs a WebUI.
 func New(
 	cfg *config.Config,
 	cfgPath string,
-	sup IntentSupervisor,
+	sup *supervisor.Supervisor,
 	reg *registry.Registry,
 	integ IntegrationLister,
-	ilog *intentlog.Logger,
+	evaluator EvaluatorInspector,
+	approvals *supervisor.ApprovalStore,
 	log zerolog.Logger,
 ) *WebUI {
+	isDev := strings.ToLower(os.Getenv("ENV")) == "dev" || strings.ToLower(os.Getenv("CLARA_ENV")) == "dev"
+	devHost := os.Getenv("VITE_DEV_HOST")
+	if devHost == "" {
+		devHost = "http://localhost:3001"
+	}
+
+	var m manifest.Manifest
+	if !isDev {
+		manifestPath := os.Getenv("VITE_MANIFEST_PATH")
+		if manifestPath == "" {
+			manifestPath = "./dist/.vite/manifest.json"
+		}
+		var err error
+		m, err = manifest.ReadManifest(manifestPath)
+		if err != nil {
+			// Try reading from embedded filesystem
+			if raw, embedErr := distEmbedFS.ReadFile("dist/.vite/manifest.json"); embedErr == nil {
+				m, _ = manifest.ParseManifest(raw)
+			} else {
+				log.Warn().Err(err).Str("path", manifestPath).Msg("failed to read vite manifest; UI assets might not load")
+			}
+		}
+	}
+
 	return &WebUI{
-		cfg:     cfg,
-		cfgPath: cfgPath,
-		sup:     sup,
-		reg:     reg,
-		integ:   integ,
-		ilog:    ilog,
-		log:     log.With().Str("component", "webui").Logger(),
+		cfg:       cfg,
+		cfgPath:   cfgPath,
+		sup:       sup,
+		reg:       reg,
+		integ:     integ,
+		evaluator: evaluator,
+		approvals: approvals,
+		log:       log.With().Str("component", "webui").Logger(),
+		manifest:  m,
+		isDev:     isDev,
+		devHost:   devHost,
 	}
 }
 
@@ -79,7 +108,7 @@ func (w *WebUI) Mount(mux *http.ServeMux) {
 	e.HideBanner = true
 	e.HidePort = true
 
-	// Request logger using zerolog
+	// Request logger
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogMethod: true,
 		LogURI:    true,
@@ -95,20 +124,39 @@ func (w *WebUI) Mount(mux *http.ServeMux) {
 	}))
 	e.Use(middleware.Recover())
 
-	// Static files (htmx, app.js, app.css)
-	sub, _ := fs.Sub(staticFiles, "static")
-	e.GET("/ui/static/*", echo.WrapHandler(
-		http.StripPrefix("/ui/static/", http.FileServer(http.FS(sub))),
-	))
+	// Static assets from ./dist (or embedded dist)
+	subDist, _ := fs.Sub(distEmbedFS, "dist")
+	distFileServer := http.FileServer(http.FS(subDist))
 
-	// Pages
+	e.GET("/assets/*", func(c echo.Context) error {
+		// Prefer local dist on disk if available, otherwise embedded
+		if _, err := os.Stat("." + c.Request().URL.Path); err == nil {
+			http.ServeFile(c.Response().Writer, c.Request(), "."+c.Request().URL.Path)
+			return nil
+		}
+		distFileServer.ServeHTTP(c.Response().Writer, c.Request())
+		return nil
+	})
+	e.GET("/favicon.svg", func(c echo.Context) error {
+		if _, err := os.Stat("./public/favicon.svg"); err == nil {
+			http.ServeFile(c.Response().Writer, c.Request(), "./public/favicon.svg")
+			return nil
+		}
+		c.Request().URL.Path = "/favicon.svg"
+		distFileServer.ServeHTTP(c.Response().Writer, c.Request())
+		return nil
+	})
+
+	// Page routes
 	e.GET("/ui", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/ui/")
 	})
 	e.GET("/ui/", w.handleDashboard)
-	e.GET("/ui/intents", w.handleIntentList)
-	e.GET("/ui/intents/:id", w.handleIntentDetail)
-	e.POST("/ui/intents/:id/run", w.handleIntentRun)
+	e.GET("/ui/actuators", w.handleActuatorsList)
+	e.GET("/ui/actuators/:id", w.handleActuatorDetail)
+	e.POST("/ui/actuators/:id/run", w.handleActuatorRun)
+	e.GET("/ui/approvals", w.handleApprovalsList)
+	e.POST("/ui/approvals/:id/decide", w.handleApprovalDecide)
 	e.GET("/ui/integrations", w.handleIntegrations)
 	e.GET("/ui/logs", w.handleLogs)
 	e.GET("/ui/logs/stream", w.handleLogsStream)
@@ -121,11 +169,17 @@ func (w *WebUI) Mount(mux *http.ServeMux) {
 			http.Redirect(rw, r, "/ui/", http.StatusMovedPermanently)
 			return
 		}
-		// Fall through for /mcp, /api, /auth, /events — not handled here
 		http.NotFound(rw, r)
 	})
 	mux.Handle("/ui/", e)
-	mux.Handle("/ui/static/", e)
+	mux.Handle("/assets/", e)
+	mux.Handle("/images/", e)
+	mux.Handle("/favicon.svg", e)
+}
+
+// baseVM returns a initialized BaseVM for rendering pages.
+func (w *WebUI) baseVM(pageTitle, location string) ui.BaseVM {
+	return ui.NewBaseVM(w.manifest, w.isDev, w.devHost, pageTitle, location)
 }
 
 // render is a helper that renders a templ component into an Echo response.

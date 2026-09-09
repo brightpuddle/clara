@@ -48,16 +48,19 @@ func (w *WebUI) renderConfig(c echo.Context, flashKind, flash string) error {
 		if err == nil {
 			yamlStr = string(data)
 		} else {
-			// File doesn't exist yet — show empty template
 			defaultCfg := &config.Config{}
 			b, _ := yaml.Marshal(defaultCfg)
 			yamlStr = string(b)
 		}
 	}
-	return render(c, http.StatusOK, ui.Config(ui.ConfigData{
+
+	vm := &ui.ConfigVM{
+		Base:      w.baseVM("Configuration", "/ui/config"),
 		YAML:      yamlStr,
 		Flash:     flash,
 		FlashKind: flashKind,
 		ReadOnly:  readOnly,
-	}))
+	}
+
+	return render(c, http.StatusOK, ui.Config(vm))
 }

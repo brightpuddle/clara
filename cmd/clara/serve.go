@@ -172,14 +172,6 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	httpServer := server.New(cfg, reg, loader, logger)
 
-	// Attach the web UI (served at /ui/ on the same port as the HTTP server).
-	uiCfgPath := cfgFile
-	if uiCfgPath == "" {
-		uiCfgPath = config.DefaultConfigPath()
-	}
-	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, ilog, logger)
-	httpServer.WebUI = ui
-
 	approvals := supervisor.NewApprovalStore()
 
 	builderDir := cfg.DataDir + "/workspace"
@@ -212,11 +204,22 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		cfg.DataDir+"/bin",
 	)
 
+	// Attach the web UI (served at /ui/ on the same port as the HTTP server).
+	uiCfgPath := cfgFile
+	if uiCfgPath == "" {
+		uiCfgPath = config.DefaultConfigPath()
+	}
+	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, evaluator, approvals, logger)
+	httpServer.WebUI = ui
+
 	handler := &daemonHandler{
 		base: buildHandler(reg, sup, db, ilog, loader, logger, shutdown, approvals, evaluator),
 		hub:  hub,
 	}
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
+	if err != nil {
+		return errors.Wrap(err, "create control socket server")
+	}
 
 	return runDaemonServices(daemonCtx, daemonServiceHooks{
 		startMCPServers: func(ctx context.Context) error {

@@ -1,0 +1,112 @@
+package templ
+
+import "strings"
+
+templ Drawer(vm *DrawerVM) {
+	<label for="clara-drawer" class="drawer-overlay" aria-label="Close drawer"></label>
+	<aside class="w-72 min-h-screen bg-base-100 text-base-content border-r border-base-300/70 p-4 flex flex-col justify-between select-none">
+		<div class="flex flex-col gap-2">
+			<!-- M3 Drawer Header -->
+			<div class="px-4 py-3 mb-2 flex items-center justify-between">
+				<a href="/ui/" class="flex items-center gap-3">
+					<div class="w-10 h-10 rounded-2xl bg-primary text-primary-content flex items-center justify-center font-bold text-lg shadow-sm">
+						C
+					</div>
+					<div>
+						<div class="font-bold text-base tracking-tight m3-headline">Clara</div>
+						<div class="text-xs text-base-content/60 font-medium">Autonomous Agent</div>
+					</div>
+				</a>
+			</div>
+
+			<!-- M3 Navigation List Items (Pill Destinations) -->
+			<nav class="flex flex-col gap-1.5 mt-2">
+				<!-- Dashboard -->
+				<a
+					href="/ui/"
+					class={ "flex items-center gap-3.5 px-5 py-3 rounded-full text-base font-medium transition-colors",
+						templ.KV("bg-primary/12 text-primary font-semibold", vm.Location == "/ui/" || vm.Location == "/ui"),
+						templ.KV("text-base-content/70 hover:bg-base-200/80 hover:text-base-content", vm.Location != "/ui/" && vm.Location != "/ui") }
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+					</svg>
+					<span>Dashboard</span>
+				</a>
+
+				<!-- Actuators -->
+				<a
+					href="/ui/actuators"
+					class={ "flex items-center gap-3.5 px-5 py-3 rounded-full text-base font-medium transition-colors",
+						templ.KV("bg-primary/12 text-primary font-semibold", strings.HasPrefix(vm.Location, "/ui/actuators")),
+						templ.KV("text-base-content/70 hover:bg-base-200/80 hover:text-base-content", !strings.HasPrefix(vm.Location, "/ui/actuators")) }
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+					</svg>
+					<span>Actuators</span>
+				</a>
+
+				<!-- HITL Approvals -->
+				<a
+					href="/ui/approvals"
+					class={ "flex items-center gap-3.5 px-5 py-3 rounded-full text-base font-medium transition-colors",
+						templ.KV("bg-primary/12 text-primary font-semibold", strings.HasPrefix(vm.Location, "/ui/approvals")),
+						templ.KV("text-base-content/70 hover:bg-base-200/80 hover:text-base-content", !strings.HasPrefix(vm.Location, "/ui/approvals")) }
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+					</svg>
+					<span>Approvals</span>
+				</a>
+
+				<!-- Integrations -->
+				<a
+					href="/ui/integrations"
+					class={ "flex items-center gap-3.5 px-5 py-3 rounded-full text-base font-medium transition-colors",
+						templ.KV("bg-primary/12 text-primary font-semibold", strings.HasPrefix(vm.Location, "/ui/integrations")),
+						templ.KV("text-base-content/70 hover:bg-base-200/80 hover:text-base-content", !strings.HasPrefix(vm.Location, "/ui/integrations")) }
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+					</svg>
+					<span>Integrations</span>
+				</a>
+
+				<!-- Logs -->
+				<a
+					href="/ui/logs"
+					class={ "flex items-center gap-3.5 px-5 py-3 rounded-full text-base font-medium transition-colors",
+						templ.KV("bg-primary/12 text-primary font-semibold", strings.HasPrefix(vm.Location, "/ui/logs")),
+						templ.KV("text-base-content/70 hover:bg-base-200/80 hover:text-base-content", !strings.HasPrefix(vm.Location, "/ui/logs")) }
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+					</svg>
+					<span>Logs</span>
+				</a>
+
+				<!-- Configuration -->
+				<a
+					href="/ui/config"
+					class={ "flex items-center gap-3.5 px-5 py-3 rounded-full text-base font-medium transition-colors",
+						templ.KV("bg-primary/12 text-primary font-semibold", strings.HasPrefix(vm.Location, "/ui/config")),
+						templ.KV("text-base-content/70 hover:bg-base-200/80 hover:text-base-content", !strings.HasPrefix(vm.Location, "/ui/config")) }
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+					</svg>
+					<span>Configuration</span>
+				</a>
+			</nav>
+		</div>
+
+		<!-- Footer Section -->
+		<div class="border-t border-base-300/70 pt-4 flex flex-col gap-2">
+			<div class="text-xs text-base-content/50 text-center font-medium">
+				Clara Agent &bull; Material 3 Design
+			</div>
+		</div>
+	</aside>
+}

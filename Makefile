@@ -1,4 +1,4 @@
-.PHONY: build test vet lint proto fmt bridge clean install install-clara uninstall sign-cert setup check-deps
+.PHONY: build test vet lint proto fmt bridge clean install install-clara uninstall sign-cert setup check-deps generate web-build
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
@@ -47,8 +47,20 @@ check-deps:
 		exit 1; \
 	fi
 
+## generate: compile templ templates
+generate:
+	templ generate -path ./internal/webui/templ
+
+## web-build: compile frontend bundle with vite
+web-build:
+	pnpm build
+	mkdir -p internal/webui/dist
+	rm -rf internal/webui/dist/*
+	cp -r dist/* internal/webui/dist/
+	cp -r dist/.[!.]* internal/webui/dist/ 2>/dev/null || true
+
 ## build: compile the unified clara binary and all plugins
-build: build-core build-integrations
+build: generate web-build build-core build-integrations
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" bin/clara
 
 ## proto: generate protobuf bindings for Go and Swift

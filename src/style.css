@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme {
+  --text-xs: 0.875rem; /* Enforce minimum 14px (no sub-14px micro text) */
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.875rem; /* 14px */
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;   /* 16px default */
+  --text-base--line-height: 1.5rem;
+}
+
+@layer base {
+  html {
+    font-size: 16px;
+    font-family: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}
+
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+  root: ":root";
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  /* Google Material 3 Baseline Palette (Indigo / Purple Tonals) */
+  --color-primary: #6750a4;
+  --color-primary-content: #ffffff;
+  --color-secondary: #625b71;
+  --color-secondary-content: #ffffff;
+  --color-accent: #7d5260;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1d1b20;
+  --color-neutral-content: #ffffff;
+
+  /* M3 Surface Container Hierarchy */
+  --color-base-100: #ffffff;       /* Surface / Cards */
+  --color-base-200: #f5f6fa;       /* Surface Container Low / Page background */
+  --color-base-300: #e5e8f0;       /* Surface Container High / Subtle Borders */
+  --color-base-content: #1d1b20;   /* On-Surface */
+
+  --color-info: #0284c7;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-error: #ba1a1a;
+
+  --radius-box: 1.25rem;           /* 20px - M3 Rounded Cards */
+  --radius-field: 0.75rem;         /* 12px - M3 Outlined Inputs */
+  --radius-selector: 9999px;       /* M3 Pill Badges & Buttons */
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+
+  /* Google Material 3 Dark Palette */
+  --color-primary: #d0bcff;
+  --color-primary-content: #381e72;
+  --color-secondary: #ccc2dc;
+  --color-secondary-content: #332d41;
+  --color-accent: #efb8c8;
+  --color-accent-content: #492532;
+  --color-neutral: #e6e1e5;
+  --color-neutral-content: #1d1b20;
+
+  --color-base-100: #1d1b20;       /* Surface */
+  --color-base-200: #141218;       /* Surface Container Low */
+  --color-base-300: #2b2930;       /* Surface Container High */
+  --color-base-content: #e6e1e5;
+
+  --color-info: #7dd3fc;
+  --color-success: #86efac;
+  --color-warning: #fde047;
+  --color-error: #ffb4ab;
+
+  --radius-box: 1.25rem;
+  --radius-field: 0.75rem;
+  --radius-selector: 9999px;
+}
+
+/* Material 3 helper utilities */
+.m3-surface-container {
+  background-color: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+}
+
+.m3-headline {
+  font-family: "Google Sans", "Roboto", -apple-system, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* Log output styling */
+.log-pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-base-300) transparent;
+}

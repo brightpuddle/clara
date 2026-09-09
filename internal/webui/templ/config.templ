@@ -1,44 +1,41 @@
 package templ
 
-// ConfigData holds data for the configuration editor page.
-type ConfigData struct {
-	YAML      string
-	Flash     string
-	FlashKind string
-	ReadOnly  bool // true when no writable config path is available
-}
+templ Config(vm *ConfigVM) {
+	@Index(vm.Base.Index) {
+		@Layout(vm.Base.Layout) {
+			<div class="flex flex-col gap-6">
+				@PageHeader("Configuration", "Edit Clara agent configuration YAML")
+				@Flash(vm.FlashKind, vm.Flash)
 
-// Config renders the YAML configuration editor.
-templ Config(d ConfigData) {
-	@Layout("Configuration", "/ui/config") {
-		@PageHeader("Configuration", "Edit the agent configuration file")
-		@Flash(d.FlashKind, d.Flash)
-		if d.ReadOnly {
-			<div class="alert alert-warning mb-4">
-				<span>Configuration file path is not set — changes cannot be saved.</span>
+				if vm.ReadOnly {
+					<div class="alert alert-warning rounded-2xl mb-2">
+						<span>Configuration file path is not set — changes cannot be saved.</span>
+					</div>
+				}
+
+				<form method="POST" action="/ui/config">
+					<div class="rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden">
+						<div class="px-6 py-4 border-b border-base-300/70 flex items-center justify-between bg-base-100">
+							<h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/70">config.yaml</h2>
+						</div>
+						<div class="p-4">
+							<textarea
+								name="yaml"
+								class="textarea w-full font-mono text-xs min-h-[60vh] bg-base-200/40 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-primary border border-base-300/60"
+								spellcheck="false"
+								readonly?={ vm.ReadOnly }
+							>{ vm.YAML }</textarea>
+						</div>
+						if !vm.ReadOnly {
+							<div class="px-6 py-4 border-t border-base-300/70 flex justify-end bg-base-100">
+								<button type="submit" class="btn btn-primary rounded-full px-6 text-sm font-medium shadow-sm">
+									Save Configuration
+								</button>
+							</div>
+						}
+					</div>
+				</form>
 			</div>
 		}
-		<form method="POST" action="/ui/config">
-			<div class="card bg-base-200 shadow-sm">
-				<div class="card-body p-0">
-					<div class="px-5 py-4 border-b border-base-300">
-						<h2 class="text-sm font-semibold uppercase tracking-widest text-base-content/60">config.yaml</h2>
-					</div>
-					<div class="p-4">
-						<textarea
-							name="yaml"
-							class="textarea textarea-bordered w-full font-mono text-xs min-h-[60vh] bg-base-100"
-							spellcheck="false"
-							readonly?={ d.ReadOnly }
-						>{ d.YAML }</textarea>
-					</div>
-					if !d.ReadOnly {
-						<div class="px-5 py-4 border-t border-base-300 flex justify-end gap-2">
-							<button type="submit" class="btn btn-primary btn-sm">Save</button>
-						</div>
-					}
-				</div>
-			</div>
-		</form>
 	}
 }

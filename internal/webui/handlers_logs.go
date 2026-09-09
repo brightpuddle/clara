@@ -16,10 +16,14 @@ import (
 func (w *WebUI) handleLogs(c echo.Context) error {
 	level := c.QueryParam("level")
 	lines := tailFileFiltered(w.cfg.LogPath(), 200, level)
-	return render(c, http.StatusOK, ui.Logs(ui.LogsData{
+
+	vm := &ui.LogsVM{
+		Base:        w.baseVM("Logs", "/ui/logs"),
 		Lines:       lines,
 		LevelFilter: level,
-	}))
+	}
+
+	return render(c, http.StatusOK, ui.Logs(vm))
 }
 
 // handleLogsStream streams new daemon log lines via SSE.
@@ -39,16 +43,13 @@ func (w *WebUI) handleLogsStream(c echo.Context) error {
 
 	f, err := os.Open(w.cfg.LogPath())
 	if err != nil {
-		// Log file doesn't exist yet — stay connected and poll
 		fmt.Fprintf(w2, ": log not found\n\n")
 		flusher.Flush()
-		// Wait for the client to disconnect
 		<-c.Request().Context().Done()
 		return nil
 	}
 	defer f.Close()
 
-	// Seek to end
 	if _, err := f.Seek(0, 2); err != nil {
 		return err
 	}
@@ -77,8 +78,7 @@ func (w *WebUI) handleLogsStream(c echo.Context) error {
 	}
 }
 
-// logLineMatchesLevel reports whether a JSONL log line has the given level or
-// higher. Falls back to including the line if it cannot be parsed.
+// logLineMatchesLevel reports whether a JSONL log line has the given level or higher.
 func logLineMatchesLevel(line, minLevel string) bool {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(line), &m); err != nil {

@@ -7,7 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// handleIntegrations renders the integrations status page.
+// handleIntegrations renders the integrations and MCP servers status page.
 func (w *WebUI) handleIntegrations(c echo.Context) error {
 	plugins := w.integ.List()
 
@@ -21,8 +21,11 @@ func (w *WebUI) handleIntegrations(c echo.Context) error {
 		})
 	}
 
-	return render(c, http.StatusOK, ui.Integrations(ui.IntegrationsData{
+	vm := &ui.IntegrationsVM{
+		Base:       w.baseVM("Integrations", "/ui/integrations"),
 		Plugins:    plugins,
 		MCPServers: mcpServers,
-	}))
+	}
+
+	return render(c, http.StatusOK, ui.Integrations(vm))
 }

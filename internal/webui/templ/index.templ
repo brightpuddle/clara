@@ -1,0 +1,37 @@
+package templ
+
+templ Assets(vm *IndexVM) {
+	if vm.IsDev {
+		<script type="module" src={ vm.DevHost + "/@vite/client" }></script>
+		<script type="module" src={ vm.DevHost + "/src/app.ts" }></script>
+	} else {
+		for _, css := range vm.Manifest.CSS {
+			<link rel="stylesheet" href={ "/" + css }/>
+		}
+		if vm.Manifest.File != "" {
+			<script type="module" src={ "/" + vm.Manifest.File }></script>
+		}
+		for _, js := range vm.Manifest.Imports {
+			<link rel="modulepreload" href={ "/" + js }/>
+		}
+	}
+}
+
+templ Index(vm *IndexVM, children ...any) {
+	<!DOCTYPE html>
+	<html lang="en" data-theme="light">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ vm.Title }</title>
+			<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
+			<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Google+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+			@Assets(vm)
+		</head>
+		<body hx-boost="true" class="bg-base-200 min-h-screen text-base-content antialiased">
+			{ children... }
+		</body>
+	</html>
+}

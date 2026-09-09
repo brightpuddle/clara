@@ -5,19 +5,10 @@ package templ
 
 //lint:file-ignore SA4006 This context is only used if a nested component is present.
 
-import (
-	"github.com/a-h/templ"
-	templruntime "github.com/a-h/templ/runtime"
-)
+import "github.com/a-h/templ"
+import templruntime "github.com/a-h/templ/runtime"
 
-// LogsData holds data for the agent log viewer page.
-type LogsData struct {
-	Lines       []string
-	LevelFilter string
-}
-
-// Logs renders the agent log viewer with SSE live tail.
-func Logs(d LogsData) templ.Component {
+func Logs(vm *LogsVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -50,73 +41,82 @@ func Logs(d LogsData) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = PageHeader("Agent Logs", "Live tail of the Clara daemon log").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <!-- Filter bar --> <div class=\"flex gap-2 mb-4 flex-wrap\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = levelFilterBtn("", d.LevelFilter, "All").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = levelFilterBtn("trace", d.LevelFilter, "Trace").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = levelFilterBtn("debug", d.LevelFilter, "Debug").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = levelFilterBtn("info", d.LevelFilter, "Info").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = levelFilterBtn("warn", d.LevelFilter, "Warn").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = levelFilterBtn("error", d.LevelFilter, "Error").Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div><!-- Log output --> <div class=\"card bg-base-200 shadow-sm\"><div class=\"card-body p-0\"><div class=\"px-5 py-4 border-b border-base-300 flex items-center justify-between\"><h2 class=\"text-sm font-semibold uppercase tracking-widest text-base-content/60\">Output</h2><span class=\"text-xs text-base-content/40\" id=\"log-status\">connecting…</span></div><pre id=\"log-output\" class=\"log-pre text-xs font-mono px-5 py-4 min-h-64 max-h-screen overflow-y-auto whitespace-pre-wrap\" hx-ext=\"sse\" sse-connect=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue("/ui/logs/stream?level=" + d.LevelFilter)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/webui/templ/logs.templ`, Line: 33, Col: 59}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" sse-swap=\"message\" hx-swap=\"beforeend\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, line := range d.Lines {
-				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(line + "\n")
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/webui/templ/logs.templ`, Line: 38, Col: 19}
+			templ_7745c5c3_Var3 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+				if !templ_7745c5c3_IsBuffer {
+					defer func() {
+						templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err == nil {
+							templ_7745c5c3_Err = templ_7745c5c3_BufErr
+						}
+					}()
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+				ctx = templ.InitializeContext(ctx)
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col gap-6\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</pre></div></div><script>\n\t\t\t// Scroll log to bottom on load and when new content is added\n\t\t\tvar logOutput = document.getElementById('log-output');\n\t\t\tvar logStatus = document.getElementById('log-status');\n\t\t\tif (logOutput) {\n\t\t\t\tlogOutput.scrollTop = logOutput.scrollHeight;\n\t\t\t\tvar observer = new MutationObserver(function() {\n\t\t\t\t\tlogOutput.scrollTop = logOutput.scrollHeight;\n\t\t\t\t\tlogStatus.textContent = 'live';\n\t\t\t\t});\n\t\t\t\tobserver.observe(logOutput, { childList: true });\n\t\t\t}\n\t\t</script>")
+				templ_7745c5c3_Err = PageHeader("Agent Observability", "Real-time streaming log of the Clara daemon").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<!-- Filter buttons --><div class=\"flex gap-2 flex-wrap items-center\"><span class=\"text-xs font-semibold text-base-content/60 uppercase mr-2\">Level:</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = levelFilterBtn("", vm.LevelFilter, "All").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = levelFilterBtn("trace", vm.LevelFilter, "Trace").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = levelFilterBtn("debug", vm.LevelFilter, "Debug").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = levelFilterBtn("info", vm.LevelFilter, "Info").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = levelFilterBtn("warn", vm.LevelFilter, "Warn").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = levelFilterBtn("error", vm.LevelFilter, "Error").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><!-- Log viewer card --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex items-center justify-between bg-base-100\"><div class=\"flex items-center gap-2\"><span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse\"></span> <span class=\"text-xs font-semibold uppercase tracking-wider text-base-content/70\">Console Output</span></div><span class=\"text-xs font-mono text-base-content/50\" id=\"log-status\">connected</span></div><pre id=\"log-output\" class=\"log-pre text-xs font-mono p-5 min-h-80 max-h-[70vh] overflow-y-auto whitespace-pre-wrap bg-base-200/40 text-base-content/90\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, line := range vm.Lines {
+					var templ_7745c5c3_Var4 string
+					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(line + "\n")
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `logs.templ`, Line: 34, Col: 20}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</pre></div></div><script>\n\t\t\t\t(function() {\n\t\t\t\t\tconst el = document.getElementById('log-output');\n\t\t\t\t\tif (el) {\n\t\t\t\t\t\tel.scrollTop = el.scrollHeight;\n\t\t\t\t\t}\n\t\t\t\t\t// Connect EventSource for SSE streaming\n\t\t\t\t\tconst level = new URLSearchParams(window.location.search).get('level') || '';\n\t\t\t\t\tconst evtSource = new EventSource('/ui/logs/stream?level=' + encodeURIComponent(level));\n\t\t\t\t\tevtSource.onmessage = function(e) {\n\t\t\t\t\t\tif (el && e.data) {\n\t\t\t\t\t\t\tel.textContent += e.data + '\\n';\n\t\t\t\t\t\t\tel.scrollTop = el.scrollHeight;\n\t\t\t\t\t\t}\n\t\t\t\t\t};\n\t\t\t\t})();\n\t\t\t</script>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				return nil
+			})
+			templ_7745c5c3_Err = Layout(vm.Base.Layout).Render(templ.WithChildren(ctx, templ_7745c5c3_Var3), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Layout("Logs", "/ui/logs").Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Index(vm.Base.Index).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -145,7 +145,9 @@ func levelFilterBtn(level, current, label string) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var6 = []any{"btn btn-xs", templ.KV("btn-active btn-primary", level == current)}
+		var templ_7745c5c3_Var6 = []any{"btn btn-xs rounded-full px-3",
+			templ.KV("btn-primary font-semibold shadow-xs", level == current),
+			templ.KV("btn-ghost text-base-content/70 hover:bg-base-200", level != current)}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -157,7 +159,7 @@ func levelFilterBtn(level, current, label string) templ.Component {
 		var templ_7745c5c3_Var7 templ.SafeURL
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/ui/logs?level=" + level))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/webui/templ/logs.templ`, Line: 61, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `logs.templ`, Line: 63, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -170,7 +172,7 @@ func levelFilterBtn(level, current, label string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var6).String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/webui/templ/logs.templ`, Line: 1, Col: 0}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `logs.templ`, Line: 1, Col: 0}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -183,7 +185,7 @@ func levelFilterBtn(level, current, label string) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/webui/templ/logs.templ`, Line: 63, Col: 9}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `logs.templ`, Line: 68, Col: 9}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
