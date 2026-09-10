@@ -53,11 +53,24 @@ func Config(vm *ConfigVM) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col gap-6\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"flex flex-col gap-6\" x-data=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = PageHeader("Configuration", "Edit Clara agent configuration YAML").Render(ctx, templ_7745c5c3_Buffer)
+				var templ_7745c5c3_Var4 string
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(configAlpineData(vm.ConfigJSON, vm.YAML))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `config.templ`, Line: 8, Col: 53}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = PageHeader("Configuration", "Manage Clara daemon settings, integrations, plugins, and MCP servers").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -66,45 +79,535 @@ func Config(vm *ConfigVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if vm.ReadOnly {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"alert alert-warning rounded-2xl mb-2\"><span>Configuration file path is not set — changes cannot be saved.</span></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"alert alert-warning rounded-2xl mb-2 shadow-xs\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"stroke-current shrink-0 h-5 w-5\" fill=\"none\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z\"></path></svg> <span>Configuration file path is not set — changes cannot be saved.</span></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<form method=\"POST\" action=\"/ui/config\"><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex items-center justify-between bg-base-100\"><h2 class=\"text-xs font-semibold uppercase tracking-wider text-base-content/70\">config.yaml</h2></div><div class=\"p-4\"><textarea name=\"yaml\" class=\"textarea w-full font-mono text-xs min-h-[60vh] bg-base-200/40 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-primary border border-base-300/60\" spellcheck=\"false\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<!-- Mode Tabs --><div class=\"flex items-center justify-between gap-4 border-b border-base-300 pb-3\"><div class=\"flex items-center gap-2\"><button type=\"button\" @click=\"tab = 'structured'\" class=\"btn btn-sm rounded-full transition-all text-xs font-medium\" :class=\"tab === 'structured' ? 'btn-primary' : 'btn-ghost text-base-content/70'\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 10h16M4 14h16M4 18h16\"></path></svg> Structured Settings</button> <button type=\"button\" @click=\"tab = 'raw'\" class=\"btn btn-sm rounded-full transition-all text-xs font-medium\" :class=\"tab === 'raw' ? 'btn-primary' : 'btn-ghost text-base-content/70'\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4\"></path></svg> Raw YAML</button></div><div class=\"text-xs text-base-content/50 font-mono\">config.yaml</div></div><!-- Structured Settings Form --><div x-show=\"tab === 'structured'\" class=\"flex flex-col gap-6\"><form method=\"POST\" action=\"/ui/config\" id=\"structuredForm\"><input type=\"hidden\" name=\"config_json\" :value=\"JSON.stringify(cfg)\"><div class=\"flex flex-col gap-6\"><!-- General Settings --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Core Daemon Settings</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Logging, runtime directories, and startup limits</p></div></div><div class=\"p-6 grid grid-cols-1 md:grid-cols-2 gap-5\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Log Level</label> <select x-model=\"cfg.log_level\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.ReadOnly {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " readonly")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " disabled")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, ">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "><option value=\"trace\">Trace (very verbose)</option> <option value=\"debug\">Debug (diagnostic info)</option> <option value=\"info\">Info (recommended default)</option> <option value=\"warn\">Warn (warnings only)</option> <option value=\"error\">Error (errors only)</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">MCP Startup Timeout</label> <input type=\"text\" x-model=\"cfg.mcp_startup_timeout\" placeholder=\"30s\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(vm.YAML)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `config.templ`, Line: 27, Col: 17}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Data Directory</label> <input type=\"text\" x-model=\"cfg.data_dir\" placeholder=\"~/.local/share/clara\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</textarea></div>")
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "><p class=\"text-xs text-base-content/50 mt-1\">Runtime SQLite database, socket, and logs location</p></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Builder Repo Root</label> <input type=\"text\" x-model=\"cfg.builder_repo_root\" placeholder=\"e.g. /Users/username/src/clara\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "><p class=\"text-xs text-base-content/50 mt-1\">Path to Clara source tree for sandbox actuator compilation</p></div></div></div><!-- HTTP & Remote Server --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100\"><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">HTTP & Remote MCP Server</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Enables remote MCP connections and incoming webhooks</p></div><div class=\"p-6 grid grid-cols-1 md:grid-cols-2 gap-5\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Listen Address</label> <input type=\"text\" x-model=\"cfg.server.listen_addr\" placeholder=\":4444 (leave blank to disable)\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Shared Secret</label> <input type=\"text\" x-model=\"cfg.server.shared_secret\" placeholder=\"${CLARA_SHARED_SECRET} or secret token\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "></div></div></div><!-- Notifications --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100\"><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Notifications</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Delivery backend for notify.send and notify.ask events</p></div><div class=\"p-6 flex flex-col gap-5\"><div class=\"max-w-md\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Active Backend</label> <select x-model=\"cfg.notify.backend\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, " disabled")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "><option value=\"dummy\">dummy (no-op logger)</option> <option value=\"macos\">macos (native desktop alerts)</option> <option value=\"webex\">webex (Webex room relay)</option> <option value=\"discord\">discord (Discord channel relay)</option></select></div><div class=\"grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 border-t border-base-200\"><div :class=\"cfg.notify.backend === 'webex' ? 'opacity-100' : 'opacity-60'\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Webex Notification Room ID</label> <input type=\"text\" x-model=\"cfg.notify.webex.room_id\" placeholder=\"${WEBEX_NOTIFY_ROOM_ID}\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "></div><div :class=\"cfg.notify.backend === 'discord' ? 'opacity-100' : 'opacity-60'\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1.5\">Discord Channel ID</label> <input type=\"text\" x-model=\"cfg.notify.discord.channel_id\" placeholder=\"${DISCORD_NOTIFY_CHANNEL_ID}\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "></div></div></div></div><!-- Task Directories (List) --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Task Directories</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Custom directories watched for intent automation definitions</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if !vm.ReadOnly {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"px-6 py-4 border-t border-base-300/70 flex justify-end bg-base-100\"><button type=\"submit\" class=\"btn btn-primary rounded-full px-6 text-sm font-medium shadow-sm\">Save Configuration</button></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<button type=\"button\" @click=\"cfg.task_dirs.push('')\" class=\"btn btn-xs btn-outline btn-primary rounded-lg gap-1 font-medium\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add Directory</button>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</div></form></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><div class=\"p-6\"><div x-show=\"cfg.task_dirs.length === 0\" class=\"text-xs text-base-content/50 italic py-2\">No custom task directories configured (defaulting to ~/.config/clara/tasks).</div><div class=\"flex flex-col gap-3\"><template x-for=\"(dir, index) in cfg.task_dirs\" :key=\"index\"><div class=\"flex items-center gap-3\"><span class=\"text-xs font-mono text-base-content/40 w-6 text-right\" x-text=\"(index + 1) + '.'\"></span> <input type=\"text\" x-model=\"cfg.task_dirs[index]\" placeholder=\"~/custom/tasks\" class=\"input input-bordered flex-1 rounded-xl text-sm bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<button type=\"button\" @click=\"cfg.task_dirs.splice(index, 1)\" class=\"btn btn-ghost btn-sm btn-circle text-error/70 hover:text-error hover:bg-error/10\" title=\"Delete Directory\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div></template></div></div></div><!-- Plugins Whitelist (List of Objects) --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Plugin Whitelist</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Ordered whitelist of integration plugins to load on startup</p></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<button type=\"button\" @click=\"cfg.plugins.push({ name: '', path: '' })\" class=\"btn btn-xs btn-outline btn-primary rounded-lg gap-1 font-medium\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add Plugin</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</div><div class=\"p-6\"><div x-show=\"cfg.plugins.length === 0\" class=\"text-xs text-base-content/50 italic py-2\">No explicit whitelist configured (all discovered binaries in plugin search paths will be loaded).</div><div class=\"flex flex-col gap-3\"><template x-for=\"(p, index) in cfg.plugins\" :key=\"index\"><div class=\"p-4 rounded-xl border border-base-200 bg-base-200/20 flex flex-col md:flex-row items-start md:items-center gap-3\"><div class=\"flex-1 w-full md:w-auto\"><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Plugin Name</label> <input type=\"text\" x-model=\"p.name\" placeholder=\"e.g. chrome, zk, llm\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "></div><div class=\"flex-2 w-full md:w-auto\"><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Explicit Binary Path (Optional)</label> <input type=\"text\" x-model=\"p.path\" placeholder=\"/usr/local/libexec/ClaraBridge.app/Contents/MacOS/ClaraBridge\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div class=\"self-end md:self-center pt-2 md:pt-4\"><button type=\"button\" @click=\"cfg.plugins.splice(index, 1)\" class=\"btn btn-ghost btn-sm btn-circle text-error/70 hover:text-error hover:bg-error/10\" title=\"Delete Plugin\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</div></template></div></div></div><!-- Search Paths (Lists) --><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><!-- Plugin Search Paths --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden flex flex-col\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Plugin Search Paths</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Directories searched for plugin binaries</p></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<button type=\"button\" @click=\"cfg.plugin_search_paths.push('')\" class=\"btn btn-xs btn-outline btn-primary rounded-lg gap-1 font-medium\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</div><div class=\"p-6 flex-1 flex flex-col gap-3\"><div x-show=\"cfg.plugin_search_paths.length === 0\" class=\"text-xs text-base-content/50 italic py-2\">Using default plugin paths (~/.config/clara/integrations, /usr/local/libexec).</div><template x-for=\"(path, index) in cfg.plugin_search_paths\" :key=\"index\"><div class=\"flex items-center gap-2\"><input type=\"text\" x-model=\"cfg.plugin_search_paths[index]\" placeholder=\"/opt/clara/plugins\" class=\"input input-bordered flex-1 rounded-xl text-xs bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<button type=\"button\" @click=\"cfg.plugin_search_paths.splice(index, 1)\" class=\"btn btn-ghost btn-xs btn-circle text-error/70 hover:text-error\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div></template></div></div><!-- MCP Command Search Paths --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden flex flex-col\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">MCP Command Search Paths</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Directories prepended to PATH for MCP servers</p></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<button type=\"button\" @click=\"cfg.mcp_command_search_paths.push('')\" class=\"btn btn-xs btn-outline btn-primary rounded-lg gap-1 font-medium\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</div><div class=\"p-6 flex-1 flex flex-col gap-3\"><div x-show=\"cfg.mcp_command_search_paths.length === 0\" class=\"text-xs text-base-content/50 italic py-2\">Using system PATH, /usr/local/bin, /opt/homebrew/bin.</div><template x-for=\"(path, index) in cfg.mcp_command_search_paths\" :key=\"index\"><div class=\"flex items-center gap-2\"><input type=\"text\" x-model=\"cfg.mcp_command_search_paths[index]\" placeholder=\"/Users/username/.nvm/versions/node/bin\" class=\"input input-bordered flex-1 rounded-xl text-xs bg-base-200/40 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<button type=\"button\" @click=\"cfg.mcp_command_search_paths.splice(index, 1)\" class=\"btn btn-ghost btn-xs btn-circle text-error/70 hover:text-error\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div></template></div></div></div><!-- MCP Servers (Managed List of Servers & Env Variables) --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Managed MCP Servers</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Model Context Protocol tool endpoints (stdio subprocess or HTTP SSE)</p></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<button type=\"button\" @click=\"cfg.mcp_servers.push({ name: '', server_type: 'command', command: '', url: '', token: '', skip_verify: false, description: '', env: [] })\" class=\"btn btn-xs btn-outline btn-primary rounded-lg gap-1 font-medium\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add MCP Server</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</div><div class=\"p-6\"><div x-show=\"cfg.mcp_servers.length === 0\" class=\"text-xs text-base-content/50 italic py-2\">No MCP servers configured. Click 'Add MCP Server' to connect tool providers.</div><div class=\"flex flex-col gap-5\"><template x-for=\"(s, sIndex) in cfg.mcp_servers\" :key=\"sIndex\"><div class=\"rounded-xl border border-base-300 bg-base-200/30 p-5 flex flex-col gap-4\"><!-- Header with Mode Selector and Delete --><div class=\"flex flex-wrap items-center justify-between gap-3 border-b border-base-300/60 pb-3\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-neutral text-xs font-mono font-semibold\" x-text=\"'#' + (sIndex + 1)\"></span> <span class=\"font-semibold text-sm text-base-content font-mono\" x-text=\"s.name ? s.name : 'Untitled Server'\"></span></div><div class=\"flex items-center gap-3\"><div class=\"join\"><button type=\"button\" @click=\"s.server_type = 'command'\" class=\"btn btn-xs join-item\" :class=\"s.server_type !== 'http' ? 'btn-primary' : 'btn-ghost'\">Stdio Command</button> <button type=\"button\" @click=\"s.server_type = 'http'\" class=\"btn btn-xs join-item\" :class=\"s.server_type === 'http' ? 'btn-primary' : 'btn-ghost'\">Streamable HTTP</button></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<button type=\"button\" @click=\"cfg.mcp_servers.splice(sIndex, 1)\" class=\"btn btn-ghost btn-xs btn-circle text-error/70 hover:text-error hover:bg-error/10\" title=\"Delete Server\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</div></div><!-- Basic fields --><div class=\"grid grid-cols-1 md:grid-cols-2 gap-4\"><div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Server Name / Alias</label> <input type=\"text\" x-model=\"s.name\" placeholder=\"e.g. github, eve, postgres\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "></div><div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Description</label> <input type=\"text\" x-model=\"s.description\" placeholder=\"e.g. GitHub repositories & PRs\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "></div></div><!-- Stdio command fields --><div x-show=\"s.server_type !== 'http'\" class=\"flex flex-col gap-4\"><div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Execution Command</label> <input type=\"text\" x-model=\"s.command\" placeholder=\"github-mcp-server stdio\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "></div><!-- Environment Variables for this server --><div class=\"rounded-lg border border-base-200 bg-base-100 p-4\"><div class=\"flex items-center justify-between mb-2\"><span class=\"text-[10px] font-semibold uppercase tracking-wider text-base-content/70\">Environment Variables</span> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<button type=\"button\" @click=\"if (!s.env) s.env = []; s.env.push({ key: '', value: '' })\" class=\"btn btn-xs btn-ghost text-primary hover:bg-primary/10 rounded-md gap-1\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add Variable</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</div><div x-show=\"!s.env || s.env.length === 0\" class=\"text-xs text-base-content/40 italic py-1\">No extra environment variables configured.</div><div class=\"flex flex-col gap-2\"><template x-for=\"(e, eIndex) in (s.env || [])\" :key=\"eIndex\"><div class=\"flex items-center gap-2\"><input type=\"text\" x-model=\"e.key\" placeholder=\"ENV_VAR_NAME\" class=\"input input-bordered input-xs w-1/3 rounded-md font-mono text-xs bg-base-200/30 border-base-300/70\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "> <input type=\"text\" x-model=\"e.value\" placeholder=\"${VALUE} or raw\" class=\"input input-bordered input-xs flex-1 rounded-md font-mono text-xs bg-base-200/30 border-base-300/70\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<button type=\"button\" @click=\"s.env.splice(eIndex, 1)\" class=\"btn btn-ghost btn-xs btn-circle text-error/70 hover:text-error\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M6 18L18 6M6 6l12 12\"></path></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</div></template></div></div></div><!-- HTTP server fields --><div x-show=\"s.server_type === 'http'\" class=\"grid grid-cols-1 md:grid-cols-2 gap-4\"><div class=\"md:col-span-2\"><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Server URL</label> <input type=\"text\" x-model=\"s.url\" placeholder=\"https://eve.example.com/mcp/sse\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "></div><div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Bearer Token (Optional)</label> <input type=\"text\" x-model=\"s.token\" placeholder=\"${AUTH_TOKEN}\" class=\"input input-bordered input-sm w-full rounded-lg text-sm bg-base-100 border-base-300/70 focus:ring-2 focus:ring-primary focus:outline-none font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "></div><div class=\"flex items-center gap-2 pt-4\"><input type=\"checkbox\" x-model=\"s.skip_verify\" class=\"checkbox checkbox-primary checkbox-sm rounded-md\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, " disabled")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "> <span class=\"text-xs text-base-content/80\">Skip TLS certificate verification</span></div></div></div></template></div></div></div><!-- Built-in Integrations --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100\"><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Native Integrations</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Parameters for built-in database, notes vault, and relay connectors</p></div><div class=\"p-6 grid grid-cols-1 md:grid-cols-2 gap-6\"><!-- DB Integration --><div class=\"p-4 rounded-xl border border-base-200 bg-base-200/20 flex flex-col gap-2\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm badge-outline font-mono font-semibold\">db</span> <span class=\"text-xs font-semibold text-base-content\">SQLite Integration</span></div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mt-1\">Database File Path</label> <input type=\"text\" x-model=\"cfg.integrations.db.path\" placeholder=\"${HOME}/.local/share/clara/data.db\" class=\"input input-bordered input-sm w-full rounded-lg text-xs bg-base-100 font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "></div><!-- ZK Integration --><div class=\"p-4 rounded-xl border border-base-200 bg-base-200/20 flex flex-col gap-2\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm badge-outline font-mono font-semibold\">zk</span> <span class=\"text-xs font-semibold text-base-content\">Zettelkasten / Obsidian Vault</span></div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mt-1\">Vault Root Directory</label> <input type=\"text\" x-model=\"cfg.integrations.zk.vault_root\" placeholder=\"${HOME}/Documents/Notes\" class=\"input input-bordered input-sm w-full rounded-lg text-xs bg-base-100 font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "></div><!-- Webex Integration --><div class=\"p-4 rounded-xl border border-base-200 bg-base-200/20 flex flex-col gap-2\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm badge-outline font-mono font-semibold\">webex</span> <span class=\"text-xs font-semibold text-base-content\">Webex Native Integration</span></div><div class=\"grid grid-cols-2 gap-2 mt-1\"><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Client ID</label> <input type=\"text\" x-model=\"cfg.integrations.webex.client_id\" placeholder=\"${WEBEX_CLIENT_ID}\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "></div><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Bot Token</label> <input type=\"text\" x-model=\"cfg.integrations.webex.bot_token\" placeholder=\"${WEBEX_BOT_TOKEN}\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "></div><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Client Secret</label> <input type=\"text\" x-model=\"cfg.integrations.webex.client_secret\" placeholder=\"${WEBEX_CLIENT_SECRET}\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "></div><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Webhook Secret</label> <input type=\"text\" x-model=\"cfg.integrations.webex.webhook_secret\" placeholder=\"${WEBEX_WEBHOOK_SECRET}\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "></div></div></div><!-- Discord Integration --><div class=\"p-4 rounded-xl border border-base-200 bg-base-200/20 flex flex-col gap-2\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm badge-outline font-mono font-semibold\">discord</span> <span class=\"text-xs font-semibold text-base-content\">Discord Relay Integration</span></div><div class=\"grid grid-cols-2 gap-2 mt-1\"><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Bot Token</label> <input type=\"text\" x-model=\"cfg.integrations.discord.token\" placeholder=\"${DISCORD_BOT_TOKEN}\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "></div><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Shared Secret</label> <input type=\"text\" x-model=\"cfg.integrations.discord.secret\" placeholder=\"${CLARA_SHARED_SECRET}\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "></div><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Eve URL</label> <input type=\"text\" x-model=\"cfg.integrations.discord.eve_url\" placeholder=\"https://eve.brightpuddle.com\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "></div><div><label class=\"block text-[10px] text-base-content/60 font-semibold uppercase\">Machine Name</label> <input type=\"text\" x-model=\"cfg.integrations.discord.machine\" placeholder=\"mac-studio\" class=\"input input-bordered input-xs w-full rounded-md font-mono\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "></div></div></div></div></div><!-- Custom Integrations (List) --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 bg-base-100 flex items-center justify-between\"><div><h2 class=\"text-sm font-semibold uppercase tracking-wider text-base-content\">Custom & Extended Integrations</h2><p class=\"text-xs text-base-content/60 mt-0.5\">Additional plugin configurations (e.g. LLM multiplexer, custom sensors)</p></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "<button type=\"button\" @click=\"cfg.custom_integrations.push({ name: '', yaml: '' })\" class=\"btn btn-xs btn-outline btn-primary rounded-lg gap-1 font-medium\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> Add Integration</button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "</div><div class=\"p-6\"><div x-show=\"cfg.custom_integrations.length === 0\" class=\"text-xs text-base-content/50 italic py-2\">No custom integrations configured.</div><div class=\"flex flex-col gap-4\"><template x-for=\"(ci, cIndex) in cfg.custom_integrations\" :key=\"cIndex\"><div class=\"rounded-xl border border-base-300 bg-base-200/30 p-4 flex flex-col gap-3\"><div class=\"flex items-center justify-between gap-3\"><div class=\"flex-1 max-w-xs\"><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Integration Identifier</label> <input type=\"text\" x-model=\"ci.name\" placeholder=\"e.g. llm, shell, weather\" class=\"input input-bordered input-sm w-full rounded-lg font-mono text-xs bg-base-100\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<button type=\"button\" @click=\"cfg.custom_integrations.splice(cIndex, 1)\" class=\"btn btn-ghost btn-xs btn-circle text-error/70 hover:text-error hover:bg-error/10\" title=\"Delete Integration\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</div><div><label class=\"block text-[10px] font-semibold uppercase tracking-wider text-base-content/60 mb-1\">Configuration (YAML block)</label> <textarea x-model=\"ci.yaml\" placeholder=\"providers:&#10;  gemini:&#10;    api_key: '${GEMINI_API_KEY}'\" class=\"textarea textarea-bordered w-full font-mono text-xs min-h-[100px] bg-base-100 rounded-lg p-3 focus:ring-2 focus:ring-primary focus:outline-none\" spellcheck=\"false\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "></textarea></div></div></template></div></div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<div class=\"sticky bottom-6 z-10 flex justify-end\"><div class=\"bg-base-100/95 backdrop-blur-md border border-base-300 p-2.5 rounded-full shadow-lg flex items-center gap-3\"><button type=\"submit\" class=\"btn btn-primary rounded-full px-6 text-sm font-medium shadow-sm\">Save Structured Configuration</button></div></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</div></form></div><!-- Raw YAML View / Editor --><div x-show=\"tab === 'raw'\" class=\"flex flex-col gap-6\"><form method=\"POST\" action=\"/ui/config\"><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex items-center justify-between bg-base-100\"><h2 class=\"text-xs font-semibold uppercase tracking-wider text-base-content/70\">Raw YAML File</h2></div><div class=\"p-4\"><textarea name=\"yaml\" class=\"textarea w-full font-mono text-xs min-h-[60vh] bg-base-200/40 rounded-xl p-4 focus:outline-none focus:ring-2 focus:ring-primary border border-base-300/60\" spellcheck=\"false\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, " readonly")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, ">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var5 string
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(vm.YAML)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `config.templ`, Line: 798, Col: 18}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</textarea></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if !vm.ReadOnly {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "<div class=\"px-6 py-4 border-t border-base-300/70 flex justify-end bg-base-100\"><button type=\"submit\" class=\"btn btn-primary rounded-full px-6 text-sm font-medium shadow-sm\">Save YAML</button></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "</div></form></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

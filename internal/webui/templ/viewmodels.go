@@ -104,11 +104,12 @@ type LogsVM struct {
 	LevelFilter string
 }
 
-// ConfigVM holds data for the configuration YAML editor.
+// ConfigVM holds data for the configuration YAML and structured editor.
 type ConfigVM struct {
-	Base      BaseVM
-	YAML      string
-	Flash     string
-	FlashKind string
-	ReadOnly  bool
+	Base       BaseVM
+	ConfigJSON string
+	YAML       string
+	Flash      string
+	FlashKind  string
+	ReadOnly   bool
 }

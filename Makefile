@@ -1,4 +1,4 @@
-.PHONY: build test vet lint proto fmt bridge clean install install-clara uninstall sign-cert setup check-deps generate web-build
+.PHONY: build test test-e2e vet lint proto fmt bridge clean install install-clara uninstall sign-cert setup check-deps generate web-build
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
@@ -94,6 +94,10 @@ build-integrations:
 ## test: run all Go tests
 test:
 	go test ./... -timeout 60s
+
+## test-e2e: run Playwright headless browser integration tests for Web UI
+test-e2e: generate web-build
+	pnpm exec playwright test
 
 ## vet: run go vet
 vet:
