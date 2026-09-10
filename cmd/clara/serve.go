@@ -25,6 +25,7 @@ import (
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/internal/toolcatalog"
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/brightpuddle/clara/internal/webui"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -204,16 +205,30 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		cfg.DataDir+"/bin",
 	)
 
+	triggerRunner := trigger.NewRunner(60 * time.Second)
+	triggerMgr := trigger.NewManager(triggerRunner, sup.EventBus(), db)
+	for _, t := range cfg.Triggers {
+		if err := triggerMgr.Register(t); err != nil {
+			logger.Warn().Err(err).Str("trigger", t.ID).Msg("failed to register inline trigger")
+		}
+	}
+	for _, dir := range cfg.TriggerDirs() {
+		if err := triggerMgr.LoadFromDir(dir); err != nil {
+			logger.Warn().Err(err).Str("dir", dir).Msg("failed to load triggers from directory")
+		}
+	}
+
 	// Attach the web UI (served at /ui/ on the same port as the HTTP server).
 	uiCfgPath := cfgFile
 	if uiCfgPath == "" {
 		uiCfgPath = config.DefaultConfigPath()
 	}
-	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, evaluator, approvals, logger)
+	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, triggerMgr, db, logger)
 	httpServer.WebUI = ui
+	reg.SetAuditLogger(db)
 
 	handler := &daemonHandler{
-		base: buildHandler(reg, sup, db, ilog, loader, logger, shutdown, approvals, evaluator),
+		base: buildHandler(reg, sup, db, ilog, loader, logger, shutdown, approvals, evaluator, triggerMgr),
 		hub:  hub,
 	}
 	controlServer, err := ipc.NewServer(cfg.ControlSocketPath(), handler, logger)
@@ -242,6 +257,10 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		startSupervisor: func(ctx context.Context) error {
 			return sup.Start(ctx)
 		},
+		startTriggers: func(ctx context.Context) error {
+			return triggerMgr.Start(ctx)
+		},
+		stopTriggers: triggerMgr.Stop,
 		startEvaluator: func(ctx context.Context) error {
 			sub, unsubscribe := sup.EventBus().SubscribeCloud()
 			defer unsubscribe()
@@ -273,6 +292,8 @@ type daemonServiceHooks struct {
 	stopHTTPServer  func()
 	startControl    func(context.Context) error
 	startSupervisor func(context.Context) error
+	startTriggers   func(context.Context) error
+	stopTriggers    func()
 	startEvaluator  func(context.Context) error
 }
 
@@ -306,6 +327,13 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 		})
 	}
 
+	if hooks.stopTriggers != nil {
+		wg.Go(func() {
+			<-ctx.Done()
+			hooks.stopTriggers()
+		})
+	}
+
 	wg.Go(func() {
 		if err := hooks.startControl(ctx); err != nil {
 			logger.Error().Err(err).Msg("control server error")
@@ -316,6 +344,13 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 			logger.Error().Err(err).Msg("supervisor error")
 		}
 	})
+	if hooks.startTriggers != nil {
+		wg.Go(func() {
+			if err := hooks.startTriggers(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Error().Err(err).Msg("trigger manager error")
+			}
+		})
+	}
 
 	if hooks.startEvaluator != nil {
 		wg.Go(func() {
@@ -339,6 +374,7 @@ func buildHandler(
 	shutdown func(),
 	approvals *supervisor.ApprovalStore,
 	evaluator *supervisor.Evaluator,
+	triggerMgr *trigger.Manager,
 ) ipc.HandlerFunc {
 	return func(ctx context.Context, req *ipc.Request, w ipc.ResponseWriter) {
 		writeResp := func(resp *ipc.Response) {
@@ -355,32 +391,34 @@ func buildHandler(
 			writeResp(&ipc.Response{Message: "shutdown initiated"})
 
 		case ipc.MethodStatus:
-			// If an id is provided (even if empty string), return the active run states.
-			// This is used by 'clara intent logs'.
-			if id, ok := req.Params["id"].(string); ok {
-				states, err := db.ActiveRunStates(ctx, id)
-				if err != nil {
-					writeResp(&ipc.Response{Error: err.Error()})
-					return
+			triggers := []trigger.Definition{}
+			if triggerMgr != nil {
+				triggers = triggerMgr.List()
+			}
+			eventTriggers := 0
+			scheduleTriggers := 0
+			workerTriggers := 0
+			for _, t := range triggers {
+				switch t.Type {
+				case trigger.TypeEvent:
+					eventTriggers++
+				case trigger.TypeSchedule:
+					scheduleTriggers++
+				case trigger.TypeWorker:
+					workerTriggers++
 				}
-				writeResp(&ipc.Response{Data: states})
-				return
 			}
 
-			// Otherwise return general agent status.
-			intents := sup.IntentInfos()
-			active := 0
-			for _, intent := range intents {
-				if intent.Active {
-					active++
-				}
-			}
 			writeResp(&ipc.Response{
 				Message: "running",
 				Data: map[string]any{
-					"intents":        len(intents),
-					"active_intents": active,
-					"tools":          len(reg.Names()),
+					"status":            "running",
+					"triggers":          len(triggers),
+					"event_triggers":    eventTriggers,
+					"schedule_triggers": scheduleTriggers,
+					"worker_triggers":   workerTriggers,
+					"tools":             len(reg.Names()),
+					"mcp_servers":       len(reg.ServerStatuses()),
 				},
 			})
 
@@ -752,118 +790,109 @@ func buildHandler(
 			_ = reg.RemoveServer(name)
 			writeResp(&ipc.Response{Message: "MCP server " + name + " removed from config and stopped"})
 
-		case ipc.MethodApprovalList:
-			list := approvals.List()
-			writeResp(&ipc.Response{Data: list})
+		case ipc.MethodTriggerList:
+			if triggerMgr == nil {
+				writeResp(&ipc.Response{Error: "trigger manager unavailable"})
+				return
+			}
+			writeResp(&ipc.Response{Data: triggerMgr.List()})
 
-		case ipc.MethodApprovalShow:
+		case ipc.MethodTriggerGet:
+			if triggerMgr == nil {
+				writeResp(&ipc.Response{Error: "trigger manager unavailable"})
+				return
+			}
 			id, _ := req.Params["id"].(string)
-			if id == "" {
-				writeResp(&ipc.Response{Error: "missing id parameter"})
-				return
+			if t, ok := triggerMgr.Get(id); ok {
+				writeResp(&ipc.Response{Data: t})
+			} else {
+				writeResp(&ipc.Response{Error: "trigger not found: " + id})
 			}
-			ar, ok := approvals.Get(id)
-			if !ok {
-				writeResp(&ipc.Response{Error: "approval " + id + " not found"})
-				return
-			}
-			writeResp(&ipc.Response{Data: ar})
 
-		case ipc.MethodApprovalDecide:
+		case ipc.MethodTriggerTest:
+			if triggerMgr == nil {
+				writeResp(&ipc.Response{Error: "trigger manager unavailable"})
+				return
+			}
 			id, _ := req.Params["id"].(string)
-			optRaw := req.Params["option"]
-			optNum := 0
-			switch v := optRaw.(type) {
-			case float64:
-				optNum = int(v)
-			case int:
-				optNum = v
-			}
-			if id == "" || optNum == 0 {
-				writeResp(&ipc.Response{Error: "missing id or option parameter"})
-				return
-			}
-			if err := approvals.Decide(id, optNum); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: fmt.Sprintf("decision recorded for %s", id)})
-
-		case ipc.MethodApprovalSubmit:
-			id, _ := req.Params["id"].(string)
-			contextStr, _ := req.Params["context"].(string)
-			if id == "" {
-				id = "dummy-approval"
-			}
-			if contextStr == "" {
-				contextStr = "Dummy approval request for manual HITL testing"
-			}
-			go func() {
-				_, _ = approvals.Submit(context.Background(), supervisor.ApprovalRequest{
-					RequestID: id,
-					Context:   contextStr,
-					Options: []supervisor.ResolutionOption{
-						{ID: "allow", Description: "Allow the action", ActionCode: "allow"},
-						{ID: "deny", Description: "Deny the action", ActionCode: "deny"},
-					},
-				})
-			}()
-			writeResp(&ipc.Response{Message: "approval " + id + " submitted in background"})
-
-		case ipc.MethodRequest:
-			prompt, _ := req.Params["prompt"].(string)
-			if prompt == "" {
-				writeResp(&ipc.Response{Error: "missing prompt parameter"})
-				return
-			}
-			// Dispatch a clara.user.prompt CloudEvent to the event bus.
-			sup.EmitPromptEvent(prompt)
-			writeResp(&ipc.Response{Message: "request dispatched to evaluator"})
-
-		case ipc.MethodActuatorList:
-			list := sup.ActuatorInfos()
-			writeResp(&ipc.Response{Data: list})
-
-		case ipc.MethodActuatorRun:
-			id, _ := req.Params["id"].(string)
-			if id == "" {
-				writeResp(&ipc.Response{Error: "missing id parameter"})
-				return
-			}
-			if err := sup.RunActuator(ctx, id, req.Params["payload"]); err != nil {
-				writeResp(&ipc.Response{Error: err.Error()})
-				return
-			}
-			writeResp(&ipc.Response{Message: "actuator " + id + " dispatched"})
-
-		case ipc.MethodAutomationsList:
-			if evaluator == nil {
-				writeResp(&ipc.Response{Error: "evaluator unavailable"})
-				return
-			}
-			summaries, err := evaluator.AutomationsOverview(ctx)
+			matched, err := triggerMgr.Test(id, req.Params["event"])
 			if err != nil {
 				writeResp(&ipc.Response{Error: err.Error()})
 				return
 			}
-			writeResp(&ipc.Response{Data: summaries})
+			writeResp(&ipc.Response{Data: matched})
 
-		case ipc.MethodChat:
-			prompt, _ := req.Params["prompt"].(string)
-			if prompt == "" {
-				writeResp(&ipc.Response{Error: "missing prompt parameter"})
+		case ipc.MethodTriggerRun:
+			if triggerMgr == nil {
+				writeResp(&ipc.Response{Error: "trigger manager unavailable"})
 				return
 			}
-			if evaluator == nil {
-				writeResp(&ipc.Response{Error: "evaluator unavailable"})
-				return
-			}
-			result, err := evaluator.ChatDialog(ctx, prompt)
+			id, _ := req.Params["id"].(string)
+			record, err := triggerMgr.Run(ctx, id, req.Params["event"])
 			if err != nil {
 				writeResp(&ipc.Response{Error: err.Error()})
 				return
 			}
-			writeResp(&ipc.Response{Data: result})
+			writeResp(&ipc.Response{Data: record})
+
+		case ipc.MethodRunList:
+			limit := 50
+			if l, ok := req.Params["limit"].(int); ok && l > 0 {
+				limit = l
+			} else if l, ok := req.Params["limit"].(float64); ok && l > 0 {
+				limit = int(l)
+			}
+			triggerID, _ := req.Params["trigger"].(string)
+			runs, err := db.ListTriggerRuns(ctx, limit, triggerID)
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Data: runs})
+
+		case ipc.MethodRunGet:
+			id, _ := req.Params["id"].(string)
+			r, err := db.GetTriggerRun(ctx, id)
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			if r == nil {
+				writeResp(&ipc.Response{Error: "run not found: " + id})
+				return
+			}
+			writeResp(&ipc.Response{Data: r})
+
+		case ipc.MethodToolCalls:
+			limit := 50
+			runID, _ := req.Params["run_id"].(string)
+			calls, err := db.ListToolCalls(ctx, limit, runID)
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Data: calls})
+
+		case ipc.MethodEventEmit:
+			evType, _ := req.Params["type"].(string)
+			source, _ := req.Params["source"].(string)
+			if source == "" {
+				source = "cli"
+			}
+			dataMap, _ := req.Params["data"].(map[string]any)
+			if dataMap == nil {
+				dataMap = make(map[string]any)
+			}
+			ce := supervisor.CloudEvent{
+				ID:          fmt.Sprintf("ev-%d", time.Now().UnixNano()),
+				Source:      source,
+				Type:        evType,
+				Time:        time.Now(),
+				Data:        dataMap,
+				ContentType: "application/json",
+			}
+			sup.EventBus().PublishCloud(ce)
+			writeResp(&ipc.Response{Data: map[string]any{"id": ce.ID, "status": "emitted"}})
 
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})

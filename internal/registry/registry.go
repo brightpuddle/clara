@@ -7,12 +7,16 @@ package registry
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/brightpuddle/clara/internal/store"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -30,7 +34,16 @@ type ToolInfo struct {
 	Examples    []string
 }
 
+type contextKey string
+
+const RunIDContextKey contextKey = "clara_run_id"
+
 type NotificationHandler func(serverName, method string, params any)
+
+// AuditLogger records tool executions for debugging and auditing.
+type AuditLogger interface {
+	RecordToolCall(ctx context.Context, call store.ToolCallRecord) error
+}
 
 // Registry holds the set of available Tools and MCP server managers.
 type Registry struct {
@@ -43,6 +56,7 @@ type Registry struct {
 	examples              map[string][]string
 	notifications         []NotificationHandler
 	log                   zerolog.Logger
+	auditLogger           AuditLogger
 
 	// MCP server management.
 	servers        []*MCPServer
@@ -168,6 +182,13 @@ func (r *Registry) RegisterDefaultWithSpec(spec mcp.Tool, tool Tool) {
 	r.log.Debug().Str("default_tool", spec.Name).Msg("default tool registered")
 }
 
+// SetAuditLogger configures an audit logger for all tool invocations.
+func (r *Registry) SetAuditLogger(logger AuditLogger) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.auditLogger = logger
+}
+
 // Get returns the Tool registered under name, or false if not found.
 func (r *Registry) Get(name string) (Tool, bool) {
 	r.mu.RLock()
@@ -193,7 +214,39 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 		defer cancel()
 	}
 
+	start := time.Now()
 	result, err := tool(ctx, args)
+	duration := time.Since(start).Milliseconds()
+
+	r.mu.RLock()
+	logger := r.auditLogger
+	r.mu.RUnlock()
+
+	if logger != nil {
+		runID, _ := ctx.Value(RunIDContextKey).(string)
+		b := make([]byte, 4)
+		_, _ = rand.Read(b)
+		callID := fmt.Sprintf("call-%s-%s", start.Format("20060102-150405"), hex.EncodeToString(b))
+
+		inputJSON, _ := json.Marshal(args)
+		outputJSON, _ := json.Marshal(result)
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+		}
+
+		_ = logger.RecordToolCall(ctx, store.ToolCallRecord{
+			ID:         callID,
+			RunID:      runID,
+			ToolName:   name,
+			InputJSON:  string(inputJSON),
+			OutputJSON: string(outputJSON),
+			Error:      errStr,
+			DurationMs: duration,
+			CalledAt:   start,
+		})
+	}
+
 	if err != nil {
 		return nil, err
 	}

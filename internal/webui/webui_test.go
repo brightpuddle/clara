@@ -1,7 +1,6 @@
 package webui
 
 import (
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,18 +12,12 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
-
-type mockEvaluator struct {
-	summaries []supervisor.AutomationSummary
-}
-
-func (m *mockEvaluator) AutomationsOverview(ctx context.Context) ([]supervisor.AutomationSummary, error) {
-	return m.summaries, nil
-}
 
 type mockIntegLister struct {
 	list []map[string]any
@@ -42,33 +35,44 @@ func TestWebUI_Routes(t *testing.T) {
 	logPath := filepath.Join(tempDir, "clara.log")
 	_ = os.WriteFile(logPath, []byte(`{"level":"info","time":"2026-09-08T00:00:00Z","message":"test log line"}`+"\n"), 0o644)
 
+	dbPath := filepath.Join(tempDir, "clara.db")
+	logger := zerolog.New(io.Discard)
+	db, err := store.Open(dbPath, logger)
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+
 	cfg := &config.Config{
 		DataDir:  tempDir,
 		LogLevel: "info",
 	}
 
-	logger := zerolog.New(io.Discard)
 	reg := registry.New(logger)
 	sup := supervisor.New(reg, nil, logger)
-	approvals := supervisor.NewApprovalStore()
-	eval := &mockEvaluator{
-		summaries: []supervisor.AutomationSummary{
-			{
-				ActuatorID:  "test-actuator",
-				Name:        "Test Actuator",
-				Description: "A test actuator for webui tests",
-				Triggers:    []string{"clara.test"},
-				Routing:     "fast-path",
-			},
+	eventBus := supervisor.NewEventBus()
+	triggerMgr := trigger.NewManager(nil, eventBus, db)
+
+	_ = triggerMgr.Register(trigger.Definition{
+		ID:          "test-trigger",
+		Description: "A test trigger for webui tests",
+		Type:        trigger.TypeEvent,
+		Match: &trigger.Rule{
+			Field: "type",
+			Op:    trigger.OpEquals,
+			Value: "clara.test",
 		},
-	}
+		Action: trigger.Action{
+			Exec: "echo test",
+		},
+	})
+
 	integ := &mockIntegLister{
 		list: []map[string]any{
 			{"name": "test-plugin", "status": "running"},
 		},
 	}
 
-	ui := New(cfg, cfgPath, sup, reg, integ, eval, approvals, logger)
+	ui := New(cfg, cfgPath, sup, reg, integ, triggerMgr, db, logger)
 
 	mux := http.NewServeMux()
 	ui.Mount(mux)
@@ -91,22 +95,22 @@ func TestWebUI_Routes(t *testing.T) {
 			contains:     "Dashboard",
 		},
 		{
-			name:         "Actuators List",
-			path:         "/ui/actuators",
+			name:         "Triggers List",
+			path:         "/ui/triggers",
 			expectedCode: http.StatusOK,
-			contains:     "Test Actuator",
+			contains:     "test-trigger",
 		},
 		{
-			name:         "Actuator Detail",
-			path:         "/ui/actuators/test-actuator",
+			name:         "Trigger Detail",
+			path:         "/ui/triggers/test-trigger",
 			expectedCode: http.StatusOK,
-			contains:     "Test Actuator",
+			contains:     "test-trigger",
 		},
 		{
-			name:         "Approvals List",
-			path:         "/ui/approvals",
+			name:         "Runs List",
+			path:         "/ui/runs",
 			expectedCode: http.StatusOK,
-			contains:     "All Clear",
+			contains:     "Execution Runs",
 		},
 		{
 			name:         "Integrations",
@@ -181,14 +185,20 @@ integrations:
 	}
 
 	logger := zerolog.New(io.Discard)
+	dbPath := filepath.Join(tempDir, "clara.db")
+	db, err := store.Open(dbPath, logger)
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+
 	reg := registry.New(logger)
 	sup := supervisor.New(reg, nil, logger)
-	approvals := supervisor.NewApprovalStore()
-	eval := &mockEvaluator{}
+	eventBus := supervisor.NewEventBus()
+	triggerMgr := trigger.NewManager(nil, eventBus, db)
 	integ := &mockIntegLister{}
 	cfg := &config.Config{DataDir: tempDir, LogLevel: "info"}
 
-	ui := New(cfg, cfgPath, sup, reg, integ, eval, approvals, logger)
+	ui := New(cfg, cfgPath, sup, reg, integ, triggerMgr, db, logger)
 	mux := http.NewServeMux()
 	ui.Mount(mux)
 

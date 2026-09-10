@@ -107,9 +107,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 // streamMethods is the set of IPC methods that use the streaming wire protocol.
 var streamMethods = map[string]bool{
-	MethodEventLogs:     true,
-	MethodEvaluatorLogs: true,
-	MethodActuatorLogs:  true,
+	MethodEventLogs: true,
 }
 
 func (s *Server) handleConn(ctx context.Context, conn net.Conn) {

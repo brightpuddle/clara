@@ -26,25 +26,17 @@ const (
 	MethodMCPAdd       = "mcp.add"
 	MethodMCPRemove    = "mcp.remove"
 
-	// V2 observability streams
-	MethodEventLogs     = "event.logs"
-	MethodEvaluatorLogs = "evaluator.logs"
-	MethodActuatorList  = "actuator.list"
-	MethodActuatorRun   = "actuator.run"
-	MethodActuatorLogs  = "actuator.logs"
+	MethodEventLogs = "event.logs"
+	MethodEventEmit = "event.emit"
 
-	// V2 HITL approvals
-	MethodApprovalList   = "approval.list"
-	MethodApprovalShow   = "approval.show"
-	MethodApprovalDecide = "approval.decide"
-	MethodApprovalSubmit = "approval.submit"
-
-	// V2 natural-language request & chat
-	MethodRequest = "request"
-	MethodChat    = "chat"
-
-	// V2 automations discovery
-	MethodAutomationsList = "automations.list"
+	// Triggers and Supervised Runs
+	MethodTriggerList = "trigger.list"
+	MethodTriggerGet  = "trigger.get"
+	MethodTriggerTest = "trigger.test"
+	MethodTriggerRun  = "trigger.run"
+	MethodRunList     = "run.list"
+	MethodRunGet      = "run.get"
+	MethodToolCalls   = "tool.calls"
 )
 
 // StreamEntry is a single line-delimited JSON entry written on a streaming

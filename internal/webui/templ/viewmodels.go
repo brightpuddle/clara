@@ -1,7 +1,8 @@
 package templ
 
 import (
-	"github.com/brightpuddle/clara/internal/supervisor"
+	"github.com/brightpuddle/clara/internal/store"
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/brightpuddle/clara/internal/webui/manifest"
 )
 
@@ -57,37 +58,42 @@ func NewBaseVM(m manifest.Manifest, isDev bool, devHost, pageTitle, location str
 
 // DashboardVM holds data for the dashboard page.
 type DashboardVM struct {
-	Base              BaseVM
-	ActuatorsCount    int
-	ToolsCount        int
-	IntegrationsCount int
-	PendingApprovals  int
-	Automations       []supervisor.AutomationSummary
-	Integrations      []map[string]any
-	RecentLogs        []string
+	Base                 BaseVM
+	TriggersCount        int
+	EventTriggersCount   int
+	ScheduleTriggersCount int
+	WorkerTriggersCount  int
+	ToolsCount           int
+	IntegrationsCount    int
+	Triggers             []trigger.Definition
+	RecentRuns           []store.TriggerRunRecord
+	Integrations         []map[string]any
+	RecentLogs           []string
 }
 
-// ActuatorsVM holds data for the actuators/automations list page.
-type ActuatorsVM struct {
-	Base        BaseVM
-	Automations []supervisor.AutomationSummary
-}
-
-// ActuatorDetailVM holds data for an actuator detail page.
-type ActuatorDetailVM struct {
+// TriggersVM holds data for the triggers list page.
+type TriggersVM struct {
 	Base       BaseVM
-	Summary    supervisor.AutomationSummary
-	RecentLogs []string
-	RunResult  string
-	RunSuccess bool
+	Triggers   []trigger.Definition
+	RecentRuns []store.TriggerRunRecord
 }
 
-// ApprovalsVM holds data for the HITL approvals page.
-type ApprovalsVM struct {
-	Base      BaseVM
-	Approvals []supervisor.ApprovalRequest
-	Flash     string
-	FlashKind string
+// TriggerDetailVM holds data for a trigger detail page.
+type TriggerDetailVM struct {
+	Base       BaseVM
+	Trigger    trigger.Definition
+	RecentRuns []store.TriggerRunRecord
+	RunResult  *trigger.RunRecord
+	MatchResult *bool
+}
+
+// RunsVM holds data for the execution audit log page.
+type RunsVM struct {
+	Base          BaseVM
+	Runs          []store.TriggerRunRecord
+	SelectedRun   *store.TriggerRunRecord
+	ToolCalls     []store.ToolCallRecord
+	TriggerFilter string
 }
 
 // IntegrationsVM holds data for the integrations and MCP servers page.

@@ -13,18 +13,12 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/brightpuddle/clara/internal/webui"
 	"github.com/rs/zerolog"
 )
-
-type mockEvaluator struct {
-	summaries []supervisor.AutomationSummary
-}
-
-func (m *mockEvaluator) AutomationsOverview(ctx context.Context) ([]supervisor.AutomationSummary, error) {
-	return m.summaries, nil
-}
 
 type mockIntegLister struct {
 	list []map[string]any
@@ -69,51 +63,51 @@ integrations:
 
 	logPath := filepath.Join(tempDir, "clara.log")
 	logContent := `{"level":"info","time":"` + time.Now().Format(time.RFC3339) + `","message":"clara test daemon initialized"}
-{"level":"debug","time":"` + time.Now().Format(time.RFC3339) + `","message":"evaluator ready"}
+{"level":"debug","time":"` + time.Now().Format(time.RFC3339) + `","message":"trigger manager ready"}
 {"level":"info","time":"` + time.Now().Format(time.RFC3339) + `","message":"integration plugins loaded"}
 `
 	_ = os.WriteFile(logPath, []byte(logContent), 0o644)
+
+	dbPath := filepath.Join(tempDir, "clara.db")
+	logger := zerolog.New(io.Discard)
+	db, err := store.Open(dbPath, logger)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open store: %v\n", err)
+		os.Exit(1)
+	}
 
 	cfg := &config.Config{
 		DataDir:  tempDir,
 		LogLevel: "info",
 	}
 
-	logger := zerolog.New(io.Discard)
 	reg := registry.New(logger)
 	sup := supervisor.New(reg, nil, logger)
-	approvals := supervisor.NewApprovalStore()
+	eventBus := supervisor.NewEventBus()
+	triggerMgr := trigger.NewManager(nil, eventBus, db)
 
-	// Add sample pending approvals in background goroutine so Submit keeps it pending
-	go approvals.Submit(context.Background(), supervisor.ApprovalRequest{
-		RequestID: "req-test-1",
-		Context:   "Actuator requests capability: write access to ~/.ssh/config",
-		Options: []supervisor.ResolutionOption{
-			{ID: "allow", Description: "Allow once", ActionCode: "allow"},
-			{ID: "deny", Description: "Deny and block", ActionCode: "deny"},
+	_ = triggerMgr.Register(trigger.Definition{
+		ID:          "github-pr-reviewer",
+		Description: "Automatically reviews incoming pull requests and comments feedback",
+		Type:        trigger.TypeEvent,
+		Match: &trigger.Rule{
+			Field: "type",
+			Op:    trigger.OpContains,
+			Value: "pull_request",
+		},
+		Action: trigger.Action{
+			Exec: "lua scripts/review.lua",
 		},
 	})
-
-	eval := &mockEvaluator{
-		summaries: []supervisor.AutomationSummary{
-			{
-				ActuatorID:  "github-pr-reviewer",
-				Name:        "GitHub PR Reviewer",
-				Description: "Automatically reviews incoming pull requests and comments feedback",
-				Triggers:    []string{"github.pull_request.opened", "github.pull_request.synchronize"},
-				Routing:     "fast-path",
-				RuleID:      "rule-gh-pr-123",
-				ExpiresIn:   "24h",
-			},
-			{
-				ActuatorID:  "slack-incident-responder",
-				Name:        "Slack Incident Responder",
-				Description: "Coordinates incident response triage and notifications",
-				Triggers:    []string{"incident.alert"},
-				Routing:     "llm-dynamic",
-			},
+	_ = triggerMgr.Register(trigger.Definition{
+		ID:          "slack-incident-responder",
+		Description: "Coordinates incident response triage and notifications",
+		Type:        trigger.TypeWorker,
+		Action: trigger.Action{
+			Exec:    "lua workers/incident.lua",
+			Restart: "always",
 		},
-	}
+	})
 
 	integ := &mockIntegLister{
 		list: []map[string]any{
@@ -122,7 +116,7 @@ integrations:
 		},
 	}
 
-	ui := webui.New(cfg, cfgPath, sup, reg, integ, eval, approvals, logger)
+	ui := webui.New(cfg, cfgPath, sup, reg, integ, triggerMgr, db, logger)
 	mux := http.NewServeMux()
 	ui.Mount(mux)
 

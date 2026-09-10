@@ -1,0 +1,341 @@
+package templ
+
+import (
+	"fmt"
+	"github.com/brightpuddle/clara/internal/trigger"
+)
+
+templ Triggers(vm *TriggersVM) {
+	@Layout(vm.Base.Layout) {
+		<div class="p-6 max-w-7xl mx-auto flex flex-col gap-6">
+			<!-- Header -->
+			<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+				<div>
+					<h1 class="text-2xl font-bold tracking-tight m3-headline">Triggers</h1>
+					<p class="text-sm text-base-content/60 mt-1">
+						Managed event smart filters, cron schedules, and supervised background workers.
+					</p>
+				</div>
+				<div class="flex items-center gap-2">
+					<span class="badge badge-primary badge-lg font-semibold">{ fmt.Sprintf("%d Total", len(vm.Triggers)) }</span>
+				</div>
+			</div>
+
+			<!-- Triggers Table Card -->
+			<div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+				<div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50">
+					<h2 class="font-bold text-base">Active Triggers</h2>
+				</div>
+				if len(vm.Triggers) == 0 {
+					<div class="p-12 text-center text-base-content/60">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+						</svg>
+						<p class="font-medium">No triggers loaded.</p>
+						<p class="text-xs mt-1">Add trigger definitions in config.yaml or ~/.config/clara/triggers/*.yaml</p>
+					</div>
+				} else {
+					<div class="overflow-x-auto">
+						<table class="table table-zebra w-full">
+							<thead>
+								<tr class="text-xs text-base-content/60 uppercase">
+									<th>Trigger ID / Name</th>
+									<th>Type</th>
+									<th>Matching / Schedule</th>
+									<th>Action Exec</th>
+									<th>Status</th>
+									<th class="text-right">Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								for _, t := range vm.Triggers {
+									<tr class="hover">
+										<td>
+											<div class="font-semibold">{ t.ID }</div>
+											if t.Name != "" && t.Name != t.ID {
+												<div class="text-xs text-base-content/60">{ t.Name }</div>
+											}
+										</td>
+										<td>
+											if t.Type == trigger.TypeEvent {
+												<span class="badge badge-secondary badge-sm">event</span>
+											} else if t.Type == trigger.TypeSchedule {
+												<span class="badge badge-accent badge-sm">schedule</span>
+											} else if t.Type == trigger.TypeWorker {
+												<span class="badge badge-info badge-sm">worker</span>
+											}
+										</td>
+										<td>
+											<code class="text-xs bg-base-200 px-2 py-1 rounded">
+												if t.Type == trigger.TypeSchedule {
+													{ t.Schedule }
+												} else if t.Type == trigger.TypeEvent {
+													if t.Match != nil && t.Match.Field != "" {
+														{ fmt.Sprintf("%s %s %v", t.Match.Field, t.Match.Op, t.Match.Value) }
+													} else if t.Match != nil {
+														{ "compound boolean rule" }
+													} else {
+														{ "*" }
+													}
+												} else if t.Type == trigger.TypeWorker {
+													{ fmt.Sprintf("restart:%s", t.Action.Restart) }
+												}
+											</code>
+										</td>
+										<td>
+											<div class="text-xs font-mono truncate max-w-xs">{ t.Action.Exec }</div>
+										</td>
+										<td>
+											if t.Enabled {
+												<span class="badge badge-success badge-sm">enabled</span>
+											} else {
+												<span class="badge badge-neutral badge-sm">disabled</span>
+											}
+										</td>
+										<td class="text-right">
+											<a href={ templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", t.ID)) } class="btn btn-sm btn-ghost btn-outline text-xs">
+												Inspect & Run
+											</a>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</div>
+
+			<!-- Recent Executions -->
+			<div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+				<div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50">
+					<h2 class="font-bold text-base">Recent Execution Runs</h2>
+					<a href="/ui/runs" class="text-xs link link-primary">View All Runs &rarr;</a>
+				</div>
+				if len(vm.RecentRuns) == 0 {
+					<div class="p-8 text-center text-xs text-base-content/50">
+						No execution runs recorded yet.
+					</div>
+				} else {
+					<div class="overflow-x-auto">
+						<table class="table table-xs table-zebra w-full">
+							<thead>
+								<tr class="text-base-content/60">
+									<th>Run ID</th>
+									<th>Trigger</th>
+									<th>Status</th>
+									<th>Exit Code</th>
+									<th>Duration</th>
+									<th>Started At</th>
+								</tr>
+							</thead>
+							<tbody>
+								for _, r := range vm.RecentRuns {
+									<tr>
+										<td class="font-mono">{ r.ID }</td>
+										<td><span class="font-semibold">{ r.TriggerID }</span></td>
+										<td>
+											if r.Status == "success" {
+												<span class="badge badge-success badge-xs">success</span>
+											} else if r.Status == "failure" {
+												<span class="badge badge-error badge-xs">failure</span>
+											} else if r.Status == "timeout" {
+												<span class="badge badge-warning badge-xs">timeout</span>
+											} else {
+												<span class="badge badge-neutral badge-xs">{ r.Status }</span>
+											}
+										</td>
+										<td class="font-mono">{ fmt.Sprintf("%d", r.ExitCode) }</td>
+										<td>{ fmt.Sprintf("%dms", r.DurationMs) }</td>
+										<td class="text-base-content/60">{ r.StartedAt.Format("2006-01-02 15:04:05") }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}
+
+templ TriggerDetail(vm *TriggerDetailVM) {
+	@Layout(vm.Base.Layout) {
+		<div class="p-6 max-w-7xl mx-auto flex flex-col gap-6">
+			<!-- Breadcrumb & Header -->
+			<div class="flex items-center justify-between">
+				<div>
+					<div class="text-xs breadcrumbs mb-1">
+						<ul>
+							<li><a href="/ui/triggers">Triggers</a></li>
+							<li class="font-semibold">{ vm.Trigger.ID }</li>
+						</ul>
+					</div>
+					<h1 class="text-2xl font-bold tracking-tight m3-headline flex items-center gap-3">
+						{ vm.Trigger.ID }
+						if vm.Trigger.Type == trigger.TypeEvent {
+							<span class="badge badge-secondary badge-sm">event</span>
+						} else if vm.Trigger.Type == trigger.TypeSchedule {
+							<span class="badge badge-accent badge-sm">schedule</span>
+						} else if vm.Trigger.Type == trigger.TypeWorker {
+							<span class="badge badge-info badge-sm">worker</span>
+						}
+						if vm.Trigger.Enabled {
+							<span class="badge badge-success badge-sm">enabled</span>
+						} else {
+							<span class="badge badge-neutral badge-sm">disabled</span>
+						}
+					</h1>
+					if vm.Trigger.Description != "" {
+						<p class="text-sm text-base-content/60 mt-1">{ vm.Trigger.Description }</p>
+					}
+				</div>
+			</div>
+
+			<!-- Grid: Configuration & Manual Run -->
+			<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+				<!-- Action Configuration Card -->
+				<div class="card bg-base-100 border border-base-300 shadow-sm">
+					<div class="p-4 border-b border-base-300 bg-base-200/50">
+						<h2 class="font-bold text-base">Trigger Action & Policy</h2>
+					</div>
+					<div class="p-4 flex flex-col gap-3 text-sm">
+						<div>
+							<span class="text-xs text-base-content/50 uppercase font-semibold">Executable Command:</span>
+							<div class="font-mono bg-base-200 p-2 rounded mt-1 text-xs break-all">{ vm.Trigger.Action.Exec }</div>
+						</div>
+						if len(vm.Trigger.Action.Args) > 0 {
+							<div>
+								<span class="text-xs text-base-content/50 uppercase font-semibold">Arguments:</span>
+								<div class="font-mono bg-base-200 p-2 rounded mt-1 text-xs break-all">
+									for _, arg := range vm.Trigger.Action.Args {
+										<span class="mr-2 px-1.5 py-0.5 bg-base-300 rounded">{ arg }</span>
+									}
+								</div>
+							</div>
+						}
+						if vm.Trigger.Type == trigger.TypeSchedule {
+							<div>
+								<span class="text-xs text-base-content/50 uppercase font-semibold">Schedule:</span>
+								<div class="font-mono bg-base-200 p-2 rounded mt-1 text-xs">{ vm.Trigger.Schedule }</div>
+							</div>
+						}
+						if vm.Trigger.Type == trigger.TypeWorker {
+							<div class="grid grid-cols-2 gap-2">
+								<div>
+									<span class="text-xs text-base-content/50 uppercase font-semibold">Restart Policy:</span>
+									<div class="font-medium mt-1">{ string(vm.Trigger.Action.Restart) }</div>
+								</div>
+								<div>
+									<span class="text-xs text-base-content/50 uppercase font-semibold">Restart Delay:</span>
+									<div class="font-medium mt-1">{ vm.Trigger.Action.RestartDelay.String() }</div>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+
+				<!-- Manual Test / Run Execution Card -->
+				<div class="card bg-base-100 border border-base-300 shadow-sm">
+					<div class="p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center">
+						<h2 class="font-bold text-base">Execute / Test Action</h2>
+					</div>
+					<form method="POST" action={ templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/run", vm.Trigger.ID)) } class="p-4 flex flex-col gap-3">
+						<div>
+							<label class="label text-xs font-semibold uppercase text-base-content/60">Event Payload JSON (optional):</label>
+							<textarea name="event_json" class="textarea textarea-bordered w-full font-mono text-xs h-24" placeholder='{"type": "sample.event", "data": {"key": "value"}}'></textarea>
+						</div>
+						<div class="flex gap-2 justify-end">
+							<button type="submit" class="btn btn-primary btn-sm">
+								Run Trigger Action
+							</button>
+						</div>
+					</form>
+				</div>
+			</div>
+
+			<!-- Execution Result Output (if any) -->
+			if vm.RunResult != nil {
+				<div class="card bg-base-100 border border-base-300 shadow-sm">
+					<div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50">
+						<div class="flex items-center gap-3">
+							<h2 class="font-bold text-base">Execution Result</h2>
+							if vm.RunResult.Status == "success" {
+								<span class="badge badge-success badge-sm">success</span>
+							} else {
+								<span class="badge badge-error badge-sm">{ string(vm.RunResult.Status) }</span>
+							}
+							<span class="text-xs text-base-content/60 font-mono">Exit Code: { fmt.Sprintf("%d", vm.RunResult.ExitCode) }</span>
+							<span class="text-xs text-base-content/60 font-mono">{ fmt.Sprintf("%dms", vm.RunResult.DurationMs) }</span>
+						</div>
+					</div>
+					<div class="p-4 flex flex-col gap-4">
+						if vm.RunResult.Error != "" {
+							<div class="alert alert-error text-xs">{ vm.RunResult.Error }</div>
+						}
+						if vm.RunResult.Stdout != "" {
+							<div>
+								<div class="text-xs font-semibold uppercase text-base-content/60 mb-1">Stdout:</div>
+								<pre class="bg-base-300 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">{ vm.RunResult.Stdout }</pre>
+							</div>
+						}
+						if vm.RunResult.Stderr != "" {
+							<div>
+								<div class="text-xs font-semibold uppercase text-base-content/60 mb-1">Stderr:</div>
+								<pre class="bg-base-300 text-error p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">{ vm.RunResult.Stderr }</pre>
+							</div>
+						}
+					</div>
+				</div>
+			}
+
+			<!-- Trigger Run History -->
+			<div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+				<div class="p-4 border-b border-base-300 bg-base-200/50">
+					<h2 class="font-bold text-base">Run History for { vm.Trigger.ID }</h2>
+				</div>
+				if len(vm.RecentRuns) == 0 {
+					<div class="p-8 text-center text-xs text-base-content/50">
+						No runs recorded for this trigger yet.
+					</div>
+				} else {
+					<div class="overflow-x-auto">
+						<table class="table table-xs table-zebra w-full">
+							<thead>
+								<tr class="text-base-content/60">
+									<th>Run ID</th>
+									<th>Status</th>
+									<th>Exit Code</th>
+									<th>Duration</th>
+									<th>Started At</th>
+									<th class="text-right">Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								for _, r := range vm.RecentRuns {
+									<tr>
+										<td class="font-mono">{ r.ID }</td>
+										<td>
+											if r.Status == "success" {
+												<span class="badge badge-success badge-xs">success</span>
+											} else {
+												<span class="badge badge-error badge-xs">{ r.Status }</span>
+											}
+										</td>
+										<td class="font-mono">{ fmt.Sprintf("%d", r.ExitCode) }</td>
+										<td>{ fmt.Sprintf("%dms", r.DurationMs) }</td>
+										<td class="text-base-content/60">{ r.StartedAt.Format("2006-01-02 15:04:05") }</td>
+										<td class="text-right">
+											<a href={ templ.SafeURL(fmt.Sprintf("/ui/runs?id=%s", r.ID)) } class="btn btn-ghost btn-xs text-xs">
+												View Logs
+											</a>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}

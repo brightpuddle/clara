@@ -12,7 +12,6 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/ipc"
-	"github.com/brightpuddle/clara/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -24,23 +23,17 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "clara",
-	Short: "Local agentic orchestrator for macOS",
-	Long: `Clara is a local-first agentic orchestrator for macOS.
+	Short: "Local trigger manager, event bus, and MCP tool host",
+	Long: `Clara is a centralized trigger, event, and MCP tool supervisor.
 
-Run 'clara' to launch the interactive dashboard (TUI).
-Run 'clara serve' to start the background agent.
-Run 'clara status' to check on a running agent.
+Run 'clara serve' to start the background daemon.
+Run 'clara status' to check on a running daemon.
+Run 'clara trigger list' to view configured triggers.
+Run 'clara tool list' to view registered MCP tools.
 Run 'clara --help' to see all available commands.`,
-	RunE:         runTUI,
-	SilenceUsage: true,
-}
-
-// dashboardCmd explicitly launches the interactive TUI.
-var dashboardCmd = &cobra.Command{
-	Use:          "dashboard",
-	Aliases:      []string{"tui", "top"},
-	Short:        "Launch interactive terminal dashboard (TUI)",
-	RunE:         runTUI,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return cmd.Help()
+	},
 	SilenceUsage: true,
 }
 
@@ -64,9 +57,10 @@ func init() {
 	}
 
 	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(dashboardCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(toolCmd)
+	rootCmd.AddCommand(triggerCmd)
+	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(pluginCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(statusCmd)
@@ -87,14 +81,6 @@ func loadConfig() error {
 		cfg, err = config.LoadDefault()
 	}
 	return err
-}
-
-// runTUI launches the interactive lazygit-style terminal UI.
-func runTUI(cmd *cobra.Command, _ []string) error {
-	if !isTerminalFile(os.Stdout) || outputFmt == "json" {
-		return cmd.Help()
-	}
-	return tui.Run(cfg.ControlSocketPath(), cfgFile)
 }
 
 // wantJSON returns true when output should be machine-readable JSON:

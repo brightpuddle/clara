@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/cockroachdb/errors"
 	"github.com/google/shlex"
 	"gopkg.in/yaml.v3"
@@ -52,6 +53,13 @@ type Config struct {
 	// back to the CLARA_REPO_ROOT environment variable, then walks up from the
 	// running binary's directory.
 	BuilderRepoRoot string `yaml:"builder_repo_root"`
+
+	// Triggers is the list of trigger definitions configured inline in config.yaml.
+	Triggers []trigger.Definition `yaml:"triggers"`
+
+	// TriggerDirs overrides the default directories where trigger .yaml files are loaded.
+	// When non-empty, the default (~/.config/clara/triggers) is not used unless explicitly listed.
+	TriggerDirsOverride []string `yaml:"trigger_dirs"`
 
 	// TaskDirs overrides the default directories where .star intent files are watched.
 	// When non-empty, the default (~/.config/clara/tasks) is not used unless
@@ -277,6 +285,19 @@ func expandTilde(path string) string {
 		return home + path[1:]
 	}
 	return path
+}
+
+// TriggerDirs returns the directories where trigger .yaml files are loaded.
+// Leading tildes in each path are expanded to the user's home directory.
+func (c *Config) TriggerDirs() []string {
+	if len(c.TriggerDirsOverride) > 0 {
+		expanded := make([]string, len(c.TriggerDirsOverride))
+		for i, d := range c.TriggerDirsOverride {
+			expanded[i] = expandTilde(d)
+		}
+		return expanded
+	}
+	return []string{filepath.Join(filepath.Dir(DefaultConfigPath()), "triggers")}
 }
 
 // TaskDirs returns the directories where .star intent files are watched.

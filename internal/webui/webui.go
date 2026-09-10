@@ -6,7 +6,6 @@
 package webui
 
 import (
-	"context"
 	"embed"
 	"io/fs"
 	"net/http"
@@ -16,7 +15,9 @@ import (
 	"github.com/a-h/templ"
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/brightpuddle/clara/internal/webui/manifest"
 	ui "github.com/brightpuddle/clara/internal/webui/templ"
 	"github.com/labstack/echo/v4"
@@ -27,11 +28,6 @@ import (
 //go:embed all:dist
 var distEmbedFS embed.FS
 
-// EvaluatorInspector provides access to discovered actuators and fast-path heuristics.
-type EvaluatorInspector interface {
-	AutomationsOverview(ctx context.Context) ([]supervisor.AutomationSummary, error)
-}
-
 // IntegrationLister is implemented by *pluginLoader in cmd/clara.
 type IntegrationLister interface {
 	List() []map[string]any
@@ -39,17 +35,17 @@ type IntegrationLister interface {
 
 // WebUI is the Clara management UI.
 type WebUI struct {
-	cfg       *config.Config
-	cfgPath   string
-	sup       *supervisor.Supervisor
-	reg       *registry.Registry
-	integ     IntegrationLister
-	evaluator EvaluatorInspector
-	approvals *supervisor.ApprovalStore
-	log       zerolog.Logger
-	manifest  manifest.Manifest
-	isDev     bool
-	devHost   string
+	cfg        *config.Config
+	cfgPath    string
+	sup        *supervisor.Supervisor
+	reg        *registry.Registry
+	integ      IntegrationLister
+	triggerMgr *trigger.Manager
+	db         *store.Store
+	log        zerolog.Logger
+	manifest   manifest.Manifest
+	isDev      bool
+	devHost    string
 }
 
 // New constructs a WebUI.
@@ -59,8 +55,8 @@ func New(
 	sup *supervisor.Supervisor,
 	reg *registry.Registry,
 	integ IntegrationLister,
-	evaluator EvaluatorInspector,
-	approvals *supervisor.ApprovalStore,
+	triggerMgr *trigger.Manager,
+	db *store.Store,
 	log zerolog.Logger,
 ) *WebUI {
 	isDev := strings.ToLower(os.Getenv("ENV")) == "dev" || strings.ToLower(os.Getenv("CLARA_ENV")) == "dev"
@@ -88,17 +84,17 @@ func New(
 	}
 
 	return &WebUI{
-		cfg:       cfg,
-		cfgPath:   cfgPath,
-		sup:       sup,
-		reg:       reg,
-		integ:     integ,
-		evaluator: evaluator,
-		approvals: approvals,
-		log:       log.With().Str("component", "webui").Logger(),
-		manifest:  m,
-		isDev:     isDev,
-		devHost:   devHost,
+		cfg:        cfg,
+		cfgPath:    cfgPath,
+		sup:        sup,
+		reg:        reg,
+		integ:      integ,
+		triggerMgr: triggerMgr,
+		db:         db,
+		log:        log.With().Str("component", "webui").Logger(),
+		manifest:   m,
+		isDev:      isDev,
+		devHost:    devHost,
 	}
 }
 
@@ -152,11 +148,10 @@ func (w *WebUI) Mount(mux *http.ServeMux) {
 		return c.Redirect(http.StatusMovedPermanently, "/ui/")
 	})
 	e.GET("/ui/", w.handleDashboard)
-	e.GET("/ui/actuators", w.handleActuatorsList)
-	e.GET("/ui/actuators/:id", w.handleActuatorDetail)
-	e.POST("/ui/actuators/:id/run", w.handleActuatorRun)
-	e.GET("/ui/approvals", w.handleApprovalsList)
-	e.POST("/ui/approvals/:id/decide", w.handleApprovalDecide)
+	e.GET("/ui/triggers", w.handleTriggersList)
+	e.GET("/ui/triggers/:id", w.handleTriggerDetail)
+	e.POST("/ui/triggers/:id/run", w.handleTriggerRun)
+	e.GET("/ui/runs", w.handleRunsList)
 	e.GET("/ui/integrations", w.handleIntegrations)
 	e.GET("/ui/logs", w.handleLogs)
 	e.GET("/ui/logs/stream", w.handleLogsStream)
@@ -177,7 +172,7 @@ func (w *WebUI) Mount(mux *http.ServeMux) {
 	mux.Handle("/favicon.svg", e)
 }
 
-// baseVM returns a initialized BaseVM for rendering pages.
+// baseVM returns an initialized BaseVM for rendering pages.
 func (w *WebUI) baseVM(pageTitle, location string) ui.BaseVM {
 	return ui.NewBaseVM(w.manifest, w.isDev, w.devHost, pageTitle, location)
 }

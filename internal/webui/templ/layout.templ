@@ -43,9 +43,20 @@ templ StatusBadge(status string) {
 			<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300">{ status }</span>
 		case "unloaded", "stopped", "idle":
 			<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-base-300/80 text-base-content/70">{ status }</span>
-		case "llm-dynamic":
-			<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300">{ status }</span>
 		default:
 			<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border border-base-300 text-base-content/70">{ status }</span>
 	}
 }
+
+// statCard renders a Material 3 tonal metric card.
+templ statCard(title, value, subtitle, colorScheme string) {
+	<div class="card bg-base-100 border border-base-300/80 shadow-xs p-5 rounded-2xl flex flex-col justify-between">
+		<div class="text-xs font-semibold uppercase tracking-wider text-base-content/60 mb-2">{ title }</div>
+		<div class="text-3xl font-bold tracking-tight text-base-content my-1">{ value }</div>
+		if subtitle != "" {
+			<div class="text-xs text-base-content/60 mt-1">{ subtitle }</div>
+		}
+	</div>
+}
+
+

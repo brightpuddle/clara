@@ -2,179 +2,167 @@
 
 ## Project Overview
 
-**Clara** (`github.com/brightpuddle/clara`) is an autonomous, self-monitoring
-personal assistant daemon. It is a background process written in Go that:
+**Clara** (`github.com/brightpuddle/clara`) is a lightweight, BEAM-style supervisor daemon written in Go that:
 
-1. Ingests **event streams** from multiple sources (Webex, email, logs, CLI
-   prompts, system sensors, its own errors, etc.) via a central **Event Bus**.
-2. Routes events through an **Evaluator** — a fast-path heuristic cache backed
-   by an LLM fallback — to determine what action to take.
-3. Executes **Actuators** — self-contained compiled Go binaries that implement
-   a typed SDK interface and are loaded as `hashicorp/go-plugin` gRPC
-   subprocesses. Actuators are the _only_ unit of execution.
-4. Self-modifies: when no Actuator exists for an event, the Evaluator enters
-   **Builder Mode**, generates Go source code, compiles it, and loads the new
-   Actuator without restarting.
-5. Exposes a `cobra`-based CLI for daemon control, observability, and
-   human-in-the-loop approvals.
+1. Ingests **CloudEvents** from multiple sources (Webex, Discord, email, filesystem changes, CLI prompts, system sensors) via a central **Event Bus**.
+2. Evaluates smart **Trigger Rules** (nested boolean AST with `and`, `or`, `not`, dot-notation path extraction, regex, and comparison operators) to route events to external automation scripts.
+3. Coordinates **Schedule Triggers** (cron / intervals) and **Worker Triggers** (supervised long-running background processes with configurable restart policies).
+4. Supervises **External Scripts** (primarily Lua, alongside Python and shell binaries) in a "let it fail" process model, capturing stdout, stderr, execution durations, and exit codes into a local SQLite audit store.
+5. Hosts a full **Model Context Protocol (MCP)** tool server (via HTTP/SSE and internal registry) exposing built-in tools (filesystem, database, shell, search, chrome automation, macOS bridge) and native Go plugins (`hashicorp/go-plugin`).
+6. Exposes a fast Unix-socket **CLI** and a modern browser-based **Web Management UI** (`/ui/` with Go Templ, Tailwind CSS v4, DaisyUI v5, HTMX, Alpine.js).
 
-> **This is an exploratory branch (antigravity).** The goal is a fully
-> functional proof-of-concept of the autonomous self-modifying model before it
-> becomes the main branch. The architectural direction is set; individual
-> sessions drive incremental implementation forward.
->
-> For a complete picture of the vision and current implementation state, read
-> [`conductor/vision.md`](conductor/vision.md) before starting any task.
+> **Exploratory Branch:** Zero backwards compatibility is required. Workflows and logic live in external scripts (e.g. Lua) calling MCP tools, while Clara itself focuses on robust supervision, routing, and tool hosting.
 
 ---
 
 ## Core Architecture
 
 ```
-External World
-    │
-    ▼
-┌──────────────────────────────────────────────────────┐
-│  Integration Plugins  (go-plugin gRPC subprocesses)  │
-│  webex / discord / email / fs / shell / sensors ...  │
-│                                                      │
-│  Role: SENSORS ONLY — emit CloudEvents, no logic.    │
-└──────────────────────────┬───────────────────────────┘
-                           │  CloudEvents
-                           ▼
-                    ┌─────────────┐
-                    │  Event Bus  │  (internal/supervisor/event_bus.go)
-                    └──────┬──────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │  Evaluator  │  (internal/supervisor/evaluator.go)
-                    │             │
-                    │  1. Fast-path heuristic cache
-                    │  2. LLM fallback (AnalyzeEvent)
-                    │  3. Builder Mode (no match found)
-                    └──────┬──────┘
-                           │
-              ┌────────────┴────────────┐
-              │  invoke                 │  build
-              ▼                         ▼
-     ┌─────────────────┐      ┌─────────────────┐
-     │    Actuator     │      │    Builder      │
-     │  (go-plugin     │      │  (compiler +    │
-     │   gRPC binary)  │      │   LLM codegen)  │
-     └─────────────────┘      └────────┬────────┘
-                                       │ compiled binary
-                                       ▼
-                              ┌─────────────────┐
-                              │    Actuator     │
-                              │  (newly loaded) │
-                              └─────────────────┘
+External Signals / Sensors
+  (Webex, Discord, Email, Filesystem, CLI)
+            │
+            ▼
+     ┌─────────────┐
+     │  Event Bus  │ ◄─── CloudEvents (internal/supervisor/event_bus.go)
+     └──────┬──────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Trigger Manager                          │  (internal/trigger/manager.go)
+│                                                             │
+│  • Event Rules (Boolean AST: and/or/not, dot paths, regex)  │  (internal/trigger/rule.go)
+│  • Schedule Triggers (Cron / robfig cron v3)                │
+│  • Supervised Workers (Restart policies & health tracking)  │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ Spawns & Supervises (internal/trigger/runner.go)
+                            ▼
+               ┌────────────────────────┐
+               │    External Scripts    │
+               │  (Lua, Python, Shell)  │
+               └────────────┬───────────┘
+                            │ Calls MCP Tools (HTTP/SSE or IPC)
+                            ▼
+               ┌────────────────────────┐
+               │    MCP Tool Server     │  (internal/server, internal/registry)
+               │ (Native & Plugin Tools)│
+               └────────────────────────┘
 ```
 
-### Key Distinctions
+### Key Components
 
 | Concept | Role | Location |
 |---|---|---|
-| **Integration Plugin** | Sensor: ingest external signals, emit CloudEvents | `cmd/integrations/<name>/` |
-| **Actuator** | Executor: respond to events with real-world actions | `~/.local/share/clara/bin/` or `pkg/sdk/` |
-| **Evaluator** | Brain: route events to actuators or trigger build | `internal/supervisor/evaluator.go` |
-| **Builder** | Compiler: LLM codegen + `go build` feedback loop | `internal/supervisor/builder.go` |
-| **Event Bus** | Transport: fan-out CloudEvents to subscribers | `internal/supervisor/event_bus.go` |
-| **HITL / ApprovalStore** | Safety: block and queue requests for human decision | `internal/supervisor/hitl.go` |
+| **Trigger Manager** | Evaluates event rules, cron schedules, and worker lifecycles | `internal/trigger/manager.go` |
+| **Rule Engine** | Smart search AST (`and`, `or`, `not`, dot-notation field lookups, ops) | `internal/trigger/rule.go` |
+| **Supervised Runner** | Subprocess execution, timeout management, stdout/stderr capture | `internal/trigger/runner.go` |
+| **Event Bus** | Central transport for CloudEvents fan-out | `internal/supervisor/event_bus.go` |
+| **Tool Registry & MCP** | Exposes native tools and plugins over MCP SSE and CLI | `internal/registry/`, `internal/server/` |
+| **Audit Store** | SQLite database recording all script runs and tool calls | `internal/store/audit.go` |
+| **Web UI** | Browser management interface at `/ui/` | `internal/webui/` |
 
-### What Has Been Removed
+### Removed Components
 
-- **Starlark interpreter** — deleted entirely (`internal/interpreter/` is gone).
-- **YAML state machines** — deleted. No state machine transitions exist.
-- **"Intent" as execution unit** — the `orchestrator.Intent` type still exists
-  as a thin metadata record used during the transition, but it is being phased
-  out. New code should not add logic that depends on Intent workflow types.
-  Actuators replace intents as the unit of execution.
+- **Starlark interpreter** — deleted (`internal/interpreter/` is gone).
+- **YAML state machines & Actuators** — deleted. Workflows are external scripts.
+- **Bubbletea TUI & Chat REPL** — deleted (`internal/tui/`, `clara chat`, `clara dashboard` removed).
+- **HITL Approvals & Builder Mode** — deleted.
 
 ---
 
 ## CLI Surface
 
+```bash
+# Daemon Management
+clara serve                         # Start the daemon in foreground
+clara status                        # Report trigger counts, tool counts, and daemon status
+clara agent {start,stop,status}     # macOS LaunchAgent management
+
+# Triggers
+clara trigger list                  # List all loaded triggers
+clara trigger show <id>             # Show trigger definition and match rules
+clara trigger run <id>              # Manually run a trigger script
+
+# Execution Runs & Audit
+clara run list [-n N]               # Inspect recent execution runs
+clara run show <id>                 # View run details (stdout, stderr, exit code, event)
+
+# Tools & MCP
+clara tool list                     # List registered MCP tools
+clara tool show <name>              # Show JSON schema for a tool
+clara tool call <name> -a '<json>'  # Execute a tool directly
+clara mcp list                      # List external MCP servers
+
+# Events
+clara event emit --type=<t> -d '<json>'  # Emit a CloudEvent onto the event bus
+clara event logs [-n N] [-f]             # Stream CloudEvents from the event bus
 ```
-clara serve                         # Start the daemon
-clara agent {start,stop,status}     # LaunchAgent management
-
-clara event logs [-n N] [-f]        # Stream CloudEvents from the event bus
-  [--type=<t>] [--source=<s>]
-
-clara evaluator logs [-n N] [-f]    # Stream evaluator decisions (heuristics, LLM, builder)
-
-clara actuator list                 # List loaded actuator binaries
-clara actuator logs <id> [-n N] [-f]
-clara actuator run <id> [--payload=<json>] [-f]
-
-clara approvals list                # List blocked HITL approval requests
-clara approvals show <id>           # Show context + options for a request
-clara approvals decide <id> <N>     # Submit decision (1-based option index)
-
-clara request "<prompt>"            # Dispatch a natural-language prompt as a CloudEvent
-```
-
-### IPC Wire Protocol
-
-CLI ↔ Daemon communicates over a Unix domain socket with two modes:
-
-- **Request/Response:** single JSON request, single JSON response (`ipc.Request`
-  / `ipc.Response`).
-- **Streaming:** `ipc.StreamRequest` sent once; daemon streams
-  newline-delimited JSON entries until client disconnects or context cancels.
-  Backed by `internal/ringbuf` (ring buffers, 1000 entries each).
-
-Log hub (`internal/loghub`) publishes to three ring buffers: `Event`,
-`Evaluator`, `Actuator` (plus per-actuator sub-buffers).
 
 ---
 
-## Actuator SDK
+## Trigger Definition Schema
 
-Every actuator is a standalone Go binary that calls `sdk.Serve()`. The daemon
-loads it as a `hashicorp/go-plugin` gRPC subprocess.
+Triggers are defined in YAML files in `~/.config/clara/tasks/` (or paths in `task_dirs`):
 
-```go
-// pkg/sdk/actuator.go (to be created)
-type Actuator interface {
-    Manifest() ActuatorManifest      // identity + capability declarations
-    Execute(ctx context.Context, event Event) (Result, error)
-}
+```yaml
+# Event Trigger Example
+id: email-invoice-processor
+name: Email Invoice Processor
+description: Routes invoice emails to an automated Lua processing script
+type: event
+match:
+  and:
+    - field: type
+      op: equals
+      value: email.received
+    - field: data.mailbox
+      op: equals
+      value: inbox
+    - or:
+        - field: data.subject
+          op: contains
+          value: Invoice
+        - field: data.subject
+          op: regex
+          value: "(?i)receipt|bill"
+action:
+  exec: lua scripts/process_invoice.lua
+  pass_event: stdin       # stdin | env | arg | none
+  timeout: 30s
 
-type ActuatorManifest struct {
-    ID           string       `json:"id"`
-    Description  string       `json:"description"`
-    Capabilities []Capability `json:"capabilities"` // CBAC enforcement
-}
+---
+# Worker Trigger Example
+id: telegram-bridge-worker
+name: Telegram Bridge Worker
+description: Supervised long-running daemon process
+type: worker
+action:
+  exec: python3 workers/telegram_bridge.py
+  restart: always         # always | on_failure | never
+  restart_delay: 5s
+  max_restarts: 10
 ```
-
-Capability-Based Access Control (`internal/supervisor/cbac.go`) enforces
-declared capabilities. Undeclared resource access is blocked and triggers a
-HITL approval request.
 
 ---
 
 ## Build / Lint / Test Commands
 
 ```bash
-make build          # builds clara and all plugins in ./bin/
+pnpm install        # install webui frontend dependencies
+make build          # generate templ, build vite assets, and compile bin/clara
 go build ./cmd/clara
 
 make test           # go test ./... -timeout 60s
-go test ./internal/supervisor -run TestName -v
+go test ./internal/trigger -run TestRule -v
 
 make vet            # go vet ./...
 make lint           # staticcheck ./...
 make fmt            # golines -m 100 --base-formatter goimports -w ./...
 
 go mod tidy         # after adding/removing dependencies
-make bridge         # build Swift gRPC bridge (macOS only)
 make install        # install as macOS LaunchAgent
 ```
 
-All committed code must pass `go vet ./...` and `staticcheck ./...` with no
-warnings or errors.
+All committed code must pass `go vet ./...` and `staticcheck ./...` with no warnings or errors.
 
 ---
 
@@ -182,48 +170,29 @@ warnings or errors.
 
 ```
 cmd/
-  clara/
-    main.go         # cobra root, global cfg var, shared helpers
-    serve.go        # daemon: plugin loader, event bus, evaluator wiring
-    agent.go        # clara agent {start,stop,status,logs}
-    observe.go      # clara event/evaluator/actuator commands + daemonHandler
-    approvals.go    # clara approvals + clara request
-    plugins.go      # pluginLoader: integration plugin discovery & loading
-    intent.go       # legacy intent CLI (being phased out)
-    tool.go         # clara tool {list,show,call}
+  clara/            # Unified CLI binary (root, serve, agent, triggers, runs, tools, events)
   integrations/     # Native Go integration SENSOR plugins (go-plugin RPC)
-    fs/             # Filesystem events
-    llm/            # LLM multiplexer (Gemini, Ollama, etc.)
-    shell/          # Local shell execution
-    web/            # Web search
-    chrome/         # Browser automation
-    zk/             # Zettelkasten/Obsidian vault
+    chrome/         # Browser automation bridge
     discord/        # Discord relay (via Eve)
+    llm/            # LLM multiplexer (Gemini, Ollama)
+    task/           # Task tracking
+    tmux/           # Terminal multiplexer
+    web/            # Web search
     webex/          # Webex relay (via Eve)
+    zk/             # Zettelkasten/Obsidian vault
 internal/
-  supervisor/       # Core engine
-    event.go        # CloudEvent type
-    event_bus.go    # Event, EventBus (publish/subscribe)
-    evaluator.go    # Evaluator: heuristic cache + LLM routing + Builder trigger
-    builder.go      # Builder: sandboxed go build + LLM feedback loop
-    cbac.go         # Capability-Based Access Control
-    hitl.go         # ApprovalStore + ActiveRouter (HITL blocking queue)
-    supervisor.go   # Supervisor: manages actuator lifecycle
-    schedule.go     # Scheduling (cron-like triggers)
-  loghub/           # Central ring-buffer hub for observability streams
-  ringbuf/          # Thread-safe fixed-capacity circular buffer
-  ipc/              # Unix-socket IPC protocol (Request, StreamRequest, etc.)
+  trigger/          # Trigger Engine: rules AST, runner, trigger manager
+  store/            # SQLite store (runs, tool audits, vec search)
+  registry/         # Central tool registry with audit logging
+  server/           # HTTP & MCP SSE server
+  supervisor/       # EventBus and CloudEvent core types
+  webui/            # Templ-based Web Management UI (/ui/)
+    templ/          # Templ template components
+    dist/           # Compiled Vite assets
   config/           # Config loader (~/.config/clara/config.yaml)
-  store/            # SQLite persistence (runs, heuristics, evaluator memory)
-  orchestrator/     # Legacy Intent/State types (being phased out)
-  registry/         # Tool registry (used by legacy integrations)
-  intentlog/        # Append-only run event log (legacy, will be superseded)
-pkg/
-  contract/         # go-plugin RPC/gRPC contracts (existing integrations)
-  sdk/              # Actuator SDK interface (to be built)
-conductor/
-  vision.md         # ← READ THIS FIRST in new sessions
-swift/              # Standalone Swift gRPC bridge (macOS)
+  ipc/              # Unix domain socket IPC protocol
+  loghub/           # Central ring-buffer log hub
+  ringbuf/          # Thread-safe circular buffer
 ```
 
 ---
@@ -248,92 +217,29 @@ import (
 )
 ```
 
-**Naming:** `snake_case.go` files, `lowerCamelCase` unexported, `CamelCase`
-exported, `New<Type>(...)` constructors.
-
-Use `any` not `interface{}`. Strongly-typed structs with JSON tags for
-serialization. Avoid heavy reflection.
+**Naming:** `snake_case.go` files, `lowerCamelCase` unexported, `CamelCase` exported, `New<Type>(...)` constructors. Strongly-typed structs with JSON/YAML tags.
 
 ---
 
-## Error Handling
+## Error Handling & Logging
 
 ```go
 import "github.com/cockroachdb/errors"
 
-return errors.Wrap(err, "failed to load config")
-return errors.Newf("unsupported mode: %q", mode)
+return errors.Wrap(err, "failed to parse trigger rule")
+return errors.Newf("invalid operator: %q", op)
 ```
 
-Never silently swallow errors. Use `errors.Is`/`errors.As` for inspection.
-
----
-
-## Logging
-
+- Always wrap errors with context using `errors.Wrap` or `errors.Newf`.
+- Structured logging using `zerolog`:
 ```go
-log.Info().Str("actuator_id", id).Str("event_type", ev.Type).Msg("dispatching")
-log.Error().Err(err).Str("actuator", id).Msg("execution failed")
+log.Info().Str("trigger_id", id).Str("event_type", ev.Type).Msg("trigger fired")
 ```
-
-- **Integration plugins must never write to stdout** — reserved for go-plugin
-  RPC framing. Use stderr for diagnostics.
-- Daemon logs to `~/.local/share/clara/clara.log` by default.
+- Integration plugins must never write to stdout (reserved for go-plugin RPC framing); use stderr or `zerolog`.
 
 ---
 
-## Concurrency
+## Concurrency & Safety
 
 - Use `github.com/sourcegraph/conc` for goroutine pools with panic recovery.
-- All goroutines must be bounded by a `context.Context`. No fire-and-forget.
-
----
-
-## Testing
-
-- Standard `testing` package. Table-driven tests preferred.
-- No network or external service access in tests. Use interfaces and test
-  doubles.
-- Focus: `internal/supervisor/`, `internal/config/`, `internal/ringbuf/`,
-  `internal/store/`.
-
----
-
-## Dependencies
-
-| Purpose | Library |
-|---|---|
-| Structured logging | `github.com/rs/zerolog` |
-| Error handling | `github.com/cockroachdb/errors` |
-| SQLite (CGO-free) | `github.com/ncruces/go-sqlite3` |
-| Actuator plugins (gRPC) | `github.com/hashicorp/go-plugin` |
-| CLI | `github.com/spf13/cobra` |
-| Tool spec (legacy integrations) | `github.com/mark3labs/mcp-go` |
-| Structured concurrency | `github.com/sourcegraph/conc` |
-| YAML parsing | `gopkg.in/yaml.v3` |
-| BoltDB (per-actuator state) | `go.etcd.io/bbolt` |
-
-Removed: `go.starlark.net/starlark`, `github.com/expr-lang/expr`,
-`github.com/fsnotify/fsnotify` (no longer needed at the daemon level).
-
----
-
-## Eve Relay Server
-
-Discord and Webex integrations communicate via the **Eve relay server**
-(`~/src/eve/main`, `github.com/brightpuddle/eve`) over HTTPS with a shared
-bearer secret. Config lives in `~/.config/eve/config.yaml`. See
-`~/src/eve/main/AGENTS.md` for Eve's conventions.
-
-```yaml
-# ~/.config/clara/config.yaml
-integrations:
-  discord:
-    eve_url: "https://eve.brightpuddle.com"
-    secret: "<shared bearer secret>"
-    machine: "<this machine's name>"
-  webex:
-    eve_url: "https://eve.brightpuddle.com"
-    secret: "<shared bearer secret>"
-    machine: "<this machine's name>"
-```
+- All long-running goroutines and processes must be bounded by a `context.Context`.

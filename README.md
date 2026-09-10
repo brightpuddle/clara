@@ -1,231 +1,240 @@
 # Clara
 
-> "Reliably, consistently, and efficiently automate everything that can be
-> automated."
+> "A reliable, lightweight supervisor for external scripts, rule-based triggers, and MCP tools."
 
-Clara is an efficient, reliable, and resource-agnostic agentic orchestrator,
-designed to reduce the cognitive and emotional load of modern digital life. It
-is a personal assistant, "Data Janitor" and central HUD—a system built to handle
-the repetitive, the messy, and the mundane so we can focus on what actually
-matters, whether on macOS or Linux.
+Clara is an efficient, Go-based supervisor and integration bridge. It acts as a central hub that connects external sensor events, scheduled jobs, and long-running workers to external automation scripts (with a primary focus on Lua, alongside Python and shell binaries) while exposing a rich set of native and remote MCP (Model Context Protocol) tools.
 
-## The Vision
+---
 
-Clara is intended to automate all parts of our digital life, to help focus on
-the things that really matter.
+## Core Philosophy
 
-## The Clara Philosophy: Resource-Agnostic, Reliable Orchestration
+- **External Scripting:** Automation logic lives in clean, external scripts (Lua, Python, Bash) rather than internal domain-specific languages. External scripts interact with Clara's tools via standard MCP interfaces or CLI commands.
+- **Smart Rule Triggers:** Event-driven automations use a declarative boolean AST (supporting `and`, `or`, `not`, dot-notation path extraction, regex, and comparison operators) to route incoming CloudEvents to specific scripts.
+- **"Let It Fail" Supervision:** External processes are monitored with configurable timeouts, execution caps, and worker restart policies (`always`, `on_failure`, `never`).
+- **Complete Audit Trail:** Every script execution (stdout, stderr, exit codes, duration) and MCP tool call is recorded to a local SQLite store for instant inspection.
+- **Rich Observability:** Full browser-based Web Management UI (built with Go Templ, Tailwind CSS v4, DaisyUI v5, HTMX, and Alpine.js) and a fast Unix-socket CLI.
 
-The current AI ecosystem often defaults to an "AI-first" workflow where a model
-is the central engine. Clara takes a different stance:
+---
 
-**AI is a tool, not the interpreter.**
-
-We prioritize reliability and efficiency by treating AI as a component within a
-deterministic framework. Think of Clara like CI/CD for your life: AI might
-help write the actions or perform a specific step within them, but the execution
-itself is a reliable, repeatable, and inspectable workflow that runs anywhere.
-
-### Why Deterministic Intents?
-
-- **Reliability:** You shouldn't have to wonder if your file organizer "felt
-  like" working today.
-- **Efficiency:** Running a deterministic script is orders of magnitude faster
-  and cheaper than prompting an LLM for every step.
-- **Inspectability:** You can diff, version, and improve your scripts over time
-  using standard software engineering tools.
-- **Durable State:** Clara manages long-running tasks that can wait for human
-  input or external events without keeping a "hot" LLM context alive.
-
-## Architecture at a Glance
-
-Clara is built on three core pillars:
-
-1. **Integration Plugins (go-plugin):** Capabilities such as Filesystem, Chrome,
-   SQLite, LLM, and macOS-native APIs are delivered as standalone Go binaries
-   built with [`hashicorp/go-plugin`](https://github.com/hashicorp/go-plugin).
-   Each integration exposes a set of named tools to the daemon over a
-   net/RPC (or gRPC, for the Swift bridge) connection. Tools are registered into
-   a central **Registry** keyed by `namespace.tool_name`.
-2. **Starlark Intents (`.star` files):** High-level workflows are authored as
-   [Starlark](https://github.com/google/starlark-go) scripts. The daemon
-   discovers `.star` files in `~/.config/clara/tasks/`, hot-reloads them on
-   change, and executes them via a built-in Starlark interpreter. Scripts call
-   integration tools through namespace proxies (`fs.read_file(...)`,
-   `llm.complete(...)`, etc.) and can `clara.wait(...)` for external events,
-   enabling durable, resumable workflows.
-3. **The Daemon:** A Go-based background service that loads integration plugins,
-   watches the tasks directory for intent scripts, schedules and executes
-   intents, and persists run state in a local SQLite store.
-
-> **Note on MCP:** `mcp-go` is used *inside* integration plugins to describe and
-> dispatch individual tools. It is an implementation detail, not the transport
-> between the daemon and plugins (that transport is go-plugin RPC/gRPC).
-
-## Getting Started
-
-### Installation
-
-For a streamlined installation on macOS:
-
-```bash
-curl -s https://raw.githubusercontent.com/brightpuddle/clara/main/scripts/install.sh | bash
-```
-
-This installs the `clara` binary, the built-in integration plugins, the
-`ClaraBridge` (for native macOS integrations like Photos/Reminders), and the
-companion Chrome extension.
-
-### Your First Intent
-
-Intents are Starlark scripts (`.star` files). Place them in
-`~/.config/clara/tasks/` and the daemon picks them up automatically.
-
-```python
-# ~/.config/clara/tasks/hello.star
-
-def main():
-    result = shell.run(command="echo hello, world")
-    print(result)
-```
-
-Run an intent immediately:
-
-```bash
-clara intent start hello
-clara intent logs hello
-```
-
-## Writing Intents
-
-Intents are Starlark scripts that call registered tools. They support several
-execution modes declared in a `clara.describe(...)` / `clara.task(...)` header:
-
-- **On-Demand:** Triggered manually via CLI or TUI.
-- **Scheduled:** Cron-style execution (e.g., `0 7 * * *` for a morning brief).
-- **Worker:** Fixed-interval loops (e.g., `1h` for a file sync).
-- **Event-Driven:** Reactive to integration notifications (e.g., a file change).
-
-### Calling Tools
-
-Integration tools are available as Starlark namespace objects:
-
-```python
-def main():
-    # Filesystem
-    content = fs.read_file(path="/tmp/notes.txt")
-
-    # LLM
-    summary = llm.complete(prompt="Summarize: " + content)
-
-    # Write result back
-    fs.write_file(path="/tmp/summary.txt", content=summary)
-```
-
-Hyphens in tool names are mapped to underscores in Starlark
-(`note-search` → `note_search`).
-
-### Waiting for External Events
-
-Scripts can pause and resume durably using `clara.wait(...)`:
-
-```python
-def main():
-    response = clara.wait("user_confirmation", {"message": "Proceed?"})
-    if response["confirmed"]:
-        shell.run(command="make deploy")
-```
-
-### Testing
-
-Clara re-executes intents from a recorded history on resume (deterministic
-replay). To test intent logic locally, run the intent directly and inspect
-the step log:
-
-```bash
-clara intent run my-intent --dry-run
-clara intent logs my-intent
-```
-
-## Writing Integrations
-
-Integrations are standalone Go binaries in `cmd/integrations/<name>/` that
-implement `contract.Integration` from `pkg/contract` and are served via
-`hashicorp/go-plugin`.
-
-```go
-type MyPlugin struct{}
-
-func (p *MyPlugin) Configure(config []byte) error { ... }
-func (p *MyPlugin) Description() (string, error)  { return "My integration", nil }
-func (p *MyPlugin) Tools() ([]byte, error)         { /* return []mcp.Tool as JSON */ }
-func (p *MyPlugin) CallTool(name string, args []byte) ([]byte, error) { ... }
-
-func main() {
-    plugin.Serve(&plugin.ServeConfig{
-        HandshakeConfig: contract.HandshakeConfig,
-        Plugins: map[string]plugin.Plugin{
-            "myintegration": &contract.GenericIntegrationPlugin{Impl: &MyPlugin{}},
-        },
-    })
-}
-```
-
-Install the compiled binary to `~/.config/clara/integrations/` and the daemon
-will load it automatically on startup (or on `clara plugin load myintegration`).
-
-Integration configuration is passed via `~/.config/clara/config.yaml`:
-
-```yaml
-integrations:
-  myintegration:
-    api_key: ${MY_API_KEY}
-```
-
-## The Ecosystem
-
-Clara ships with a variety of built-in first-party integrations:
-
-- **`chrome`:** Full browser automation (click, fill, navigate) via a companion
-  extension.
-- **`fs`:** Local filesystem management and change watching.
-- **`db`:** SQLite tool for persistent intent data.
-- **`llm`:** Multiplexed access to online providers (Gemini, etc.) and local
-  models (via Ollama).
-- **`macos`:** Native macOS access (Photos, Reminders, Calendar, etc.) via
-  `ClaraBridge` (Swift gRPC).
-- **`zk`:** Specialized Zettelkasten/Obsidian vault tools.
-- **`shell`:** Local command execution.
-- **`web`:** Internet search via DuckDuckGo.
-
-## Project Structure
+## Architecture
 
 ```
-cmd/
-  clara/            # Unified binary (CLI + Daemon)
-  integrations/     # Built-in integration plugins (go-plugin RPC)
-    fs/             # Filesystem
-    db/             # SQLite
-    llm/            # LLM multiplexer
-    shell/          # Shell execution
-    web/            # Web search
-    chrome/         # Browser automation
-    zk/             # Zettelkasten vault
-internal/
-  config/           # Config loader (~/.config/clara/config.yaml)
-  orchestrator/     # Intent types, Starlark↔Go value helpers
-  registry/         # Unified tool registry (namespace.tool → callable)
-  interpreter/      # State machine executor + Starlark executor
-  supervisor/       # Intent lifecycle (scheduling, event dispatch)
-  store/            # SQLite persistence (runs, history, checkpoints)
-  tui/              # Interactive TUI (bubbletea)
-  ipc/              # Unix-socket IPC between CLI and daemon
-pkg/
-  contract/         # go-plugin RPC/gRPC contracts and handshake
-swift/              # ClaraBridge — Swift gRPC integration for macOS APIs
-extension/          # Chrome extension source
+External Signals / Sensors
+  (Webex, Discord, Email, Filesystem, CLI)
+            │
+            ▼
+     ┌─────────────┐
+     │  Event Bus  │ ◄─── CloudEvents
+     └──────┬──────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Trigger Manager                          │
+│                                                             │
+│  • Event Rules (Boolean AST: and/or/not, dot paths, regex)  │
+│  • Schedule Triggers (Cron / Interval)                      │
+│  • Supervised Workers (Restart policies & health tracking)  │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ Spawns & Supervises
+                            ▼
+               ┌────────────────────────┐
+               │    External Scripts    │
+               │  (Lua, Python, Shell)  │
+               └────────────┬───────────┘
+                            │ Calls Tools
+                            ▼
+               ┌────────────────────────┐
+               │    MCP Tool Server     │
+               │ (Native & Remote Tools)│
+               └────────────────────────┘
 ```
 
 ---
 
-_Clara is under active development._
+## Features
+
+- **Trigger Engine (`internal/trigger`):**
+  - **Event Triggers:** Match CloudEvents using smart rules (e.g. `data.mailbox == "inbox" and data.subject matches "Invoice"`).
+  - **Schedule Triggers:** Standard 5/6-field cron expressions and intervals (e.g., `@every 5m`).
+  - **Worker Triggers:** Supervised long-running background processes with automatic restart policies and backoff.
+- **MCP Tool Catalog & Server (`internal/server`, `internal/registry`):**
+  - Built-in MCP server (`/mcp/sse` and `/mcp/messages`) with HTTP bearer authentication.
+  - Native tools for filesystem, SQLite database queries, shell execution, web search, Chrome browser automation, and macOS native integrations.
+  - Integration plugin discovery and loading via `hashicorp/go-plugin`.
+- **Audit & Persistence (`internal/store`):**
+  - SQLite backend recording all script runs, outputs, errors, durations, and tool invocation history.
+- **Web UI (`/ui/`):**
+  - Live dashboards for Triggers, Execution Runs, MCP Tools & Integrations, System Logs, and YAML Configuration.
+- **Unix-Socket IPC CLI:**
+  - Fast, responsive CLI interface communicating with the running daemon over domain sockets.
+
+---
+
+## Getting Started
+
+### Installation & Build
+
+Prerequisites: Go 1.24+, Node.js/pnpm, `templ`.
+
+```bash
+# Clone the repository
+git clone https://github.com/brightpuddle/clara.git
+cd clara/agent
+
+# Install frontend dependencies and build
+pnpm install
+make build
+
+# Optional: Install as a macOS LaunchAgent
+make install
+```
+
+### Running the Daemon
+
+```bash
+# Run in the foreground
+clara serve
+
+# Or manage the LaunchAgent daemon
+clara agent start
+clara agent status
+clara agent logs -f
+```
+
+---
+
+## Defining Triggers
+
+Triggers are configured in YAML files inside your task directory (default: `~/.config/clara/tasks/` or configured `task_dirs`).
+
+### 1. Smart Event Trigger (Lua Script)
+
+```yaml
+# ~/.config/clara/tasks/email_filter.yaml
+id: email-invoice-processor
+name: Email Invoice Processor
+description: Routes invoice emails to an automated Lua processing script
+type: event
+match:
+  and:
+    - field: type
+      op: equals
+      value: email.received
+    - field: data.mailbox
+      op: equals
+      value: inbox
+    - or:
+        - field: data.subject
+          op: contains
+          value: Invoice
+        - field: data.subject
+          op: regex
+          value: "(?i)receipt|bill"
+action:
+  exec: lua /Users/nathan/scripts/process_invoice.lua
+  pass_event: stdin
+  timeout: 30s
+```
+
+### 2. Scheduled Trigger
+
+```yaml
+# ~/.config/clara/tasks/daily_cleanup.yaml
+id: daily-disk-cleaner
+name: Daily Disk Cleaner
+description: Cleans temporary files every midnight
+type: schedule
+schedule: "0 0 * * *"
+action:
+  exec: python3 /Users/nathan/scripts/clean_temp.py
+  timeout: 5m
+```
+
+### 3. Supervised Worker
+
+```yaml
+# ~/.config/clara/tasks/discord_bot.yaml
+id: discord-bot-worker
+name: Discord Bot Worker
+description: Supervised long-running event listener
+type: worker
+action:
+  exec: /Users/nathan/bin/discord-worker
+  restart: always
+  restart_delay: 5s
+  max_restarts: 10
+```
+
+---
+
+## External Scripting with Lua
+
+Scripts receive event data via `stdin` (default), environment variables, or CLI arguments. Here is an example Lua script using Clara's MCP tools:
+
+```lua
+-- scripts/process_invoice.lua
+local json = require("json") -- or any standard lua JSON parser
+
+-- Read CloudEvent from Clara on stdin
+local raw_event = io.read("*a")
+local event = json.decode(raw_event)
+
+print(string.format("Processing invoice from: %s", event.data.sender))
+
+-- Perform work or invoke Clara MCP endpoints...
+```
+
+---
+
+## CLI Reference
+
+```bash
+# Daemon Management
+clara serve                         # Start daemon in foreground
+clara status                        # Show daemon trigger/tool summary
+clara agent {start,stop,status}     # Manage LaunchAgent
+
+# Triggers
+clara trigger list                  # List all configured triggers
+clara trigger show <id>             # Show trigger details and match rules
+clara trigger run <id>              # Manually trigger a script execution
+
+# Execution Runs & Audit
+clara run list [-n 20]              # View recent script execution runs
+clara run show <id>                 # Inspect stdout, stderr, exit code, and event payload
+
+# Tools & MCP
+clara tool list                     # List all registered MCP tools
+clara tool show <name>              # Show tool JSON schema
+clara tool call <name> -a '<json>'  # Execute a tool directly
+clara mcp list                      # List configured external MCP servers
+
+# Events
+clara event emit --type=<t> -d '<json>'  # Emit a CloudEvent onto the event bus
+clara event logs -f                      # Stream live events from the bus
+```
+
+---
+
+## Web Management UI
+
+When the HTTP server is enabled in `~/.config/clara/config.yaml`:
+
+```yaml
+server:
+  listen_addr: "127.0.0.1:3333"
+  shared_secret: "your-auth-token"
+```
+
+Access the UI at `http://127.0.0.1:3333/ui/`:
+- **/ui/triggers:** Inspect configured event rules, cron schedules, and worker statuses.
+- **/ui/runs:** Full history of script executions, exit codes, and output logs.
+- **/ui/integrations:** Overview of connected sensors, plugins, and MCP servers.
+- **/ui/logs:** Live streaming daemon log viewer.
+- **/ui/config:** In-browser structured and raw YAML configuration editor.
+
+---
+
+## License
+
+MIT

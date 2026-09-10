@@ -202,12 +202,9 @@ func (s *Store) migrate() error {
 		return err
 	}
 
-	// Migrate data from the legacy blueprint_runs table if it exists.
-	_, _ = s.db.Exec(`
-		INSERT OR IGNORE INTO intent_runs (id, intent_id, state, mem_json, started_at, updated_at)
-		SELECT id, blueprint_id, state, mem_json, started_at, updated_at FROM blueprint_runs
-	`)
-	_, _ = s.db.Exec(`DROP TABLE IF EXISTS blueprint_runs`)
+	if err := s.initAuditSchema(); err != nil {
+		return err
+	}
 
 	return nil
 }

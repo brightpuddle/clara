@@ -193,23 +193,20 @@ func runAgentStatus(cmd *cobra.Command, args []string) error {
 
 	// Human-friendly table output.
 	fields, _ := resp.Data.(map[string]any)
-	fmt.Printf("  %s %s\n", theme.Dimmed("status:        "), theme.Green("running"))
-	if v, ok := fields["servers"]; ok {
-		fmt.Printf("  %s %v\n", theme.Dimmed("servers:       "), v)
-	}
-	if intents, ok := fields["intents"]; ok {
-		active := fields["active_intents"]
+	fmt.Printf("  %s %s\n", theme.Dimmed("status:            "), theme.Green("running"))
+	if v, ok := fields["triggers"]; ok {
 		fmt.Printf("  %s %v  %s\n",
-			theme.Dimmed("intents:       "),
-			intents,
-			theme.Dimmed(fmt.Sprintf("(%v active)", active)),
+			theme.Dimmed("triggers:          "),
+			v,
+			theme.Dimmed(fmt.Sprintf("(%v event, %v schedule, %v worker)",
+				fields["event_triggers"], fields["schedule_triggers"], fields["worker_triggers"])),
 		)
 	}
 	if v, ok := fields["tools"]; ok {
-		fmt.Printf("  %s %v\n", theme.Dimmed("tools:         "), v)
+		fmt.Printf("  %s %v\n", theme.Dimmed("tools:             "), v)
 	}
-	if v, ok := fields["dynamic_mcp"]; ok {
-		fmt.Printf("  %s %v\n", theme.Dimmed("dynamic mcp:   "), v)
+	if v, ok := fields["mcp_servers"]; ok {
+		fmt.Printf("  %s %v\n", theme.Dimmed("mcp servers:       "), v)
 	}
 	return nil
 }

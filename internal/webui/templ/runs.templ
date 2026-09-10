@@ -1,0 +1,161 @@
+package templ
+
+import (
+	"fmt"
+)
+
+templ Runs(vm *RunsVM) {
+	@Layout(vm.Base.Layout) {
+		<div class="p-6 max-w-7xl mx-auto flex flex-col gap-6">
+			<!-- Header -->
+			<div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+				<div>
+					<h1 class="text-2xl font-bold tracking-tight m3-headline">Execution Runs & Audit</h1>
+					<p class="text-sm text-base-content/60 mt-1">
+						BEAM-style supervised script execution history, process outputs, and MCP tool interactions.
+					</p>
+				</div>
+			</div>
+
+			<!-- Selected Run Inspector Details -->
+			if vm.SelectedRun != nil {
+				<div class="card bg-base-100 border border-primary/40 shadow-md">
+					<div class="p-4 border-b border-base-300 bg-primary/5 flex flex-wrap justify-between items-center gap-3">
+						<div class="flex items-center gap-3">
+							<h2 class="font-bold text-base font-mono">{ vm.SelectedRun.ID }</h2>
+							<span class="badge badge-outline text-xs">{ vm.SelectedRun.TriggerID } ({ vm.SelectedRun.TriggerType })</span>
+							if vm.SelectedRun.Status == "success" {
+								<span class="badge badge-success badge-sm">success</span>
+							} else if vm.SelectedRun.Status == "failure" {
+								<span class="badge badge-error badge-sm">failure</span>
+							} else {
+								<span class="badge badge-warning badge-sm">{ vm.SelectedRun.Status }</span>
+							}
+						</div>
+						<div class="text-xs text-base-content/60 font-mono">
+							Code: { fmt.Sprintf("%d", vm.SelectedRun.ExitCode) } &bull;
+							Duration: { fmt.Sprintf("%dms", vm.SelectedRun.DurationMs) } &bull;
+							{ vm.SelectedRun.StartedAt.Format("2006-01-02 15:04:05.000") }
+						</div>
+					</div>
+					<div class="p-4 flex flex-col gap-4">
+						if vm.SelectedRun.Error != "" {
+							<div class="alert alert-error text-xs">{ vm.SelectedRun.Error }</div>
+						}
+						if vm.SelectedRun.EventData != "" {
+							<div>
+								<span class="text-xs font-semibold uppercase text-base-content/60 mb-1">Event Input:</span>
+								<pre class="bg-base-200 p-2.5 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap">{ vm.SelectedRun.EventData }</pre>
+							</div>
+						}
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div>
+								<span class="text-xs font-semibold uppercase text-base-content/60 mb-1">Stdout:</span>
+								<pre class="bg-base-200 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">{ vm.SelectedRun.Stdout }</pre>
+							</div>
+							<div>
+								<span class="text-xs font-semibold uppercase text-base-content/60 mb-1">Stderr:</span>
+								<pre class="bg-base-200 text-error p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap max-h-60 overflow-y-auto">{ vm.SelectedRun.Stderr }</pre>
+							</div>
+						</div>
+
+						<!-- Tool Calls for this Run -->
+						if len(vm.ToolCalls) > 0 {
+							<div class="mt-2">
+								<span class="text-xs font-semibold uppercase text-base-content/60 mb-1">MCP Tool Invocations ({ fmt.Sprintf("%d", len(vm.ToolCalls)) }):</span>
+								<div class="overflow-x-auto border border-base-300 rounded mt-1">
+									<table class="table table-xs table-zebra w-full">
+										<thead>
+											<tr class="text-base-content/60">
+												<th>Call ID</th>
+												<th>Tool</th>
+												<th>Duration</th>
+												<th>Arguments / Error</th>
+												<th>Time</th>
+											</tr>
+										</thead>
+										<tbody>
+											for _, tc := range vm.ToolCalls {
+												<tr>
+													<td class="font-mono">{ tc.ID }</td>
+													<td class="font-semibold">{ tc.ToolName }</td>
+													<td>{ fmt.Sprintf("%dms", tc.DurationMs) }</td>
+													<td class="text-xs font-mono truncate max-w-xs">
+														if tc.Error != "" {
+															<span class="text-error">{ tc.Error }</span>
+														} else {
+															<span>{ tc.InputJSON }</span>
+														}
+													</td>
+													<td class="text-base-content/60">{ tc.CalledAt.Format("15:04:05.000") }</td>
+												</tr>
+											}
+										</tbody>
+									</table>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+			}
+
+			<!-- Runs History Table Card -->
+			<div class="card bg-base-100 border border-base-300 shadow-sm overflow-hidden">
+				<div class="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50">
+					<h2 class="font-bold text-base">Execution History</h2>
+					<div class="text-xs text-base-content/60 font-medium">Last 50 Runs</div>
+				</div>
+				if len(vm.Runs) == 0 {
+					<div class="p-12 text-center text-base-content/60">
+						<p class="font-medium">No execution runs recorded yet.</p>
+					</div>
+				} else {
+					<div class="overflow-x-auto">
+						<table class="table table-zebra w-full">
+							<thead>
+								<tr class="text-xs text-base-content/60 uppercase">
+									<th>Run ID</th>
+									<th>Trigger ID</th>
+									<th>Type</th>
+									<th>Status</th>
+									<th>Exit Code</th>
+									<th>Duration</th>
+									<th>Started At</th>
+									<th class="text-right">Action</th>
+								</tr>
+							</thead>
+							<tbody>
+								for _, r := range vm.Runs {
+									<tr class="hover">
+										<td class="font-mono font-semibold">{ r.ID }</td>
+										<td>{ r.TriggerID }</td>
+										<td><span class="badge badge-ghost badge-sm">{ r.TriggerType }</span></td>
+										<td>
+											if r.Status == "success" {
+												<span class="badge badge-success badge-sm">success</span>
+											} else if r.Status == "failure" {
+												<span class="badge badge-error badge-sm">failure</span>
+											} else if r.Status == "timeout" {
+												<span class="badge badge-warning badge-sm">timeout</span>
+											} else {
+												<span class="badge badge-neutral badge-sm">{ r.Status }</span>
+											}
+										</td>
+										<td class="font-mono">{ fmt.Sprintf("%d", r.ExitCode) }</td>
+										<td>{ fmt.Sprintf("%dms", r.DurationMs) }</td>
+										<td class="text-base-content/60">{ r.StartedAt.Format("2006-01-02 15:04:05") }</td>
+										<td class="text-right">
+											<a href={ templ.SafeURL(fmt.Sprintf("/ui/runs?id=%s", r.ID)) } class="btn btn-sm btn-ghost btn-outline text-xs">
+												Inspect
+											</a>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</div>
+		</div>
+	}
+}

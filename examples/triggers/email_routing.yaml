@@ -1,0 +1,55 @@
+# examples/triggers/email_routing.yaml
+# Demonstrates smart search / rule matching with AND / OR clauses
+# routing events to specialized external Lua scripts.
+
+triggers:
+  - id: "urgent-incident-email"
+    name: "Urgent Incident Email Router"
+    description: "Routes critical outage emails to the on-call incident handler script"
+    enabled: true
+    type: "event"
+    match:
+      and:
+        - field: "type"
+          op: "equals"
+          value: "email.received"
+        - field: "data.mailbox"
+          op: "equals"
+          value: "ops@brightpuddle.com"
+        - or:
+            - field: "data.subject"
+              op: "contains"
+              value: "URGENT"
+            - field: "data.subject"
+              op: "contains"
+              value: "CRITICAL"
+            - field: "data.body"
+              op: "regex"
+              value: "(?i)production\\s+outage"
+    action:
+      exec: "/usr/bin/env"
+      args: ["lua", "examples/scripts/handle_urgent_email.lua"]
+      pass_event: "stdin"
+      timeout: "30s"
+
+  - id: "daily-morning-summary"
+    name: "Daily Morning Digest"
+    description: "Scheduled cron trigger that triggers a digest script every morning at 8:00 AM"
+    enabled: true
+    type: "schedule"
+    schedule: "0 0 8 * * *"
+    action:
+      exec: "/usr/bin/env"
+      args: ["lua", "examples/scripts/daily_summary.lua"]
+      timeout: "60s"
+
+  - id: "background-queue-poller"
+    name: "Background Queue Worker"
+    description: "Long-running worker continuously supervised by Clara following BEAM 'let it fail' philosophy"
+    enabled: true
+    type: "worker"
+    action:
+      exec: "/usr/bin/env"
+      args: ["lua", "examples/scripts/queue_worker.lua"]
+      restart: "always"
+      restart_delay: "5s"
