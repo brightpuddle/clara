@@ -20,6 +20,7 @@ import (
 type Manager struct {
 	mu          sync.RWMutex
 	triggers    map[string]Definition
+	filePaths   map[string]string
 	runner      *Runner
 	eventBus    *supervisor.EventBus
 	store       *store.Store
@@ -38,6 +39,7 @@ func NewManager(runner *Runner, eventBus *supervisor.EventBus, st *store.Store) 
 	}
 	return &Manager{
 		triggers:    make(map[string]Definition),
+		filePaths:   make(map[string]string),
 		runner:      runner,
 		eventBus:    eventBus,
 		store:       st,
@@ -81,7 +83,7 @@ func (m *Manager) Register(def Definition) error {
 	return nil
 }
 
-// Unregister removes a trigger.
+// Unregister removes a trigger from memory without deleting its file on disk.
 func (m *Manager) Unregister(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -95,6 +97,86 @@ func (m *Manager) Unregister(id string) {
 		delete(m.cronEntries, id)
 	}
 	delete(m.triggers, id)
+	delete(m.filePaths, id)
+}
+
+// GetFilePath returns the file path from which the trigger was loaded or saved, if any.
+func (m *Manager) GetFilePath(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.filePaths[id]
+}
+
+// SaveToFile saves the trigger definition to YAML file and registers it in memory.
+// If targetDir is provided and the trigger does not have an existing file path, it will be saved to targetDir/<id>.yaml.
+func (m *Manager) SaveToFile(def Definition, targetDir string) (string, error) {
+	if def.ID == "" {
+		return "", errors.New("trigger definition must have an ID")
+	}
+	if def.Action.Exec == "" {
+		return "", errors.Newf("trigger %q must have an action.exec command", def.ID)
+	}
+
+	m.mu.RLock()
+	existingPath := m.filePaths[def.ID]
+	m.mu.RUnlock()
+
+	targetPath := existingPath
+	if targetPath == "" {
+		if targetDir == "" {
+			return "", errors.New("target directory is required for saving new trigger")
+		}
+		targetPath = filepath.Join(targetDir, def.ID+".yaml")
+	}
+
+	data, err := yaml.Marshal(def)
+	if err != nil {
+		return "", errors.Wrap(err, "marshal trigger YAML")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o750); err != nil {
+		return "", errors.Wrapf(err, "create trigger directory %s", filepath.Dir(targetPath))
+	}
+
+	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
+		return "", errors.Wrapf(err, "write trigger file %s", targetPath)
+	}
+
+	if err := m.Register(def); err != nil {
+		return "", err
+	}
+
+	m.mu.Lock()
+	m.filePaths[def.ID] = targetPath
+	m.mu.Unlock()
+
+	return targetPath, nil
+}
+
+// DeleteTrigger deletes the trigger definition from memory and removes its file from disk if present.
+func (m *Manager) DeleteTrigger(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if cancel, ok := m.workers[id]; ok {
+		cancel()
+		delete(m.workers, id)
+	}
+	if entryID, ok := m.cronEntries[id]; ok {
+		m.cron.Remove(entryID)
+		delete(m.cronEntries, id)
+	}
+	delete(m.triggers, id)
+
+	path, ok := m.filePaths[id]
+	if ok && path != "" {
+		delete(m.filePaths, id)
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return errors.Wrapf(err, "delete trigger file %s", path)
+		}
+	}
+
+	return nil
 }
 
 // LoadFromFile loads a single trigger definition or a list of definitions from a YAML file.
@@ -107,7 +189,13 @@ func (m *Manager) LoadFromFile(path string) error {
 	// Try loading as single definition
 	var single Definition
 	if err := yaml.Unmarshal(data, &single); err == nil && single.ID != "" && single.Action.Exec != "" {
-		return m.Register(single)
+		if err := m.Register(single); err != nil {
+			return err
+		}
+		m.mu.Lock()
+		m.filePaths[single.ID] = path
+		m.mu.Unlock()
+		return nil
 	}
 
 	// Try loading as list of definitions
@@ -119,6 +207,9 @@ func (m *Manager) LoadFromFile(path string) error {
 			if err := m.Register(t); err != nil {
 				return err
 			}
+			m.mu.Lock()
+			m.filePaths[t.ID] = path
+			m.mu.Unlock()
 		}
 		return nil
 	}

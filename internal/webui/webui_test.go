@@ -360,3 +360,222 @@ integrations:
 		t.Errorf("expected raw YAML to be saved, got: %s", string(savedRaw))
 	}
 }
+
+func TestWebUI_TriggerCRUD(t *testing.T) {
+	tempDir := t.TempDir()
+	triggersDir := filepath.Join(tempDir, "triggers")
+	if err := os.MkdirAll(triggersDir, 0o755); err != nil {
+		t.Fatalf("failed to create triggers dir: %v", err)
+	}
+
+	cfgPath := filepath.Join(tempDir, "config.yaml")
+	_ = os.WriteFile(cfgPath, []byte("log_level: info\n"), 0o644)
+
+	logger := zerolog.New(io.Discard)
+	dbPath := filepath.Join(tempDir, "clara.db")
+	db, err := store.Open(dbPath, logger)
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+
+	cfg := &config.Config{
+		DataDir:             tempDir,
+		LogLevel:            "info",
+		TriggerDirsOverride: []string{triggersDir},
+	}
+
+	reg := registry.New(logger)
+	sup := supervisor.New(reg, nil, logger)
+	eventBus := supervisor.NewEventBus()
+	triggerMgr := trigger.NewManager(nil, eventBus, db)
+	integ := &mockIntegLister{}
+
+	ui := New(cfg, cfgPath, sup, reg, integ, triggerMgr, db, logger)
+	mux := http.NewServeMux()
+	ui.Mount(mux)
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // don't follow redirects to check 303 status
+		},
+	}
+
+	// 1. Test GET /ui/triggers/new
+	resp, err := client.Get(srv.URL + "/ui/triggers/new")
+	if err != nil {
+		t.Fatalf("GET /ui/triggers/new failed: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(string(body), "New Trigger") {
+		t.Errorf("expected body to contain 'New Trigger'")
+	}
+
+	// 2. Test POST /ui/triggers (Structured JSON)
+	createStructuredJSON := `{
+		"id": "my-email-trigger",
+		"name": "My Email Trigger",
+		"description": "Handles inbox emails",
+		"enabled": true,
+		"type": "event",
+		"rule_field": "type",
+		"rule_op": "equals",
+		"rule_value": "email.received",
+		"exec": "lua scripts/email.lua",
+		"pass_event": "stdin",
+		"timeout": "30s",
+		"args": [],
+		"env": []
+	}`
+	form := url.Values{}
+	form.Set("trigger_json", createStructuredJSON)
+
+	postResp, err := client.PostForm(srv.URL+"/ui/triggers", form)
+	if err != nil {
+		t.Fatalf("POST /ui/triggers failed: %v", err)
+	}
+	postResp.Body.Close()
+	if postResp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected redirect (303), got %d", postResp.StatusCode)
+	}
+
+	// Verify trigger in manager
+	def, exists := triggerMgr.Get("my-email-trigger")
+	if !exists {
+		t.Fatalf("trigger 'my-email-trigger' was not registered in manager")
+	}
+	if def.Name != "My Email Trigger" || def.Action.Exec != "lua scripts/email.lua" {
+		t.Errorf("unexpected trigger def: %+v", def)
+	}
+
+	// Verify YAML file exists on disk
+	filePath := triggerMgr.GetFilePath("my-email-trigger")
+	if filePath == "" {
+		t.Fatalf("expected file path for 'my-email-trigger'")
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("trigger file %s does not exist on disk: %v", filePath, err)
+	}
+
+	// 3. Test GET /ui/triggers/my-email-trigger/edit
+	editResp, err := client.Get(srv.URL + "/ui/triggers/my-email-trigger/edit")
+	if err != nil {
+		t.Fatalf("GET /ui/triggers/my-email-trigger/edit failed: %v", err)
+	}
+	editBody, _ := io.ReadAll(editResp.Body)
+	editResp.Body.Close()
+	if editResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", editResp.StatusCode)
+	}
+	if !strings.Contains(string(editBody), "Edit Trigger") || !strings.Contains(string(editBody), "my-email-trigger") {
+		t.Errorf("expected body to contain 'Edit Trigger' and 'my-email-trigger'")
+	}
+
+	// 4. Test POST /ui/triggers/my-email-trigger (Update and rename ID)
+	updateJSON := `{
+		"id": "renamed-trigger",
+		"name": "Renamed Trigger",
+		"description": "Updated description",
+		"enabled": true,
+		"type": "schedule",
+		"schedule": "*/5 * * * *",
+		"exec": "python3 check.py",
+		"timeout": "10s",
+		"args": [],
+		"env": []
+	}`
+	updateForm := url.Values{}
+	updateForm.Set("trigger_json", updateJSON)
+
+	updateResp, err := client.PostForm(srv.URL+"/ui/triggers/my-email-trigger", updateForm)
+	if err != nil {
+		t.Fatalf("POST /ui/triggers/my-email-trigger failed: %v", err)
+	}
+	updateResp.Body.Close()
+	if updateResp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected redirect (303), got %d", updateResp.StatusCode)
+	}
+
+	// Old trigger should no longer exist
+	if _, exists := triggerMgr.Get("my-email-trigger"); exists {
+		t.Errorf("expected old trigger 'my-email-trigger' to be removed from manager")
+	}
+
+	// Old file should be deleted
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Errorf("expected old file %s to be deleted, err: %v", filePath, err)
+	}
+
+	// New trigger should exist
+	renamedDef, exists := triggerMgr.Get("renamed-trigger")
+	if !exists {
+		t.Fatalf("expected 'renamed-trigger' to exist")
+	}
+	if renamedDef.Name != "Renamed Trigger" || renamedDef.Schedule != "*/5 * * * *" {
+		t.Errorf("unexpected updated trigger def: %+v", renamedDef)
+	}
+
+	// 5. Test POST /ui/triggers (Create via Raw YAML)
+	rawYAML := `id: raw-yaml-trigger
+name: Raw Worker Trigger
+type: worker
+action:
+  exec: node worker.js
+  restart: always
+  restart_delay: 2s
+`
+	rawForm := url.Values{}
+	rawForm.Set("yaml", rawYAML)
+
+	rawPostResp, err := client.PostForm(srv.URL+"/ui/triggers", rawForm)
+	if err != nil {
+		t.Fatalf("POST raw trigger failed: %v", err)
+	}
+	rawPostResp.Body.Close()
+	if rawPostResp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected redirect (303), got %d", rawPostResp.StatusCode)
+	}
+
+	workerDef, exists := triggerMgr.Get("raw-yaml-trigger")
+	if !exists {
+		t.Fatalf("expected 'raw-yaml-trigger' to be created")
+	}
+	if workerDef.Type != trigger.TypeWorker || workerDef.Action.Restart != trigger.RestartAlways {
+		t.Errorf("unexpected raw trigger def: %+v", workerDef)
+	}
+
+	// 6. Test POST /ui/triggers/renamed-trigger/delete
+	delResp, err := client.PostForm(srv.URL+"/ui/triggers/renamed-trigger/delete", url.Values{})
+	if err != nil {
+		t.Fatalf("POST delete failed: %v", err)
+	}
+	delResp.Body.Close()
+	if delResp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected redirect (303), got %d", delResp.StatusCode)
+	}
+
+	if _, exists := triggerMgr.Get("renamed-trigger"); exists {
+		t.Errorf("expected 'renamed-trigger' to be deleted")
+	}
+
+	// 7. Test DELETE /ui/triggers/raw-yaml-trigger
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/ui/triggers/raw-yaml-trigger", nil)
+	delReqResp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE request failed: %v", err)
+	}
+	delReqResp.Body.Close()
+	if delReqResp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected redirect (303), got %d", delReqResp.StatusCode)
+	}
+
+	if _, exists := triggerMgr.Get("raw-yaml-trigger"); exists {
+		t.Errorf("expected 'raw-yaml-trigger' to be deleted")
+	}
+}

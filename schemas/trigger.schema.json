@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://brightpuddle.github.io/clara/schemas/trigger.schema.json",
+  "title": "Clara Trigger Configuration",
+  "description": "Schema for Clara trigger definitions (single trigger or list under 'triggers').",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/trigger"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "description": "List of trigger definitions",
+          "items": {
+            "$ref": "#/definitions/trigger"
+          }
+        }
+      },
+      "required": ["triggers"],
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "trigger": {
+      "type": "object",
+      "description": "A single trigger definition.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this trigger",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name for this trigger"
+        },
+        "description": {
+          "type": "string",
+          "description": "Summary of the trigger's purpose"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the trigger is currently active",
+          "default": true
+        },
+        "type": {
+          "type": "string",
+          "description": "Trigger execution mechanism",
+          "enum": ["event", "schedule", "worker"]
+        },
+        "match": {
+          "$ref": "#/definitions/rule",
+          "description": "Event matching rule AST (used when type is 'event')"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Cron expression or '@every 1m' interval (used when type is 'schedule')"
+        },
+        "action": {
+          "$ref": "#/definitions/action",
+          "description": "Execution action to invoke when the trigger fires"
+        }
+      },
+      "required": ["id", "type", "action"],
+      "additionalProperties": false
+    },
+    "rule": {
+      "type": "object",
+      "description": "Matching criteria node for events. Can be a composite (and/or/not) or a leaf condition (field + op + value).",
+      "properties": {
+        "and": {
+          "type": "array",
+          "description": "All child rules must match",
+          "items": {
+            "$ref": "#/definitions/rule"
+          }
+        },
+        "or": {
+          "type": "array",
+          "description": "At least one child rule must match",
+          "items": {
+            "$ref": "#/definitions/rule"
+          }
+        },
+        "not": {
+          "$ref": "#/definitions/rule",
+          "description": "Inverts the result of the child rule"
+        },
+        "field": {
+          "type": "string",
+          "description": "Dot-notation field path in the CloudEvent (e.g. 'type', 'data.mailbox', 'data.subject')"
+        },
+        "op": {
+          "type": "string",
+          "description": "Comparison operator",
+          "enum": [
+            "equals",
+            "not_equals",
+            "contains",
+            "not_contains",
+            "starts_with",
+            "ends_with",
+            "regex",
+            "in",
+            "not_in",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "exists",
+            "not_exists"
+          ],
+          "default": "equals"
+        },
+        "value": {
+          "description": "Value to compare against the extracted field"
+        }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "description": "Executable action parameters",
+      "properties": {
+        "exec": {
+          "type": "string",
+          "description": "Command or executable path to run",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "description": "Command-line arguments passed to the executable",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables to inject into the process",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "dir": {
+          "type": "string",
+          "description": "Working directory for the subprocess"
+        },
+        "pass_event": {
+          "type": "string",
+          "description": "Mechanism for passing event payload to the process",
+          "enum": ["stdin", "env", "arg", "none"],
+          "default": "none"
+        },
+        "timeout": {
+          "type": "string",
+          "description": "Maximum execution duration (e.g. '30s', '1m')",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+        },
+        "restart": {
+          "type": "string",
+          "description": "Worker restart policy (used when type is 'worker')",
+          "enum": ["always", "on_failure", "never"],
+          "default": "never"
+        },
+        "restart_delay": {
+          "type": "string",
+          "description": "Delay before restarting a terminated worker (e.g. '5s')",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+        },
+        "max_restarts": {
+          "type": "integer",
+          "description": "Maximum restart attempts before giving up (0 = unlimited)",
+          "minimum": 0
+        }
+      },
+      "required": ["exec"],
+      "additionalProperties": false
+    }
+  }
+}

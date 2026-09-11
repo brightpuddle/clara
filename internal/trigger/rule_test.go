@@ -12,8 +12,8 @@ func TestRule_Match(t *testing.T) {
 		"type":   "email.received",
 		"source": "sensor.mail",
 		"data": map[string]any{
-			"mailbox": "ops@brightpuddle.com",
-			"subject": "[CRITICAL] Outage in EU-WEST-1",
+			"mailbox":  "ops@brightpuddle.com",
+			"subject":  "[CRITICAL] Outage in EU-WEST-1",
 			"priority": 1,
 			"tags":     []any{"infra", "alert", "prod"},
 			"headers": map[string]any{

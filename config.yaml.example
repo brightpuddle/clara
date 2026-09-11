@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=schemas/config.schema.json
 # Clara Configuration Example
 #
 # Copy to ~/.config/clara/config.yaml and customize.

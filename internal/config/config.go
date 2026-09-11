@@ -4,21 +4,30 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
-	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/cockroachdb/errors"
 	"github.com/google/shlex"
 	"gopkg.in/yaml.v3"
+
+	"github.com/brightpuddle/clara/internal/trigger"
 )
 
 // DefaultConfigPath returns the default config file path.
 func DefaultConfigPath() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "clara", "config.yaml")
+}
+
+// DefaultConfDDir returns the default conf.d directory path.
+func DefaultConfDDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "clara", "conf.d")
 }
 
 // DefaultDataDir returns the default runtime data directory.
@@ -216,14 +225,222 @@ func Load(path string) (*Config, error) {
 	return parse(data)
 }
 
-// LoadDefault loads the config from the default path, creating the directory
-// and an empty config if the file does not yet exist.
+// LoadDefault loads the config from the default path and conf.d directory,
+// creating the directory and an empty config if the file does not yet exist.
 func LoadDefault() (*Config, error) {
-	path := DefaultConfigPath()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	return LoadWithConfD(DefaultConfigPath(), DefaultConfDDir())
+}
+
+// LoadWithConfD loads the base config file at basePath (if it exists) and deep merges
+// all *.yaml and *.yml files found non-recursively in confDDir in lexical order.
+func LoadWithConfD(basePath, confDDir string) (*Config, error) {
+	var mergedMap map[string]any
+
+	// 1. Read base config if it exists
+	if _, err := os.Stat(basePath); err == nil {
+		data, err := os.ReadFile(basePath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "read base config %q", basePath)
+		}
+		expanded := os.ExpandEnv(string(data))
+		var baseMap map[string]any
+		if err := yaml.Unmarshal([]byte(expanded), &baseMap); err != nil {
+			return nil, errors.Wrapf(err, "parse base config %q", basePath)
+		}
+		mergedMap = baseMap
+	}
+
+	if mergedMap == nil {
+		mergedMap = make(map[string]any)
+	}
+
+	// 2. Read and merge conf.d files in lexical order
+	if confDDir != "" {
+		entries, err := os.ReadDir(confDDir)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, errors.Wrapf(err, "read conf.d directory %q", confDDir)
+		}
+
+		var files []string
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(entry.Name()))
+			if ext == ".yaml" || ext == ".yml" {
+				files = append(files, filepath.Join(confDDir, entry.Name()))
+			}
+		}
+
+		sort.Strings(files)
+
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				return nil, errors.Wrapf(err, "read conf.d file %q", file)
+			}
+			expanded := os.ExpandEnv(string(data))
+			var overrideMap map[string]any
+			if err := yaml.Unmarshal([]byte(expanded), &overrideMap); err != nil {
+				return nil, errors.Wrapf(err, "parse conf.d file %q", file)
+			}
+			if overrideMap != nil {
+				mergedMap = mergeMaps(mergedMap, overrideMap)
+			}
+		}
+	}
+
+	// If neither base nor conf.d files produced any config, return defaults.
+	if len(mergedMap) == 0 {
 		return defaults(), nil
 	}
-	return Load(path)
+
+	// Marshal merged map back to YAML and unmarshal into Config struct
+	mergedBytes, err := yaml.Marshal(mergedMap)
+	if err != nil {
+		return nil, errors.Wrap(err, "marshal merged config")
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(mergedBytes, &cfg); err != nil {
+		return nil, errors.Wrap(err, "unmarshal merged config")
+	}
+
+	applyDefaults(&cfg)
+	return &cfg, nil
+}
+
+func mergeMaps(base, override map[string]any) map[string]any {
+	result := make(map[string]any, len(base))
+	for k, v := range base {
+		result[k] = v
+	}
+
+	for k, overrideVal := range override {
+		baseVal, exists := result[k]
+		if !exists {
+			result[k] = overrideVal
+			continue
+		}
+
+		// If both are maps, recursively merge them
+		baseMap, baseIsMap := toStringMap(baseVal)
+		overrideMap, overrideIsMap := toStringMap(overrideVal)
+		if baseIsMap && overrideIsMap {
+			result[k] = mergeMaps(baseMap, overrideMap)
+			continue
+		}
+
+		// If both are slices, merge with identity or fallback to append
+		baseSlice, baseIsSlice := toSlice(baseVal)
+		overrideSlice, overrideIsSlice := toSlice(overrideVal)
+		if baseIsSlice && overrideIsSlice {
+			result[k] = mergeSlices(baseSlice, overrideSlice)
+			continue
+		}
+
+		// Otherwise, override scalar / mismatched value
+		result[k] = overrideVal
+	}
+
+	return result
+}
+
+func mergeSlices(base, override []any) []any {
+	// Check if either slice contains elements with identity keys ("id" or "name")
+	hasIdentity := false
+	for _, item := range override {
+		if _, ok := getElementIdentity(item); ok {
+			hasIdentity = true
+			break
+		}
+	}
+	if !hasIdentity {
+		for _, item := range base {
+			if _, ok := getElementIdentity(item); ok {
+				hasIdentity = true
+				break
+			}
+		}
+	}
+
+	// Fallback to append if no identity key is found
+	if !hasIdentity {
+		merged := make([]any, 0, len(base)+len(override))
+		merged = append(merged, base...)
+		merged = append(merged, override...)
+		return merged
+	}
+
+	// Identity-based merge
+	result := make([]any, len(base))
+	copy(result, base)
+
+	for _, item := range override {
+		id, ok := getElementIdentity(item)
+		if !ok {
+			result = append(result, item)
+			continue
+		}
+
+		foundIdx := -1
+		for i, baseItem := range result {
+			baseID, baseOK := getElementIdentity(baseItem)
+			if baseOK && baseID == id {
+				foundIdx = i
+				break
+			}
+		}
+
+		if foundIdx >= 0 {
+			baseMap, baseMapOK := toStringMap(result[foundIdx])
+			overrideMap, overrideMapOK := toStringMap(item)
+			if baseMapOK && overrideMapOK {
+				result[foundIdx] = mergeMaps(baseMap, overrideMap)
+			} else {
+				result[foundIdx] = item
+			}
+		} else {
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
+func getElementIdentity(elem any) (string, bool) {
+	m, ok := toStringMap(elem)
+	if !ok {
+		return "", false
+	}
+	if id, ok := m["id"].(string); ok && id != "" {
+		return id, true
+	}
+	if name, ok := m["name"].(string); ok && name != "" {
+		return name, true
+	}
+	return "", false
+}
+
+func toStringMap(v any) (map[string]any, bool) {
+	if m, ok := v.(map[string]any); ok {
+		return m, true
+	}
+	if m, ok := v.(map[any]any); ok {
+		res := make(map[string]any, len(m))
+		for k, val := range m {
+			res[fmt.Sprintf("%v", k)] = val
+		}
+		return res, true
+	}
+	return nil, false
+}
+
+func toSlice(v any) ([]any, bool) {
+	if s, ok := v.([]any); ok {
+		return s, true
+	}
+	return nil, false
 }
 
 func parse(data []byte) (*Config, error) {

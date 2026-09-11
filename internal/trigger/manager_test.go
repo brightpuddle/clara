@@ -149,4 +149,58 @@ triggers:
 	if len(list) != 2 {
 		t.Fatalf("expected 2 triggers, got %d", len(list))
 	}
+
+	if mgr.GetFilePath("cron-check") != tmpFile {
+		t.Errorf("expected file path %s, got %s", tmpFile, mgr.GetFilePath("cron-check"))
+	}
+}
+
+func TestManager_SaveToFile_And_DeleteTrigger(t *testing.T) {
+	mgr := trigger.NewManager(nil, nil, nil)
+	tmpDir := t.TempDir()
+
+	def := trigger.Definition{
+		ID:          "new-worker",
+		Name:        "New Worker",
+		Description: "A worker created dynamically",
+		Enabled:     true,
+		Type:        trigger.TypeWorker,
+		Action: trigger.Action{
+			Exec:    "python3 worker.py",
+			Restart: trigger.RestartAlways,
+		},
+	}
+
+	savedPath, err := mgr.SaveToFile(def, tmpDir)
+	if err != nil {
+		t.Fatalf("failed to save trigger: %v", err)
+	}
+
+	expectedPath := filepath.Join(tmpDir, "new-worker.yaml")
+	if savedPath != expectedPath {
+		t.Errorf("expected path %s, got %s", expectedPath, savedPath)
+	}
+
+	if _, err := os.Stat(savedPath); err != nil {
+		t.Fatalf("saved file does not exist: %v", err)
+	}
+
+	// Verify it's registered
+	got, ok := mgr.Get("new-worker")
+	if !ok || got.Name != "New Worker" {
+		t.Fatalf("expected trigger to be registered, got %v", got)
+	}
+
+	// Delete it
+	if err := mgr.DeleteTrigger("new-worker"); err != nil {
+		t.Fatalf("failed to delete trigger: %v", err)
+	}
+
+	if _, ok := mgr.Get("new-worker"); ok {
+		t.Errorf("expected trigger to be removed from manager")
+	}
+
+	if _, err := os.Stat(savedPath); !os.IsNotExist(err) {
+		t.Errorf("expected saved file to be removed from disk, err: %v", err)
+	}
 }

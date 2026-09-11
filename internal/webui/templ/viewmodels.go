@@ -58,17 +58,17 @@ func NewBaseVM(m manifest.Manifest, isDev bool, devHost, pageTitle, location str
 
 // DashboardVM holds data for the dashboard page.
 type DashboardVM struct {
-	Base                 BaseVM
-	TriggersCount        int
-	EventTriggersCount   int
+	Base                  BaseVM
+	TriggersCount         int
+	EventTriggersCount    int
 	ScheduleTriggersCount int
-	WorkerTriggersCount  int
-	ToolsCount           int
-	IntegrationsCount    int
-	Triggers             []trigger.Definition
-	RecentRuns           []store.TriggerRunRecord
-	Integrations         []map[string]any
-	RecentLogs           []string
+	WorkerTriggersCount   int
+	ToolsCount            int
+	IntegrationsCount     int
+	Triggers              []trigger.Definition
+	RecentRuns            []store.TriggerRunRecord
+	Integrations          []map[string]any
+	RecentLogs            []string
 }
 
 // TriggersVM holds data for the triggers list page.
@@ -76,15 +76,31 @@ type TriggersVM struct {
 	Base       BaseVM
 	Triggers   []trigger.Definition
 	RecentRuns []store.TriggerRunRecord
+	Flash      string
+	FlashKind  string
 }
 
 // TriggerDetailVM holds data for a trigger detail page.
 type TriggerDetailVM struct {
-	Base       BaseVM
-	Trigger    trigger.Definition
-	RecentRuns []store.TriggerRunRecord
-	RunResult  *trigger.RunRecord
+	Base        BaseVM
+	Trigger     trigger.Definition
+	RecentRuns  []store.TriggerRunRecord
+	RunResult   *trigger.RunRecord
 	MatchResult *bool
+	Flash       string
+	FlashKind   string
+	FilePath    string
+}
+
+// TriggerEditVM holds data for the trigger add/edit page.
+type TriggerEditVM struct {
+	Base        BaseVM
+	Trigger     trigger.Definition
+	IsNew       bool
+	TriggerJSON string
+	YAML        string
+	Flash       string
+	FlashKind   string
 }
 
 // RunsVM holds data for the execution audit log page.

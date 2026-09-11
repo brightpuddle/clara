@@ -1,0 +1,231 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://brightpuddle.github.io/clara/schemas/config.schema.json",
+  "title": "Clara Configuration",
+  "description": "Schema for Clara daemon configuration files (config.yaml and conf.d/*.yaml fragments).",
+  "type": "object",
+  "properties": {
+    "log_level": {
+      "type": "string",
+      "description": "Log verbosity level",
+      "enum": ["trace", "debug", "info", "warn", "error"],
+      "default": "info"
+    },
+    "data_dir": {
+      "type": "string",
+      "description": "Runtime data directory for Clara database and logs (default: ~/.local/share/clara)"
+    },
+    "builder_repo_root": {
+      "type": "string",
+      "description": "Path to the Clara source tree for local development"
+    },
+    "triggers": {
+      "type": "array",
+      "description": "Inline trigger definitions",
+      "items": {
+        "$ref": "trigger.schema.json#/definitions/trigger"
+      }
+    },
+    "trigger_dirs": {
+      "type": "array",
+      "description": "Directories to scan for trigger .yaml files",
+      "items": {
+        "type": "string"
+      }
+    },
+    "task_dirs": {
+      "type": "array",
+      "description": "Directories to watch for task files",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "description": "Ordered whitelist of plugins to load on daemon startup",
+      "items": {
+        "$ref": "#/definitions/plugin"
+      }
+    },
+    "plugin_search_paths": {
+      "type": "array",
+      "description": "Ordered list of directories searched when resolving a plugin binary",
+      "items": {
+        "type": "string"
+      }
+    },
+    "integrations": {
+      "type": "object",
+      "description": "Configuration maps for native Go integration plugins",
+      "properties": {
+        "db": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" }
+          }
+        },
+        "zk": {
+          "type": "object",
+          "properties": {
+            "vault_root": { "type": "string" }
+          }
+        },
+        "webex": {
+          "type": "object",
+          "properties": {
+            "client_id": { "type": "string" },
+            "client_secret": { "type": "string" },
+            "bot_token": { "type": "string" },
+            "webhook_secret": { "type": "string" },
+            "base_url": { "type": "string" },
+            "secret": { "type": "string" }
+          }
+        },
+        "discord": {
+          "type": "object",
+          "properties": {
+            "token": { "type": "string" },
+            "secret": { "type": "string" }
+          }
+        },
+        "llm": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    },
+    "mcp_command_search_paths": {
+      "type": "array",
+      "description": "Additional search paths used to locate bare MCP server commands",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "MCP servers managed by Clara daemon",
+      "items": {
+        "$ref": "#/definitions/mcp_server"
+      }
+    },
+    "mcp_startup_timeout": {
+      "type": "string",
+      "description": "Maximum time to wait for MCP servers to initialize (e.g. '30s')",
+      "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+    },
+    "notify": {
+      "$ref": "#/definitions/notify",
+      "description": "Notification backend configuration"
+    },
+    "server": {
+      "$ref": "#/definitions/server",
+      "description": "HTTP and remote MCP server configuration"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "plugin": {
+      "type": "object",
+      "description": "Plugin configuration entry",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Plugin namespace and binary name",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "description": "Optional explicit binary path"
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "mcp_server": {
+      "type": "object",
+      "description": "Configuration for an MCP server (HTTP stream or stdio subprocess)",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Registry alias for this server",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "description": "Base URL of a streamable HTTP MCP server"
+        },
+        "token": {
+          "type": "string",
+          "description": "Bearer token for HTTP MCP server"
+        },
+        "skip_verify": {
+          "type": "boolean",
+          "description": "Skip TLS certificate verification for HTTP MCP server"
+        },
+        "command": {
+          "type": "string",
+          "description": "Command string to run for stdio subprocess MCP server"
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables passed to the subprocess",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable summary of tools provided"
+        }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    },
+    "notify": {
+      "type": "object",
+      "description": "Notification backend configuration",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "Notification delivery mechanism",
+          "enum": ["dummy", "macos", "webex", "discord"],
+          "default": "dummy"
+        },
+        "webex": {
+          "type": "object",
+          "properties": {
+            "room_id": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "discord": {
+          "type": "object",
+          "properties": {
+            "channel_id": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "server": {
+      "type": "object",
+      "description": "Clara HTTP server settings",
+      "properties": {
+        "listen_addr": {
+          "type": "string",
+          "description": "Bind address for HTTP server (e.g. ':4444')"
+        },
+        "shared_secret": {
+          "type": "string",
+          "description": "Shared bearer secret for remote MCP authentication"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

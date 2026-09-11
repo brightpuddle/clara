@@ -213,6 +213,159 @@ plugin_search_paths:
 	}
 }
 
+func TestLoadWithConfD_DeepMerge(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "config.yaml")
+	confD := filepath.Join(dir, "conf.d")
+	if err := os.MkdirAll(confD, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	baseYaml := `
+log_level: info
+data_dir: /var/clara
+integrations:
+  db:
+    path: /var/clara/data.db
+mcp_servers:
+  - name: github
+    command: github-mcp-server stdio
+    env:
+      TOKEN: original-token
+triggers:
+  - id: t1
+    name: Base Trigger 1
+    type: event
+    action:
+      exec: lua base.lua
+trigger_dirs:
+  - /var/clara/triggers
+`
+	if err := os.WriteFile(basePath, []byte(baseYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	llmYaml := `
+log_level: debug
+integrations:
+  llm:
+    providers:
+      ollama:
+        base_url: http://localhost:11434
+`
+	if err := os.WriteFile(filepath.Join(confD, "10-llm.yaml"), []byte(llmYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mcpAndTriggersYaml := `
+mcp_servers:
+  - name: github
+    description: GitHub Tools
+  - name: memory
+    command: mcp-memory-server stdio
+triggers:
+  - id: t1
+    name: Updated Trigger 1
+  - id: t2
+    name: New Trigger 2
+    type: schedule
+    action:
+      exec: lua cron.lua
+trigger_dirs:
+  - /opt/clara/custom_triggers
+`
+	if err := os.WriteFile(filepath.Join(confD, "20-mcp-triggers.yaml"), []byte(mcpAndTriggersYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithConfD(basePath, confD)
+	if err != nil {
+		t.Fatalf("LoadWithConfD failed: %v", err)
+	}
+
+	// 1. Scalar override: log_level should be overridden by 10-llm.yaml
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel: got %q want %q", cfg.LogLevel, "debug")
+	}
+	if cfg.DataDir != "/var/clara" {
+		t.Errorf("DataDir: got %q want %q", cfg.DataDir, "/var/clara")
+	}
+
+	// 2. Map deep merge: integrations should contain both db and llm
+	if len(cfg.Integrations) != 2 {
+		t.Fatalf("Integrations len: got %d want 2", len(cfg.Integrations))
+	}
+	if cfg.Integrations["db"]["path"] != "/var/clara/data.db" {
+		t.Errorf("db.path: got %v", cfg.Integrations["db"]["path"])
+	}
+	if cfg.Integrations["llm"] == nil {
+		t.Errorf("expected llm integration to be present")
+	}
+
+	// 3. Identity merge for mcp_servers (by name):
+	// github should have merged description while preserving command and env; memory should be appended
+	if len(cfg.MCPServers) != 2 {
+		t.Fatalf("MCPServers len: got %d want 2", len(cfg.MCPServers))
+	}
+	if cfg.MCPServers[0].Name != "github" || cfg.MCPServers[0].Command != "github-mcp-server stdio" ||
+		cfg.MCPServers[0].Description != "GitHub Tools" || cfg.MCPServers[0].Env["TOKEN"] != "original-token" {
+		t.Errorf("MCPServers[0] not properly merged: %+v", cfg.MCPServers[0])
+	}
+	if cfg.MCPServers[1].Name != "memory" || cfg.MCPServers[1].Command != "mcp-memory-server stdio" {
+		t.Errorf("MCPServers[1] not properly appended: %+v", cfg.MCPServers[1])
+	}
+
+	// 4. Identity merge for triggers (by id):
+	// t1 should have updated name while keeping type and action; t2 should be appended
+	if len(cfg.Triggers) != 2 {
+		t.Fatalf("Triggers len: got %d want 2", len(cfg.Triggers))
+	}
+	if cfg.Triggers[0].ID != "t1" || cfg.Triggers[0].Name != "Updated Trigger 1" ||
+		cfg.Triggers[0].Action.Exec != "lua base.lua" {
+		t.Errorf("Triggers[0] not properly merged: %+v", cfg.Triggers[0])
+	}
+	if cfg.Triggers[1].ID != "t2" || cfg.Triggers[1].Name != "New Trigger 2" {
+		t.Errorf("Triggers[1] not properly appended: %+v", cfg.Triggers[1])
+	}
+
+	// 5. Primitive slice append for trigger_dirs:
+	if len(cfg.TriggerDirsOverride) != 2 {
+		t.Fatalf("TriggerDirsOverride len: got %d want 2", len(cfg.TriggerDirsOverride))
+	}
+	if cfg.TriggerDirsOverride[0] != "/var/clara/triggers" ||
+		cfg.TriggerDirsOverride[1] != "/opt/clara/custom_triggers" {
+		t.Errorf("TriggerDirsOverride: got %v", cfg.TriggerDirsOverride)
+	}
+}
+
+func TestLoad_ExplicitFileOnly(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "custom.yaml")
+	confD := filepath.Join(dir, "conf.d")
+	if err := os.MkdirAll(confD, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	customYaml := `log_level: warn`
+	if err := os.WriteFile(basePath, []byte(customYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	confDYaml := `log_level: debug`
+	if err := os.WriteFile(filepath.Join(confD, "override.yaml"), []byte(confDYaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load should only load custom.yaml and NOT merge conf.d
+	cfg, err := config.Load(basePath)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Errorf("LogLevel: got %q want %q", cfg.LogLevel, "warn")
+	}
+}
+
 func writeTempFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
