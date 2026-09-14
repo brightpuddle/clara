@@ -37,7 +37,7 @@ var authWebexCmd = &cobra.Command{
 		}
 
 		if webexClientID == "" || webexClientSecret == "" {
-			return fmt.Errorf("Webex client-id and client-secret are required (provide via flags, environment variables, or config.yaml)")
+			return fmt.Errorf("webex client-id and client-secret are required (provide via flags, environment variables, or config.yaml)")
 		}
 
 		db, err := store.Open(cfg.DBPath(), zerolog.Nop())

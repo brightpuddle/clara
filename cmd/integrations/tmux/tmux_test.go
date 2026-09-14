@@ -9,19 +9,6 @@ import (
 	"github.com/brightpuddle/clara/pkg/contract"
 )
 
-// --- helpers ---
-
-// fakeTmux wraps Tmux but replaces the run function with a stub so tests never
-// shell out to a real tmux binary.
-type fakeTmux struct {
-	Tmux
-	runFn func(args ...string) (string, error)
-}
-
-func (f *fakeTmux) run(args ...string) (string, error) {
-	return f.runFn(args...)
-}
-
 // --- Description / Tools ---
 
 func TestDescription(t *testing.T) {

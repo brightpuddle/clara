@@ -18,18 +18,20 @@ import (
 
 // Manager coordinates event, schedule, and worker triggers.
 type Manager struct {
-	mu          sync.RWMutex
-	triggers    map[string]Definition
-	filePaths   map[string]string
-	runner      *Runner
-	eventBus    *supervisor.EventBus
-	store       *store.Store
-	cron        *cron.Cron
-	cronEntries map[string]cron.EntryID
-	workers     map[string]context.CancelFunc
-	ctx         context.Context
-	cancel      context.CancelFunc
-	unsubscribe func()
+	mu             sync.RWMutex
+	triggers       map[string]Definition
+	filePaths      map[string]string
+	runner         *Runner
+	eventBus       *supervisor.EventBus
+	store          *store.Store
+	cron           *cron.Cron
+	cronEntries    map[string]cron.EntryID
+	workers        map[string]context.CancelFunc
+	debounceTimers map[string]*time.Timer
+	lastTriggerRun map[string]time.Time
+	ctx            context.Context
+	cancel         context.CancelFunc
+	unsubscribe    func()
 }
 
 // NewManager creates a new trigger manager.
@@ -38,14 +40,16 @@ func NewManager(runner *Runner, eventBus *supervisor.EventBus, st *store.Store) 
 		runner = NewRunner(60 * time.Second)
 	}
 	return &Manager{
-		triggers:    make(map[string]Definition),
-		filePaths:   make(map[string]string),
-		runner:      runner,
-		eventBus:    eventBus,
-		store:       st,
-		cron:        cron.New(cron.WithSeconds()),
-		cronEntries: make(map[string]cron.EntryID),
-		workers:     make(map[string]context.CancelFunc),
+		triggers:       make(map[string]Definition),
+		filePaths:      make(map[string]string),
+		runner:         runner,
+		eventBus:       eventBus,
+		store:          st,
+		cron:           cron.New(cron.WithSeconds()),
+		cronEntries:    make(map[string]cron.EntryID),
+		workers:        make(map[string]context.CancelFunc),
+		debounceTimers: make(map[string]*time.Timer),
+		lastTriggerRun: make(map[string]time.Time),
 	}
 }
 
@@ -65,6 +69,12 @@ func (m *Manager) Register(def Definition) error {
 	if cancel, ok := m.workers[def.ID]; ok {
 		cancel()
 		delete(m.workers, def.ID)
+	}
+
+	// Stop previous debounce timer if replacing
+	if timer, ok := m.debounceTimers[def.ID]; ok {
+		timer.Stop()
+		delete(m.debounceTimers, def.ID)
 	}
 
 	// Remove previous cron entry if replacing
@@ -92,6 +102,11 @@ func (m *Manager) Unregister(id string) {
 		cancel()
 		delete(m.workers, id)
 	}
+	if timer, ok := m.debounceTimers[id]; ok {
+		timer.Stop()
+		delete(m.debounceTimers, id)
+	}
+	delete(m.lastTriggerRun, id)
 	if entryID, ok := m.cronEntries[id]; ok {
 		m.cron.Remove(entryID)
 		delete(m.cronEntries, id)
@@ -162,6 +177,11 @@ func (m *Manager) DeleteTrigger(id string) error {
 		cancel()
 		delete(m.workers, id)
 	}
+	if timer, ok := m.debounceTimers[id]; ok {
+		timer.Stop()
+		delete(m.debounceTimers, id)
+	}
+	delete(m.lastTriggerRun, id)
 	if entryID, ok := m.cronEntries[id]; ok {
 		m.cron.Remove(entryID)
 		delete(m.cronEntries, id)
@@ -287,6 +307,10 @@ func (m *Manager) Stop() {
 	if m.unsubscribe != nil {
 		m.unsubscribe()
 	}
+	for id, timer := range m.debounceTimers {
+		timer.Stop()
+		delete(m.debounceTimers, id)
+	}
 	for id, cancel := range m.workers {
 		cancel()
 		delete(m.workers, id)
@@ -410,17 +434,63 @@ func (m *Manager) handleCloudEvent(ce supervisor.CloudEvent) {
 	}
 	m.mu.RUnlock()
 
+	if len(matching) == 0 {
+		return
+	}
+
+	eventMap := map[string]any{
+		"id":           ce.ID,
+		"source":       ce.Source,
+		"type":         ce.Type,
+		"time":         ce.Time.Format(time.RFC3339),
+		"content_type": ce.ContentType,
+		"data":         ce.Data,
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for _, def := range matching {
 		targetDef := def
-		go func() {
-			eventMap := map[string]any{
-				"id":           ce.ID,
-				"source":       ce.Source,
-				"type":         ce.Type,
-				"time":         ce.Time.Format(time.RFC3339),
-				"content_type": ce.ContentType,
-				"data":         ce.Data,
+
+		if targetDef.Debounce > 0 {
+			if timer, exists := m.debounceTimers[targetDef.ID]; exists {
+				timer.Stop()
 			}
+			var timer *time.Timer
+			timer = time.AfterFunc(targetDef.Debounce, func() {
+				m.mu.Lock()
+				if current, ok := m.debounceTimers[targetDef.ID]; ok && current == timer {
+					delete(m.debounceTimers, targetDef.ID)
+				}
+				if targetDef.Throttle > 0 {
+					if last, ok := m.lastTriggerRun[targetDef.ID]; ok && time.Since(last) < targetDef.Throttle {
+						m.mu.Unlock()
+						return
+					}
+					m.lastTriggerRun[targetDef.ID] = time.Now()
+				}
+				m.mu.Unlock()
+
+				if m.ctx != nil && m.ctx.Err() != nil {
+					return
+				}
+
+				record := m.runner.Execute(context.Background(), targetDef, eventMap)
+				m.recordRun(context.Background(), record)
+			})
+			m.debounceTimers[targetDef.ID] = timer
+			continue
+		}
+
+		if targetDef.Throttle > 0 {
+			if last, ok := m.lastTriggerRun[targetDef.ID]; ok && time.Since(last) < targetDef.Throttle {
+				continue
+			}
+			m.lastTriggerRun[targetDef.ID] = time.Now()
+		}
+
+		go func() {
 			record := m.runner.Execute(context.Background(), targetDef, eventMap)
 			m.recordRun(context.Background(), record)
 		}()

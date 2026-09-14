@@ -151,13 +151,6 @@ func (b *Bot) SendInteractive(channelID, machine, requestID, title, description 
 	return m.ID, nil
 }
 
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
-}
-
 func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	switch i.Type {
 	case discordgo.InteractionMessageComponent:

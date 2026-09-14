@@ -900,40 +900,6 @@ func buildHandler(
 	}
 }
 
-// intentTaskIsOnDemand reports whether the target task for a start request is
-// on-demand. If taskName is empty, it returns true only when every task in the
-// intent is on-demand (i.e. there are no auto tasks to activate).
-func intentTaskIsOnDemand(intent *orchestrator.Intent, taskName string) bool {
-	if taskName != "" {
-		for _, t := range intent.Tasks {
-			if t.Handler == taskName {
-				return t.Mode == "" || t.Mode == orchestrator.IntentModeOnDemand
-			}
-		}
-		// Named task not found — let StartIntent return the appropriate error.
-		return false
-	}
-	for _, t := range intent.Tasks {
-		if t.Mode != "" && t.Mode != orchestrator.IntentModeOnDemand {
-			return false
-		}
-	}
-	return true
-}
-
-func buildLogger() zerolog.Logger {
-	level, err := zerolog.ParseLevel(cfg.LogLevelNormalized())
-	if err != nil {
-		level = zerolog.InfoLevel
-	}
-	if isTerminalFile(os.Stderr) {
-		return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).
-			Level(level).
-			With().Timestamp().Logger()
-	}
-	return zerolog.New(os.Stdout).Level(level).With().Timestamp().Logger()
-}
-
 func buildDaemonLogger() zerolog.Logger {
 	level, err := zerolog.ParseLevel(cfg.LogLevelNormalized())
 	if err != nil {

@@ -47,10 +47,10 @@ func (e *CBACEngine) Authorize(actuatorID string, req Capability) (bool, error) 
 	}
 
 	for _, app := range approvedList {
-		if strings.ToLower(app.Scope) != strings.ToLower(req.Scope) {
+		if !strings.EqualFold(app.Scope, req.Scope) {
 			continue
 		}
-		if strings.ToLower(app.Action) != strings.ToLower(req.Action) {
+		if !strings.EqualFold(app.Action, req.Action) {
 			continue
 		}
 		// Validate resource scopes (supporting wildcards)

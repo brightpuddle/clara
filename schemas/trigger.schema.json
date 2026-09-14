@@ -58,6 +58,16 @@
           "type": "string",
           "description": "Cron expression or '@every 1m' interval (used when type is 'schedule')"
         },
+        "debounce": {
+          "type": "string",
+          "description": "Quiet period duration to wait before firing after events stop (e.g. '500ms', '2s')",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+        },
+        "throttle": {
+          "type": "string",
+          "description": "Minimum duration between consecutive executions (e.g. '1s', '5s')",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+        },
         "action": {
           "$ref": "#/definitions/action",
           "description": "Execution action to invoke when the trigger fires"

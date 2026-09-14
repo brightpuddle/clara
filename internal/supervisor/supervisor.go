@@ -681,10 +681,6 @@ func NormalizeNotificationParams(params any) map[string]any {
 	return result
 }
 
-func atomicAdd64(addr *int64, delta int64) int64 {
-	return atomic.AddInt64(addr, delta)
-}
-
 // ActuatorInfo describes a running actuator for CLI listing.
 type ActuatorInfo struct {
 	ID          string `json:"id"`

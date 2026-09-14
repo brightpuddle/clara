@@ -29,6 +29,8 @@ type StructuredTrigger struct {
 	Enabled      bool      `json:"enabled"`
 	Type         string    `json:"type"`
 	Schedule     string    `json:"schedule"`
+	Debounce     string    `json:"debounce"`
+	Throttle     string    `json:"throttle"`
 	RuleField    string    `json:"rule_field"`
 	RuleOp       string    `json:"rule_op"`
 	RuleValue    string    `json:"rule_value"`
@@ -52,6 +54,8 @@ type triggerYAML struct {
 	Type        trigger.Type  `yaml:"type"`
 	Match       *trigger.Rule `yaml:"match,omitempty"`
 	Schedule    string        `yaml:"schedule,omitempty"`
+	Debounce    string        `yaml:"debounce,omitempty"`
+	Throttle    string        `yaml:"throttle,omitempty"`
 	Action      actionYAML    `yaml:"action"`
 }
 
@@ -412,6 +416,12 @@ func triggerToStructured(def trigger.Definition) *StructuredTrigger {
 	if def.Action.RestartDelay > 0 {
 		st.RestartDelay = def.Action.RestartDelay.String()
 	}
+	if def.Debounce > 0 {
+		st.Debounce = def.Debounce.String()
+	}
+	if def.Throttle > 0 {
+		st.Throttle = def.Throttle.String()
+	}
 
 	if def.Match != nil {
 		if def.Match.Field != "" && len(def.Match.And) == 0 && len(def.Match.Or) == 0 && def.Match.Not == nil {
@@ -471,6 +481,24 @@ func structuredToTrigger(st *StructuredTrigger) (*trigger.Definition, error) {
 			return nil, errors.Wrapf(err, "invalid action timeout %q", st.Timeout)
 		}
 		def.Action.Timeout = dur
+	}
+
+	// Debounce
+	if strings.TrimSpace(st.Debounce) != "" {
+		dur, err := parseDurationStr(st.Debounce)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid debounce %q", st.Debounce)
+		}
+		def.Debounce = dur
+	}
+
+	// Throttle
+	if strings.TrimSpace(st.Throttle) != "" {
+		dur, err := parseDurationStr(st.Throttle)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid throttle %q", st.Throttle)
+		}
+		def.Throttle = dur
 	}
 
 	// Env
@@ -553,6 +581,12 @@ func triggerToYAML(def trigger.Definition) (string, error) {
 	if def.Action.RestartDelay > 0 {
 		y.Action.RestartDelay = def.Action.RestartDelay.String()
 	}
+	if def.Debounce > 0 {
+		y.Debounce = def.Debounce.String()
+	}
+	if def.Throttle > 0 {
+		y.Throttle = def.Throttle.String()
+	}
 	b, err := yaml.Marshal(y)
 	if err != nil {
 		return "", errors.Wrap(err, "marshal trigger YAML")
@@ -591,6 +625,16 @@ func yamlToTrigger(yamlStr string) (*trigger.Definition, error) {
 	if y.Action.RestartDelay != "" {
 		if dur, err := parseDurationStr(y.Action.RestartDelay); err == nil {
 			def.Action.RestartDelay = dur
+		}
+	}
+	if y.Debounce != "" {
+		if dur, err := parseDurationStr(y.Debounce); err == nil {
+			def.Debounce = dur
+		}
+	}
+	if y.Throttle != "" {
+		if dur, err := parseDurationStr(y.Throttle); err == nil {
+			def.Throttle = dur
 		}
 	}
 	return &def, nil

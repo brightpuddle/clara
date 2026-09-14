@@ -47,14 +47,16 @@ type Action struct {
 
 // Definition defines a single trigger.
 type Definition struct {
-	ID          string `json:"id"                    yaml:"id"`
-	Name        string `json:"name"                  yaml:"name"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	Enabled     bool   `json:"enabled"               yaml:"enabled"`
-	Type        Type   `json:"type"                  yaml:"type"`
-	Match       *Rule  `json:"match,omitempty"       yaml:"match,omitempty"`
-	Schedule    string `json:"schedule,omitempty"    yaml:"schedule,omitempty"` // Cron expr or @every 1m
-	Action      Action `json:"action"                yaml:"action"`
+	ID          string        `json:"id"                    yaml:"id"`
+	Name        string        `json:"name"                  yaml:"name"`
+	Description string        `json:"description,omitempty" yaml:"description,omitempty"`
+	Enabled     bool          `json:"enabled"               yaml:"enabled"`
+	Type        Type          `json:"type"                  yaml:"type"`
+	Match       *Rule         `json:"match,omitempty"       yaml:"match,omitempty"`
+	Schedule    string        `json:"schedule,omitempty"    yaml:"schedule,omitempty"` // Cron expr or @every 1m
+	Debounce    time.Duration `json:"debounce,omitempty"    yaml:"debounce,omitempty"`
+	Throttle    time.Duration `json:"throttle,omitempty"    yaml:"throttle,omitempty"`
+	Action      Action        `json:"action"                yaml:"action"`
 }
 
 // ExecutionStatus represents the final status of a run.

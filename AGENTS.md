@@ -109,6 +109,8 @@ id: email-invoice-processor
 name: Email Invoice Processor
 description: Routes invoice emails to an automated Lua processing script
 type: event
+debounce: 500ms           # optional: wait for quiet period before running
+throttle: 1s              # optional: rate limit consecutive executions
 match:
   and:
     - field: type

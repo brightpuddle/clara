@@ -301,6 +301,22 @@ templ TriggerDetail(vm *TriggerDetailVM) {
 									</div>
 								</div>
 							}
+							if vm.Trigger.Type == trigger.TypeEvent && (vm.Trigger.Debounce > 0 || vm.Trigger.Throttle > 0) {
+								<div class="grid grid-cols-2 gap-3">
+									if vm.Trigger.Debounce > 0 {
+										<div>
+											<span class="text-xs text-base-content/50 uppercase font-semibold">Debounce:</span>
+											<div class="font-medium mt-1 text-xs font-mono">{ vm.Trigger.Debounce.String() }</div>
+										</div>
+									}
+									if vm.Trigger.Throttle > 0 {
+										<div>
+											<span class="text-xs text-base-content/50 uppercase font-semibold">Throttle:</span>
+											<div class="font-medium mt-1 text-xs font-mono">{ vm.Trigger.Throttle.String() }</div>
+										</div>
+									}
+								</div>
+							}
 							if vm.Trigger.Type == trigger.TypeWorker {
 								<div class="grid grid-cols-3 gap-2">
 									<div>
@@ -653,6 +669,31 @@ templ TriggerEdit(vm *TriggerEditVM) {
 										class="textarea textarea-bordered w-full rounded-xl font-mono text-xs bg-base-200/40"
 									></textarea>
 									<p class="text-xs text-base-content/50 mt-1">If provided, this compound YAML rule overrides the single field condition above.</p>
+								</div>
+
+								<div class="divider my-0 text-xs text-base-content/40">TIMING &amp; RATE LIMITING (OPTIONAL)</div>
+
+								<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+									<div>
+										<label class="block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1">Debounce</label>
+										<input
+											type="text"
+											x-model="trig.debounce"
+											placeholder="e.g. 500ms or 2s"
+											class="input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40"
+										/>
+										<span class="text-xs text-base-content/50 mt-1 block">Delay execution until events stop arriving</span>
+									</div>
+									<div>
+										<label class="block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1">Throttle</label>
+										<input
+											type="text"
+											x-model="trig.throttle"
+											placeholder="e.g. 1s or 10s"
+											class="input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40"
+										/>
+										<span class="text-xs text-base-content/50 mt-1 block">Limit rate of consecutive executions</span>
+									</div>
 								</div>
 							</div>
 						</div>

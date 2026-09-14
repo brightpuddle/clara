@@ -226,7 +226,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
 
     private let eventManager: EventManager
     
-    init(eventManager: EventManager) {
+    init(eventManager: EventManager = EventManager()) {
         self.eventManager = eventManager
         super.init()
         eventStoreObserver = NotificationCenter.default.addObserver(
@@ -531,6 +531,24 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                     stringProperty("account_name", "Optional account name.")
                 ]
             ),
+            tool(
+                name: "mail_create_mailbox",
+                description: "Create a new mailbox in Mail.app (optionally within an account).",
+                properties: [
+                    stringProperty("mailbox_name", "Name of the new mailbox to create."),
+                    stringProperty("account_name", "Optional account name to create the mailbox in.")
+                ],
+                required: ["mailbox_name"]
+            ),
+            tool(
+                name: "mail_delete_mailbox",
+                description: "Delete a mailbox in Mail.app (optionally within an account).",
+                properties: [
+                    stringProperty("mailbox_name", "Name of the mailbox to delete."),
+                    stringProperty("account_name", "Optional account name containing the mailbox.")
+                ],
+                required: ["mailbox_name"]
+            ),
         ]
     }
 
@@ -630,26 +648,32 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             let result = try await mailGetMessage(arguments)
             return try toolResult(result)
         case "mail_move":
-            try await mailMove(arguments)
+            _ = try await mailMove(arguments)
             return try toolResult(["status": "moved"])
         case "mail_flag":
-            try await mailFlag(arguments)
+            _ = try await mailFlag(arguments)
             return try toolResult(["status": "flagged"])
         case "mail_mark_read":
-            try await mailMarkRead(arguments)
+            _ = try await mailMarkRead(arguments)
             return try toolResult(["status": "marked"])
         case "mail_create_draft":
             let result = try await mailCreateDraft(arguments)
             return try toolResult(result)
         case "mail_send":
-            try await mailSend(arguments)
+            _ = try await mailSend(arguments)
             return try toolResult(["status": "sent"])
         case "mail_delete":
-            try await mailDelete(arguments)
+            _ = try await mailDelete(arguments)
             return try toolResult(["status": "deleted"])
         case "mail_get_mailboxes":
             let items = try await mailGetMailboxes(arguments)
             return try toolResult(items)
+        case "mail_create_mailbox":
+            let result = try await mailCreateMailbox(arguments)
+            return try toolResult(result)
+        case "mail_delete_mailbox":
+            let result = try await mailDeleteMailbox(arguments)
+            return try toolResult(result)
         default:
             throw MCPProtocolError.methodNotFound("unknown tool: \(name)")
         }
@@ -1390,10 +1414,11 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             script = """
             tell application "Mail"
                 set theAccount to account "\(accountName)"
+                set accName to name of theAccount
                 set mailboxList to every mailbox of theAccount
                 set results to {}
                 repeat with theMailbox in mailboxList
-                    set end of results to {name:name of theMailbox, account:accountName}
+                    set end of results to {name:name of theMailbox, account:accName}
                 end repeat
                 return results
             end tell
@@ -1414,6 +1439,58 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             """
         }
         return try executeAppleScript(script, timeout: 120) as? [[String: Any]] ?? []
+    }
+
+    private func mailCreateMailbox(_ args: [String: Any]) async throws -> [String: Any] {
+        try ensureMailAccess()
+        let mailboxName = try optionalString(args, "mailbox_name") ?? requiredString(args, "name")
+        let accountName = optionalString(args, "account_name")
+
+        let script: String
+        if let accountName = accountName, !accountName.isEmpty {
+            script = """
+            tell application "Mail"
+                tell account "\(accountName)"
+                    make new mailbox with properties {name:"\(mailboxName)"}
+                end tell
+                return {name:"\(mailboxName)", account:"\(accountName)", status:"created"}
+            end tell
+            """
+        } else {
+            script = """
+            tell application "Mail"
+                make new mailbox with properties {name:"\(mailboxName)"}
+                return {name:"\(mailboxName)", status:"created"}
+            end tell
+            """
+        }
+        return try executeAppleScript(script) as? [String: Any] ?? ["status": "created", "name": mailboxName]
+    }
+
+    private func mailDeleteMailbox(_ args: [String: Any]) async throws -> [String: Any] {
+        try ensureMailAccess()
+        let mailboxName = try optionalString(args, "mailbox_name") ?? requiredString(args, "name")
+        let accountName = optionalString(args, "account_name")
+
+        let script: String
+        if let accountName = accountName, !accountName.isEmpty {
+            script = """
+            tell application "Mail"
+                set theMailbox to mailbox "\(mailboxName)" of account "\(accountName)"
+                delete theMailbox
+                return {name:"\(mailboxName)", account:"\(accountName)", status:"deleted"}
+            end tell
+            """
+        } else {
+            script = """
+            tell application "Mail"
+                set theMailbox to mailbox "\(mailboxName)"
+                delete theMailbox
+                return {name:"\(mailboxName)", status:"deleted"}
+            end tell
+            """
+        }
+        return try executeAppleScript(script) as? [String: Any] ?? ["status": "deleted", "name": mailboxName]
     }
 
     private func executeAppleScript(_ source: String, timeout: Int = 120) throws -> Any? {
@@ -1455,7 +1532,20 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             guard descriptor.numberOfItems > 0 else { return result }
             for i in 1...descriptor.numberOfItems {
                 let keyword = descriptor.keywordForDescriptor(at: i)
-                if let item = descriptor.atIndex(i) {
+                if keyword == 0x75737266 { // 'usrf' (user defined record fields)
+                    if let userFields = descriptor.atIndex(i) {
+                        let count = userFields.numberOfItems
+                        var idx = 1
+                        while idx + 1 <= count {
+                            if let keyDesc = userFields.atIndex(idx),
+                               let key = keyDesc.stringValue,
+                               let valDesc = userFields.atIndex(idx + 1) {
+                                result[key] = convertDescriptor(valDesc) ?? NSNull()
+                            }
+                            idx += 2
+                        }
+                    }
+                } else if let item = descriptor.atIndex(i) {
                     let key = keywordToString(keyword)
                     result[key] = convertDescriptor(item) ?? NSNull()
                 }
@@ -1475,11 +1565,12 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         case 0x63746e74: return "content" // 'ctnt'
         case 0x64747263: return "date_received" // 'dtrc'
         case 0x72656164: return "read_status" // 'read'
-        case 0x6e616d65: return "name" // 'name'
+        case 0x6e616d65, 0x706e616d: return "name" // 'name', 'pnam'
         case 0x666c6167: return "flagged" // 'flag'
         case 0x6d766564: return "moved" // 'mved'
         case 0x74726774: return "target" // 'trgt'
         case 0x73746174: return "status" // 'stat'
+        case 0x61636374, 0x6d616374: return "account" // 'acct', 'mact'
         default:
             // Fallback: convert FourCharCode to String
             let bytes = [

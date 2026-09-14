@@ -173,7 +173,7 @@ func (p *ZkPlugin) CallTool(name string, args []byte) ([]byte, error) {
 
 	if p.vault.IsIndexing() {
 		return nil, fmt.Errorf(
-			"The Zettelkasten vault is currently being indexed. Please try again in a few seconds.",
+			"the zettelkasten vault is currently being indexed, please try again in a few seconds",
 		)
 	}
 
