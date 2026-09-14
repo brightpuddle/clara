@@ -530,7 +530,7 @@ templ TriggerEdit(vm *TriggerEditVM) {
 					if vm.IsNew {
 						<div class="flex items-center gap-1.5 text-xs text-base-content/60">
 							<span class="font-medium mr-1">Presets:</span>
-							<button type="button" @click="fillTemplate('event')" class="btn btn-xs btn-outline rounded-lg">Event (Lua)</button>
+							<button type="button" @click="fillTemplate('event')" class="btn btn-xs btn-outline rounded-lg">Event (TS / Bun)</button>
 							<button type="button" @click="fillTemplate('schedule')" class="btn btn-xs btn-outline rounded-lg">Schedule (Cron)</button>
 							<button type="button" @click="fillTemplate('worker')" class="btn btn-xs btn-outline rounded-lg">Worker (Daemon)</button>
 						</div>
@@ -905,7 +905,7 @@ templ TriggerEdit(vm *TriggerEditVM) {
 									x-model="rawYaml"
 									rows="18"
 									class="textarea textarea-bordered w-full font-mono text-xs leading-relaxed bg-base-200/30 rounded-xl"
-									placeholder="id: my-trigger&#10;name: My Trigger&#10;type: event&#10;match:&#10;  field: type&#10;  op: equals&#10;  value: custom.event&#10;action:&#10;  exec: lua scripts/handle.lua"
+									placeholder="id: my-trigger&#10;name: My Trigger&#10;type: event&#10;match:&#10;  field: type&#10;  op: equals&#10;  value: custom.event&#10;action:&#10;  exec: bun&#10;  args: [run, scripts/handle.ts]"
 								></textarea>
 							</div>
 						</div>

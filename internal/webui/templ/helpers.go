@@ -91,20 +91,23 @@ func triggerAlpineData(triggerJSON, rawYAML string, isNew bool) string {
 				this.trig.rule_field = 'type';
 				this.trig.rule_op = 'equals';
 				this.trig.rule_value = 'custom.event';
-				this.trig.exec = 'lua scripts/handle_event.lua';
+				this.trig.exec = 'bun';
+				this.trig.args = ['run', 'scripts/handle_event.ts'];
 				this.trig.pass_event = 'stdin';
 				this.trig.timeout = '30s';
 			} else if (type === 'schedule') {
 				this.trig.type = 'schedule';
 				this.trig.schedule = '@every 10m';
-				this.trig.exec = 'lua scripts/scheduled_task.lua';
+				this.trig.exec = 'bun';
+				this.trig.args = ['run', 'scripts/scheduled_task.ts'];
 				this.trig.timeout = '60s';
 			} else if (type === 'worker') {
 				this.trig.type = 'worker';
 				this.trig.restart = 'always';
 				this.trig.restart_delay = '5s';
 				this.trig.max_restarts = 0;
-				this.trig.exec = 'python3 workers/service.py';
+				this.trig.exec = 'bun';
+				this.trig.args = ['run', 'workers/service.ts'];
 			}
 		},
 		ensureDefaults() {

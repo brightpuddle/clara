@@ -540,6 +540,12 @@ func (c *Config) IntentLogsDir() string {
 	return filepath.Join(c.DataDir, "logs")
 }
 
+// SDKDir returns the directory where auto-generated TypeScript stubs and SDK files live.
+func (c *Config) SDKDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "clara", "sdk")
+}
+
 // MCPCommandSearchPathList returns the effective command search paths used to
 // resolve bare MCP server commands and to build subprocess PATH values.
 func (c *Config) MCPCommandSearchPathList() []string {

@@ -37,6 +37,7 @@ const (
 	MethodRunList     = "run.list"
 	MethodRunGet      = "run.get"
 	MethodToolCalls   = "tool.calls"
+	MethodTypesGen    = "types.gen"
 )
 
 // StreamEntry is a single line-delimited JSON entry written on a streaming

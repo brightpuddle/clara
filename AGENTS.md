@@ -7,11 +7,11 @@
 1. Ingests **CloudEvents** from multiple sources (Webex, Discord, email, filesystem changes, CLI prompts, system sensors) via a central **Event Bus**.
 2. Evaluates smart **Trigger Rules** (nested boolean AST with `and`, `or`, `not`, dot-notation path extraction, regex, and comparison operators) to route events to external automation scripts.
 3. Coordinates **Schedule Triggers** (cron / intervals) and **Worker Triggers** (supervised long-running background processes with configurable restart policies).
-4. Supervises **External Scripts** (primarily Lua, alongside Python and shell binaries) in a "let it fail" process model, capturing stdout, stderr, execution durations, and exit codes into a local SQLite audit store.
-5. Hosts a full **Model Context Protocol (MCP)** tool server (via HTTP/SSE and internal registry) exposing built-in tools (filesystem, database, shell, search, chrome automation, macOS bridge) and native Go plugins (`hashicorp/go-plugin`).
+4. Supervises **External Scripts** (primarily TypeScript via Bun, alongside Python and shell binaries) in a "let it fail" process model, capturing stdout, stderr, execution durations, and exit codes into a local SQLite audit store.
+5. Hosts a full **Model Context Protocol (MCP)** tool server (via HTTP/SSE and internal registry) exposing built-in tools (filesystem, database, shell, search, chrome automation, macOS bridge) and native Go plugins (`hashicorp/go-plugin`), with auto-generated TypeScript definitions (`clara types gen`).
 6. Exposes a fast Unix-socket **CLI** and a modern browser-based **Web Management UI** (`/ui/` with Go Templ, Tailwind CSS v4, DaisyUI v5, HTMX, Alpine.js).
 
-> **Exploratory Branch:** Zero backwards compatibility is required. Workflows and logic live in external scripts (e.g. Lua) calling MCP tools, while Clara itself focuses on robust supervision, routing, and tool hosting.
+> **Exploratory Branch:** Zero backwards compatibility is required. Workflows and logic live in external scripts (e.g. TypeScript / Bun) calling MCP tools, while Clara itself focuses on robust supervision, routing, and tool hosting.
 
 ---
 
@@ -90,6 +90,7 @@ clara run show <id>                 # View run details (stdout, stderr, exit cod
 clara tool list                     # List registered MCP tools
 clara tool show <name>              # Show JSON schema for a tool
 clara tool call <name> -a '<json>'  # Execute a tool directly
+clara types gen [--out path]        # Auto-generate TypeScript definitions (.d.ts) for tools
 clara mcp list                      # List external MCP servers
 
 # Events
@@ -107,7 +108,7 @@ Triggers are defined in YAML files in `~/.config/clara/tasks/` (or paths in `tas
 # Event Trigger Example
 id: email-invoice-processor
 name: Email Invoice Processor
-description: Routes invoice emails to an automated Lua processing script
+description: Routes invoice emails to an automated TypeScript processing script
 type: event
 debounce: 500ms           # optional: wait for quiet period before running
 throttle: 1s              # optional: rate limit consecutive executions
@@ -127,7 +128,8 @@ match:
           op: regex
           value: "(?i)receipt|bill"
 action:
-  exec: lua scripts/process_invoice.lua
+  exec: bun
+  args: ["run", "scripts/process_invoice.ts"]
   pass_event: stdin       # stdin | env | arg | none
   timeout: 30s
 

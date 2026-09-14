@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../../schemas/trigger.schema.json
 # examples/triggers/email_routing.yaml
 # Demonstrates smart search / rule matching with AND / OR clauses
-# routing events to specialized external Lua scripts.
+# routing events to specialized external TypeScript scripts running via Bun.
 
 triggers:
   - id: "urgent-incident-email"
@@ -28,8 +28,8 @@ triggers:
               op: "regex"
               value: "(?i)production\\s+outage"
     action:
-      exec: "/usr/bin/env"
-      args: ["lua", "examples/scripts/handle_urgent_email.lua"]
+      exec: "bun"
+      args: ["run", "examples/scripts/handle_urgent_email.ts"]
       pass_event: "stdin"
       timeout: "30s"
 
@@ -40,8 +40,8 @@ triggers:
     type: "schedule"
     schedule: "0 0 8 * * *"
     action:
-      exec: "/usr/bin/env"
-      args: ["lua", "examples/scripts/daily_summary.lua"]
+      exec: "bun"
+      args: ["run", "examples/scripts/daily_summary.ts"]
       timeout: "60s"
 
   - id: "background-queue-poller"
@@ -50,7 +50,7 @@ triggers:
     enabled: true
     type: "worker"
     action:
-      exec: "/usr/bin/env"
-      args: ["lua", "examples/scripts/queue_worker.lua"]
+      exec: "bun"
+      args: ["run", "examples/scripts/queue_worker.ts"]
       restart: "always"
       restart_delay: "5s"

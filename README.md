@@ -61,6 +61,7 @@ External Signals / Sensors
   - Built-in MCP server (`/mcp/sse` and `/mcp/messages`) with HTTP bearer authentication.
   - Native tools for filesystem, SQLite database queries, shell execution, web search, Chrome browser automation, and macOS native integrations.
   - Integration plugin discovery and loading via `hashicorp/go-plugin`.
+  - Ambient TypeScript type stub generator (`clara types gen`) providing full autocomplete and compile-time verification for external scripts.
 - **Audit & Persistence (`internal/store`):**
   - SQLite backend recording all script runs, outputs, errors, durations, and tool invocation history.
 - **Web UI (`/ui/`):**
@@ -74,7 +75,7 @@ External Signals / Sensors
 
 ### Installation & Build
 
-Prerequisites: Go 1.24+, Node.js/pnpm, `templ`.
+Prerequisites: Go 1.24+, Node.js/pnpm, Bun (recommended for scripts), `templ`.
 
 ```bash
 # Clone the repository
@@ -84,6 +85,9 @@ cd clara/agent
 # Install frontend dependencies and build
 pnpm install
 make build
+
+# Generate TypeScript ambient type stubs for Clara MCP tools
+clara types gen
 
 # Optional: Install as a macOS LaunchAgent
 make install
@@ -107,13 +111,13 @@ clara agent logs -f
 
 Triggers are configured in YAML files inside your task directory (default: `~/.config/clara/tasks/` or configured `task_dirs`).
 
-### 1. Smart Event Trigger (Lua Script)
+### 1. Smart Event Trigger (TypeScript / Bun)
 
 ```yaml
 # ~/.config/clara/tasks/email_filter.yaml
 id: email-invoice-processor
 name: Email Invoice Processor
-description: Routes invoice emails to an automated Lua processing script
+description: Routes invoice emails to an automated TypeScript processing script
 type: event
 match:
   and:
@@ -131,7 +135,8 @@ match:
           op: regex
           value: "(?i)receipt|bill"
 action:
-  exec: lua /Users/nathan/scripts/process_invoice.lua
+  exec: bun
+  args: ["run", "scripts/process_invoice.ts"]
   pass_event: stdin
   timeout: 30s
 ```
@@ -146,7 +151,8 @@ description: Cleans temporary files every midnight
 type: schedule
 schedule: "0 0 * * *"
 action:
-  exec: python3 /Users/nathan/scripts/clean_temp.py
+  exec: bun
+  args: ["run", "scripts/clean_temp.ts"]
   timeout: 5m
 ```
 
@@ -159,7 +165,8 @@ name: Discord Bot Worker
 description: Supervised long-running event listener
 type: worker
 action:
-  exec: /Users/nathan/bin/discord-worker
+  exec: bun
+  args: ["run", "scripts/discord_worker.ts"]
   restart: always
   restart_delay: 5s
   max_restarts: 10
@@ -167,21 +174,28 @@ action:
 
 ---
 
-## External Scripting with Lua
+## External Scripting with TypeScript (Bun)
 
-Scripts receive event data via `stdin` (default), environment variables, or CLI arguments. Here is an example Lua script using Clara's MCP tools:
+Scripts receive event data via `stdin` (default), environment variables, or CLI arguments. Here is an example TypeScript script using Clara's MCP tools:
 
-```lua
--- scripts/process_invoice.lua
-local json = require("json") -- or any standard lua JSON parser
+```typescript
+// scripts/process_invoice.ts
+import { readEvent, callTool, runID } from "./clara";
 
--- Read CloudEvent from Clara on stdin
-local raw_event = io.read("*a")
-local event = json.decode(raw_event)
+interface InvoiceData {
+  sender: string;
+  amount: number;
+  pdfPath?: string;
+}
 
-print(string.format("Processing invoice from: %s", event.data.sender))
+// Read incoming CloudEvent from Clara on stdin
+const event = await readEvent<InvoiceData>();
+console.log(`[Run ${runID()}] Processing invoice from: ${event.data.sender}`);
 
--- Perform work or invoke Clara MCP endpoints...
+// Invoke Clara MCP tool with full type safety
+await callTool("notify.send", {
+  message: `Received invoice from ${event.data.sender} ($${event.data.amount})`,
+});
 ```
 
 ---
@@ -207,6 +221,7 @@ clara run show <id>                 # Inspect stdout, stderr, exit code, and eve
 clara tool list                     # List all registered MCP tools
 clara tool show <name>              # Show tool JSON schema
 clara tool call <name> -a '<json>'  # Execute a tool directly
+clara types gen [--out path]        # Auto-generate TypeScript definitions (.d.ts)
 clara mcp list                      # List configured external MCP servers
 
 # Events

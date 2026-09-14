@@ -26,6 +26,7 @@ import (
 	"github.com/brightpuddle/clara/internal/supervisor"
 	"github.com/brightpuddle/clara/internal/toolcatalog"
 	"github.com/brightpuddle/clara/internal/trigger"
+	"github.com/brightpuddle/clara/internal/typestub"
 	"github.com/brightpuddle/clara/internal/webui"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -893,6 +894,12 @@ func buildHandler(
 			}
 			sup.EventBus().PublishCloud(ce)
 			writeResp(&ipc.Response{Data: map[string]any{"id": ce.ID, "status": "emitted"}})
+
+		case ipc.MethodTypesGen:
+			ts := typestub.GenerateTypeScript(reg)
+			writeResp(&ipc.Response{Data: map[string]any{
+				"dts": ts,
+			}})
 
 		default:
 			writeResp(&ipc.Response{Error: "unknown method: " + req.Method})
