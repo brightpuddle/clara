@@ -1,4 +1,4 @@
-.PHONY: build test test-e2e vet lint proto fmt bridge clean install install-clara uninstall sign-cert setup check-deps generate web-build
+.PHONY: build test test-e2e vet lint proto fmt bridge clean install install-clara install-skills uninstall sign-cert setup check-deps generate web-build
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
@@ -126,8 +126,18 @@ release:
 release-check:
 	@command -v goreleaser >/dev/null 2>&1 || { echo >&2 "goreleaser is not installed. Visit https://goreleaser.com/install/"; exit 1; }
 
-## install: install clara, plugins, and ClaraBridge, and restart or start the LaunchAgent
-install: build $(BRIDGE_APP_EXE)
+## install-skills: install/symlink agent skills into ~/.agents/skills
+install-skills:
+	mkdir -p $(HOME)/.agents/skills
+	rm -rf $(HOME)/.agents/skills/clara-intent
+	for skill in $$(ls -d .agents/skills/* 2>/dev/null); do \
+		name=$$(basename "$$skill"); \
+		rm -rf "$(HOME)/.agents/skills/$$name"; \
+		ln -s "$$(pwd)/$$skill" "$(HOME)/.agents/skills/$$name"; \
+	done
+
+## install: install clara, plugins, ClaraBridge, agent skills, and restart or start the LaunchAgent
+install: build $(BRIDGE_APP_EXE) install-skills
 	install -m 755 bin/clara "$(INSTALL_BIN)"
 	# Re-sign at destination to ensure the embedded Info.plist is valid
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
@@ -141,8 +151,8 @@ install: build $(BRIDGE_APP_EXE)
 	"$(INSTALL_BIN)" agent stop >/dev/null 2>&1 || true
 	"$(INSTALL_BIN)" agent start
 
-## install-clara: build and install only the Go clara agent and plugins
-install-clara: build
+## install-clara: build and install only the Go clara agent, plugins, and skills
+install-clara: build install-skills
 	install -m 755 bin/clara "$(INSTALL_BIN)"
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
 
