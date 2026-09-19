@@ -63,6 +63,7 @@ type DashboardVM struct {
 	EventTriggersCount    int
 	ScheduleTriggersCount int
 	WorkerTriggersCount   int
+	ManualTriggersCount   int
 	ToolsCount            int
 	IntegrationsCount     int
 	Triggers              []trigger.Definition

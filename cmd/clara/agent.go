@@ -198,8 +198,8 @@ func runAgentStatus(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  %s %v  %s\n",
 			theme.Dimmed("triggers:          "),
 			v,
-			theme.Dimmed(fmt.Sprintf("(%v event, %v schedule, %v worker)",
-				fields["event_triggers"], fields["schedule_triggers"], fields["worker_triggers"])),
+			theme.Dimmed(fmt.Sprintf("(%v event, %v schedule, %v worker, %v manual)",
+				fields["event_triggers"], fields["schedule_triggers"], fields["worker_triggers"], fields["manual_triggers"])),
 		)
 	}
 	if v, ok := fields["tools"]; ok {

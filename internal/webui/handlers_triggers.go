@@ -551,6 +551,9 @@ func structuredToTrigger(st *StructuredTrigger) (*trigger.Definition, error) {
 				Value: parseRuleValue(st.RuleValue),
 			}
 		}
+
+	case trigger.TypeManual:
+		// Manual triggers don't require schedule expressions or match conditions
 	}
 
 	return def, nil

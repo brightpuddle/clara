@@ -399,6 +399,7 @@ func buildHandler(
 			eventTriggers := 0
 			scheduleTriggers := 0
 			workerTriggers := 0
+			manualTriggers := 0
 			for _, t := range triggers {
 				switch t.Type {
 				case trigger.TypeEvent:
@@ -407,6 +408,8 @@ func buildHandler(
 					scheduleTriggers++
 				case trigger.TypeWorker:
 					workerTriggers++
+				case trigger.TypeManual:
+					manualTriggers++
 				}
 			}
 
@@ -418,6 +421,7 @@ func buildHandler(
 					"event_triggers":    eventTriggers,
 					"schedule_triggers": scheduleTriggers,
 					"worker_triggers":   workerTriggers,
+					"manual_triggers":   manualTriggers,
 					"tools":             len(reg.Names()),
 					"mcp_servers":       len(reg.ServerStatuses()),
 				},

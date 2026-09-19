@@ -70,7 +70,7 @@ func Dashboard(vm *DashboardVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = statCard("Triggers", itoa(vm.TriggersCount), fmt.Sprintf("%d event, %d sched, %d worker", vm.EventTriggersCount, vm.ScheduleTriggersCount, vm.WorkerTriggersCount), "primary").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = statCard("Triggers", itoa(vm.TriggersCount), fmt.Sprintf("%d event, %d sched, %d worker, %d manual", vm.EventTriggersCount, vm.ScheduleTriggersCount, vm.WorkerTriggersCount, vm.ManualTriggersCount), "primary").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -156,8 +156,13 @@ func Dashboard(vm *DashboardVM) templ.Component {
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
+						} else if t.Type == trigger.TypeManual {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<span class=\"badge badge-primary badge-sm\">manual</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td class=\"text-sm py-3 font-mono text-xs\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</td><td class=\"text-sm py-3 font-mono text-xs\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -165,7 +170,7 @@ func Dashboard(vm *DashboardVM) templ.Component {
 							var templ_7745c5c3_Var6 string
 							templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t.Schedule)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 75, Col: 25}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 77, Col: 25}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 							if templ_7745c5c3_Err != nil {
@@ -176,7 +181,7 @@ func Dashboard(vm *DashboardVM) templ.Component {
 								var templ_7745c5c3_Var7 string
 								templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s %s %v", t.Match.Field, t.Match.Op, t.Match.Value))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 78, Col: 81}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 80, Col: 81}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 								if templ_7745c5c3_Err != nil {
@@ -186,199 +191,209 @@ func Dashboard(vm *DashboardVM) templ.Component {
 								var templ_7745c5c3_Var8 string
 								templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs("*")
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 80, Col: 19}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 82, Col: 19}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 								if templ_7745c5c3_Err != nil {
 									return templ_7745c5c3_Err
 								}
 							}
-						} else {
+						} else if t.Type == trigger.TypeWorker {
 							var templ_7745c5c3_Var9 string
 							templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("restart:%s", t.Action.Restart))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 83, Col: 58}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 85, Col: 58}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
+						} else {
+							var templ_7745c5c3_Var10 string
+							templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs("manual")
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 87, Col: 23}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</td><td class=\"text-xs font-mono py-3 truncate max-w-xs\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td class=\"text-xs font-mono py-3 truncate max-w-xs\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var10 string
-						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t.Action.Exec)
+						var templ_7745c5c3_Var11 string
+						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t.Action.Exec)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 86, Col: 79}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td class=\"pr-6 py-3 text-right\"><a href=\"")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var11 templ.SafeURL
-						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", t.ID)))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 88, Col: 73}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 90, Col: 79}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" class=\"btn btn-ghost btn-xs rounded-full text-primary\">Details →</a></td></tr>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</td><td class=\"pr-6 py-3 text-right\"><a href=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</tbody></table></div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div><!-- Recent Execution Runs --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex justify-between items-center bg-base-100\"><div><h2 class=\"text-lg font-semibold m3-headline text-base-content\">Recent Script Executions</h2><p class=\"text-sm text-base-content/60\">Supervised script runs and exit codes</p></div><a href=\"/ui/runs\" class=\"btn btn-ghost btn-sm rounded-full text-primary font-medium\">View all runs →</a></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if len(vm.RecentRuns) == 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"p-8 text-center text-base-content/50 text-sm\">No execution runs recorded yet.</div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"overflow-x-auto\"><table class=\"table w-full table-xs\"><thead><tr class=\"border-b border-base-200 text-xs font-semibold text-base-content/70 uppercase tracking-wider bg-base-200/40\"><th class=\"py-2.5 pl-6\">Run ID</th><th class=\"py-2.5\">Trigger</th><th class=\"py-2.5\">Status</th><th class=\"py-2.5\">Duration</th><th class=\"py-2.5\">Started At</th><th class=\"py-2.5 pr-6 text-right\"></th></tr></thead> <tbody class=\"divide-y divide-base-200/70\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					for _, r := range vm.RecentRuns {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<tr class=\"hover:bg-base-200/50 transition-colors font-mono\"><td class=\"pl-6 py-2\">")
+						var templ_7745c5c3_Var12 templ.SafeURL
+						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", t.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var12 string
-						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 127, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 92, Col: 73}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</td><td class=\"font-sans font-medium\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"btn btn-ghost btn-xs rounded-full text-primary\">Details →</a></td></tr>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</tbody></table></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div><!-- Recent Execution Runs --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex justify-between items-center bg-base-100\"><div><h2 class=\"text-lg font-semibold m3-headline text-base-content\">Recent Script Executions</h2><p class=\"text-sm text-base-content/60\">Supervised script runs and exit codes</p></div><a href=\"/ui/runs\" class=\"btn btn-ghost btn-sm rounded-full text-primary font-medium\">View all runs →</a></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(vm.RecentRuns) == 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"p-8 text-center text-base-content/50 text-sm\">No execution runs recorded yet.</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div class=\"overflow-x-auto\"><table class=\"table w-full table-xs\"><thead><tr class=\"border-b border-base-200 text-xs font-semibold text-base-content/70 uppercase tracking-wider bg-base-200/40\"><th class=\"py-2.5 pl-6\">Run ID</th><th class=\"py-2.5\">Trigger</th><th class=\"py-2.5\">Status</th><th class=\"py-2.5\">Duration</th><th class=\"py-2.5\">Started At</th><th class=\"py-2.5 pr-6 text-right\"></th></tr></thead> <tbody class=\"divide-y divide-base-200/70\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for _, r := range vm.RecentRuns {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<tr class=\"hover:bg-base-200/50 transition-colors font-mono\"><td class=\"pl-6 py-2\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var13 string
-						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(r.TriggerID)
+						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 128, Col: 58}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 131, Col: 39}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</td><td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</td><td class=\"font-sans font-medium\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var14 string
+						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(r.TriggerID)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 132, Col: 58}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</td><td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if r.Status == "success" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<span class=\"badge badge-success badge-xs\">success</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<span class=\"badge badge-success badge-xs\">success</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else if r.Status == "failure" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<span class=\"badge badge-error badge-xs\">failure</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<span class=\"badge badge-error badge-xs\">failure</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<span class=\"badge badge-warning badge-xs\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<span class=\"badge badge-warning badge-xs\">")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							var templ_7745c5c3_Var14 string
-							templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(r.Status)
+							var templ_7745c5c3_Var15 string
+							templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(r.Status)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 135, Col: 66}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 139, Col: 66}
 							}
-							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-							if templ_7745c5c3_Err != nil {
-								return templ_7745c5c3_Err
-							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</span>")
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td><td>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var15 string
-						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", r.DurationMs))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 138, Col: 50}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</td><td class=\"font-sans text-base-content/60\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</td><td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var16 string
-						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(r.StartedAt.Format("15:04:05"))
+						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", r.DurationMs))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 139, Col: 86}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 142, Col: 50}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</td><td class=\"pr-6 py-2 text-right\"><a href=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</td><td class=\"font-sans text-base-content/60\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var17 templ.SafeURL
-						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/runs?id=%s", r.ID)))
+						var templ_7745c5c3_Var17 string
+						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(r.StartedAt.Format("15:04:05"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 141, Col: 72}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 143, Col: 86}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"btn btn-ghost btn-xs rounded-full font-sans text-primary\">View →</a></td></tr>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</td><td class=\"pr-6 py-2 text-right\"><a href=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var18 templ.SafeURL
+						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/runs?id=%s", r.ID)))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 145, Col: 72}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" class=\"btn btn-ghost btn-xs rounded-full font-sans text-primary\">View →</a></td></tr>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</tbody></table></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</tbody></table></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</div><!-- Recent log tail --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex justify-between items-center bg-base-100\"><div><h2 class=\"text-lg font-semibold m3-headline text-base-content\">Recent Daemon Activity</h2><p class=\"text-sm text-base-content/60\">Clara runtime logs</p></div><a href=\"/ui/logs\" class=\"btn btn-ghost btn-sm rounded-full text-primary font-medium\">Live logs →</a></div><pre class=\"log-pre text-xs font-mono p-5 max-h-64 overflow-y-auto whitespace-pre-wrap bg-base-200/40 text-base-content/90\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</div><!-- Recent log tail --><div class=\"rounded-2xl border border-base-300/80 bg-base-100 shadow-xs overflow-hidden\"><div class=\"px-6 py-4 border-b border-base-300/70 flex justify-between items-center bg-base-100\"><div><h2 class=\"text-lg font-semibold m3-headline text-base-content\">Recent Daemon Activity</h2><p class=\"text-sm text-base-content/60\">Clara runtime logs</p></div><a href=\"/ui/logs\" class=\"btn btn-ghost btn-sm rounded-full text-primary font-medium\">Live logs →</a></div><pre class=\"log-pre text-xs font-mono p-5 max-h-64 overflow-y-auto whitespace-pre-wrap bg-base-200/40 text-base-content/90\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, line := range vm.RecentLogs {
-					var templ_7745c5c3_Var18 string
-					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(line + "\n")
+					var templ_7745c5c3_Var19 string
+					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(line + "\n")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 162, Col: 20}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `dashboard.templ`, Line: 166, Col: 20}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</pre></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</pre></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

@@ -48,7 +48,7 @@
         "type": {
           "type": "string",
           "description": "Trigger execution mechanism",
-          "enum": ["event", "schedule", "worker"]
+          "enum": ["event", "schedule", "worker", "manual"]
         },
         "match": {
           "$ref": "#/definitions/rule",

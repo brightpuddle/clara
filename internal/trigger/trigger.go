@@ -11,6 +11,7 @@ const (
 	TypeEvent    Type = "event"
 	TypeSchedule Type = "schedule"
 	TypeWorker   Type = "worker"
+	TypeManual   Type = "manual"
 )
 
 // PassEventMode defines how event payload is passed to the script.

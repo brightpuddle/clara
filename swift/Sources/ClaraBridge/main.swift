@@ -1259,33 +1259,63 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
 
     private func mailListInbox(_ args: [String: Any]) async throws -> [[String: Any]] {
         try ensureMailAccess()
-        let limit = optionalInt(args, "limit") ?? 10
+        let limit = optionalInt(args, "limit") ?? 50
         let accountName = optionalString(args, "account_name")
         let unreadOnly = optionalBool(args, "unread") ?? false
         
         var script = "tell application \"Mail\"\n"
         if let accountName = accountName, !accountName.isEmpty {
-            script += "    set theInbox to mailbox \"INBOX\" of account \"\(accountName)\"\n"
+            script += """
+                set theInbox to missing value
+                try
+                    set theAcc to account "\(accountName)"
+                    try
+                        set theInbox to mailbox "Inbox" of theAcc
+                    on error
+                        try
+                            set theInbox to mailbox "INBOX" of theAcc
+                        on error
+                            set theInbox to (first mailbox of theAcc whose name is "Inbox" or name is "INBOX")
+                        end try
+                    end try
+                on error
+                    set theInbox to inbox
+                end try
+            """
         } else {
             script += "    set theInbox to inbox\n"
         }
-        if unreadOnly {
-            script += "    set theMessages to (every message of theInbox whose read status is false)\n"
-        } else {
-            script += "    set theMessages to messages of theInbox\n"
-        }
-        script += "    set msgCount to count of theMessages\n"
-        script += "    set startIndex to msgCount - \(limit - 1)\n"
-        script += "    if startIndex < 1 then set startIndex to 1\n"
-        script += "    set results to {}\n"
-        script += "    if msgCount > 0 then\n"
-        script += "        repeat with i from msgCount to startIndex by -1\n"
-        script += "            set theMsg to item i of theMessages\n"
-        script += "            set end of results to {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}\n"
-        script += "        end repeat\n"
-        script += "    end if\n"
-        script += "    return results\n"
-        script += "end tell"
+        script += """
+            if theInbox is missing value then return {}
+            if \(unreadOnly) then
+                set theMessages to (every message of theInbox whose read status is false)
+                set msgCount to count of theMessages
+                set fetchCount to msgCount
+                if fetchCount > \(limit) then set fetchCount to \(limit)
+                set results to {}
+                if fetchCount > 0 then
+                    repeat with i from 1 to fetchCount
+                        set theMsg to item i of theMessages
+                        set end of results to {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
+                    end repeat
+                end if
+                return results
+            else
+                set theMessages to messages of theInbox
+                set msgCount to count of theMessages
+                set startIndex to msgCount - \(limit - 1)
+                if startIndex < 1 then set startIndex to 1
+                set results to {}
+                if msgCount > 0 then
+                    repeat with i from msgCount to startIndex by -1
+                        set theMsg to item i of theMessages
+                        set end of results to {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
+                    end repeat
+                end if
+                return results
+            end if
+        end tell
+        """
 
         return try executeAppleScript(script, timeout: 120) as? [[String: Any]] ?? []
     }
@@ -1295,8 +1325,23 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         let messageID = try requiredString(args, "message_id")
         let script = """
         tell application "Mail"
-            set theMessage to (first message of every mailbox of every account whose id is \(messageID))
-            return {id:id of theMessage, subject:subject of theMessage, sender:sender of theMessage, content:content of theMessage, date_received:date received of theMessage as string, read_status:read status of theMessage}
+            set theMsg to missing value
+            repeat with acc in accounts
+                repeat with mb in (every mailbox of acc)
+                    try
+                        set theMsg to (first message of mb whose id is \(messageID))
+                        if theMsg is not missing value then exit repeat
+                    end try
+                end repeat
+                if theMsg is not missing value then exit repeat
+            end repeat
+            if theMsg is missing value then
+                try
+                    set theMsg to (first message of inbox whose id is \(messageID))
+                end try
+            end if
+            if theMsg is missing value then error "Message \(messageID) not found"
+            return {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, content:content of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
         end tell
         """
         return try executeAppleScript(script) as? [String: Any] ?? [:]
@@ -1309,10 +1354,35 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         let accountName = try requiredString(args, "account_name")
         let script = """
         tell application "Mail"
-            set theMessage to (first message of every mailbox of every account whose id is \(messageID))
-            set targetMailbox to mailbox "\(targetMailboxName)" of account "\(accountName)"
-            move theMessage to targetMailbox
-            return {id:id of theMessage, moved:true, target:targetMailboxName}
+            set targetMB to missing value
+            try
+                set theAcc to account "\(accountName)"
+                try
+                    set targetMB to mailbox "\(targetMailboxName)" of theAcc
+                on error
+                    try
+                        set targetMB to (first mailbox of theAcc whose name is "\(targetMailboxName)")
+                    end try
+                end try
+            on error
+                try
+                    set targetMB to mailbox "\(targetMailboxName)"
+                end try
+            end try
+            if targetMB is missing value then error "Target mailbox \(targetMailboxName) not found"
+
+            repeat with acc in accounts
+                repeat with mb in (every mailbox of acc)
+                    try
+                        set theMsg to (first message of mb whose id is \(messageID))
+                        if theMsg is not missing value then
+                            move theMsg to targetMB
+                            return {id:id of theMsg, moved:true, target:"\(targetMailboxName)"}
+                        end if
+                    end try
+                end repeat
+            end repeat
+            error "Message \(messageID) not found"
         end tell
         """
         return try executeAppleScript(script) as? [String: Any] ?? [:]
@@ -1324,9 +1394,18 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         let flagged = optionalBool(args, "flagged") ?? false
         let script = """
         tell application "Mail"
-            set theMessage to (first message of every mailbox of every account whose id is \(messageID))
-            set flagged status of theMessage to \(flagged)
-            return {id:id of theMessage, flagged:\(flagged)}
+            repeat with acc in accounts
+                repeat with mb in (every mailbox of acc)
+                    try
+                        set theMsg to (first message of mb whose id is \(messageID))
+                        if theMsg is not missing value then
+                            set flagged status of theMsg to \(flagged)
+                            return {id:id of theMsg, flagged:\(flagged)}
+                        end if
+                    end try
+                end repeat
+            end repeat
+            error "Message \(messageID) not found"
         end tell
         """
         return try executeAppleScript(script) as? [String: Any] ?? [:]
@@ -1338,9 +1417,18 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         let read = optionalBool(args, "read") ?? false
         let script = """
         tell application "Mail"
-            set theMessage to (first message of every mailbox of every account whose id is \(messageID))
-            set read status of theMessage to \(read)
-            return {id:id of theMessage, read:\(read)}
+            repeat with acc in accounts
+                repeat with mb in (every mailbox of acc)
+                    try
+                        set theMsg to (first message of mb whose id is \(messageID))
+                        if theMsg is not missing value then
+                            set read status of theMsg to \(read)
+                            return {id:id of theMsg, read:\(read)}
+                        end if
+                    end try
+                end repeat
+            end repeat
+            error "Message \(messageID) not found"
         end tell
         """
         return try executeAppleScript(script) as? [String: Any] ?? [:]

@@ -108,6 +108,12 @@ func triggerAlpineData(triggerJSON, rawYAML string, isNew bool) string {
 				this.trig.max_restarts = 0;
 				this.trig.exec = 'bun';
 				this.trig.args = ['run', 'workers/service.ts'];
+			} else if (type === 'manual') {
+				this.trig.type = 'manual';
+				this.trig.exec = 'bun';
+				this.trig.args = ['run', 'scripts/manual_task.ts'];
+				this.trig.pass_event = 'stdin';
+				this.trig.timeout = '60s';
 			}
 		},
 		ensureDefaults() {

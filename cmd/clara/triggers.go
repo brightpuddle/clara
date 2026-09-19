@@ -64,6 +64,8 @@ var triggerListCmd = &cobra.Command{
 				}
 			} else if t.Type == trigger.TypeWorker {
 				ruleDesc = fmt.Sprintf("restart:%s", t.Action.Restart)
+			} else if t.Type == trigger.TypeManual {
+				ruleDesc = "manual"
 			}
 
 			fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\t%s\n",

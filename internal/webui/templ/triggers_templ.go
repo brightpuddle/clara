@@ -149,8 +149,13 @@ func Triggers(vm *TriggersVM) templ.Component {
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
+						} else if t.Type == trigger.TypeManual {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<span class=\"badge badge-primary badge-sm\">manual</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td><code class=\"text-xs bg-base-200 px-2 py-1 rounded\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</td><td><code class=\"text-xs bg-base-200 px-2 py-1 rounded\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -158,7 +163,7 @@ func Triggers(vm *TriggersVM) templ.Component {
 							var templ_7745c5c3_Var7 string
 							templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t.Schedule)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 82, Col: 26}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 84, Col: 26}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 							if templ_7745c5c3_Err != nil {
@@ -169,7 +174,7 @@ func Triggers(vm *TriggersVM) templ.Component {
 								var templ_7745c5c3_Var8 string
 								templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s %s %v", t.Match.Field, t.Match.Op, t.Match.Value))
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 85, Col: 82}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 87, Col: 82}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 								if templ_7745c5c3_Err != nil {
@@ -179,7 +184,7 @@ func Triggers(vm *TriggersVM) templ.Component {
 								var templ_7745c5c3_Var9 string
 								templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs("compound boolean rule")
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 87, Col: 40}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 89, Col: 40}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 								if templ_7745c5c3_Err != nil {
@@ -189,7 +194,7 @@ func Triggers(vm *TriggersVM) templ.Component {
 								var templ_7745c5c3_Var10 string
 								templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs("*")
 								if templ_7745c5c3_Err != nil {
-									return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 89, Col: 20}
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 91, Col: 20}
 								}
 								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 								if templ_7745c5c3_Err != nil {
@@ -200,232 +205,242 @@ func Triggers(vm *TriggersVM) templ.Component {
 							var templ_7745c5c3_Var11 string
 							templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("restart:%s", t.Action.Restart))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 92, Col: 59}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 94, Col: 59}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</code></td><td><div class=\"text-xs font-mono truncate max-w-xs\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var12 string
-						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t.Action.Exec)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 97, Col: 76}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div></td><td>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						if t.Enabled {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span class=\"badge badge-success badge-sm\">enabled</span>")
+						} else if t.Type == trigger.TypeManual {
+							var templ_7745c5c3_Var12 string
+							templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("manual")
 							if templ_7745c5c3_Err != nil {
-								return templ_7745c5c3_Err
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 96, Col: 24}
 							}
-						} else {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"badge badge-neutral badge-sm\">disabled</span>")
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</td><td class=\"text-right\"><div class=\"flex items-center justify-end gap-1.5\"><a href=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</code></td><td><div class=\"text-xs font-mono truncate max-w-xs\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var13 templ.SafeURL
-						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", t.ID)))
+						var templ_7745c5c3_Var13 string
+						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(t.Action.Exec)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 108, Col: 74}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 101, Col: 76}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" class=\"btn btn-xs btn-ghost btn-outline\" title=\"Inspect & Run\">Inspect & Run</a> <a href=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div></td><td>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						if t.Enabled {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"badge badge-success badge-sm\">enabled</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						} else {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span class=\"badge badge-neutral badge-sm\">disabled</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</td><td class=\"text-right\"><div class=\"flex items-center justify-end gap-1.5\"><a href=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var14 templ.SafeURL
-						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/edit", t.ID)))
+						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", t.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 111, Col: 79}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 112, Col: 74}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" class=\"btn btn-xs btn-ghost text-base-content/80\" title=\"Edit Trigger\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z\"></path></svg> Edit</a><form method=\"POST\" action=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" class=\"btn btn-xs btn-ghost btn-outline\" title=\"Inspect & Run\">Inspect & Run</a> <a href=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var15 templ.SafeURL
-						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/delete", t.ID)))
+						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/edit", t.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 117, Col: 100}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 115, Col: 79}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" onsubmit=\"return confirm('Are you sure you want to delete trigger ' + this.dataset.triggerId + '? This will stop any active workers/schedules and remove the trigger.');\" data-trigger-id=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"btn btn-xs btn-ghost text-base-content/80\" title=\"Edit Trigger\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z\"></path></svg> Edit</a><form method=\"POST\" action=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var16 string
-						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.ID)
+						var templ_7745c5c3_Var16 templ.SafeURL
+						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/delete", t.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 117, Col: 295}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 121, Col: 100}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" class=\"inline\"><button type=\"submit\" class=\"btn btn-xs btn-ghost text-error hover:bg-error/10\" title=\"Delete Trigger\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></form></div></td></tr>")
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</tbody></table></div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><!-- Recent Executions --><div class=\"card bg-base-100 border border-base-300 shadow-sm overflow-hidden rounded-2xl\"><div class=\"p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50\"><h2 class=\"font-bold text-base\">Recent Execution Runs</h2><a href=\"/ui/runs\" class=\"text-xs link link-primary font-medium\">View All Runs &rarr;</a></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if len(vm.RecentRuns) == 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"p-8 text-center text-xs text-base-content/50\">No execution runs recorded yet.</div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"overflow-x-auto\"><table class=\"table table-xs table-zebra w-full\"><thead><tr class=\"text-base-content/60\"><th>Run ID</th><th>Trigger</th><th>Status</th><th>Exit Code</th><th>Duration</th><th>Started At</th></tr></thead> <tbody>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					for _, r := range vm.RecentRuns {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<tr><td class=\"font-mono\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" onsubmit=\"return confirm('Are you sure you want to delete trigger ' + this.dataset.triggerId + '? This will stop any active workers/schedules and remove the trigger.');\" data-trigger-id=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var17 string
-						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
+						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.ID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 160, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 121, Col: 295}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td><td><span class=\"font-semibold\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" class=\"inline\"><button type=\"submit\" class=\"btn btn-xs btn-ghost text-error hover:bg-error/10\" title=\"Delete Trigger\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></form></div></td></tr>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</tbody></table></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div><!-- Recent Executions --><div class=\"card bg-base-100 border border-base-300 shadow-sm overflow-hidden rounded-2xl\"><div class=\"p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50\"><h2 class=\"font-bold text-base\">Recent Execution Runs</h2><a href=\"/ui/runs\" class=\"text-xs link link-primary font-medium\">View All Runs &rarr;</a></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(vm.RecentRuns) == 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"p-8 text-center text-xs text-base-content/50\">No execution runs recorded yet.</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"overflow-x-auto\"><table class=\"table table-xs table-zebra w-full\"><thead><tr class=\"text-base-content/60\"><th>Run ID</th><th>Trigger</th><th>Status</th><th>Exit Code</th><th>Duration</th><th>Started At</th></tr></thead> <tbody>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for _, r := range vm.RecentRuns {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<tr><td class=\"font-mono\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var18 string
-						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(r.TriggerID)
+						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 161, Col: 56}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 164, Col: 39}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</span></td><td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</td><td><span class=\"font-semibold\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var19 string
+						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(r.TriggerID)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 165, Col: 56}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</span></td><td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if r.Status == "success" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<span class=\"badge badge-success badge-xs\">success</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<span class=\"badge badge-success badge-xs\">success</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else if r.Status == "failure" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<span class=\"badge badge-error badge-xs\">failure</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<span class=\"badge badge-error badge-xs\">failure</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else if r.Status == "timeout" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<span class=\"badge badge-warning badge-xs\">timeout</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span class=\"badge badge-warning badge-xs\">timeout</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span class=\"badge badge-neutral badge-xs\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<span class=\"badge badge-neutral badge-xs\">")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							var templ_7745c5c3_Var19 string
-							templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(r.Status)
+							var templ_7745c5c3_Var20 string
+							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(r.Status)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 170, Col: 66}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 174, Col: 66}
 							}
-							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-							if templ_7745c5c3_Err != nil {
-								return templ_7745c5c3_Err
-							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</span>")
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</td><td class=\"font-mono\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var20 string
-						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", r.ExitCode))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 173, Col: 64}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</td><td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</td><td class=\"font-mono\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var21 string
-						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", r.DurationMs))
+						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", r.ExitCode))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 174, Col: 50}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 177, Col: 64}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</td><td class=\"text-base-content/60\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</td><td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var22 string
-						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(r.StartedAt.Format("2006-01-02 15:04:05"))
+						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", r.DurationMs))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 175, Col: 87}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 178, Col: 50}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</td></tr>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</td><td class=\"text-base-content/60\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var23 string
+						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(r.StartedAt.Format("2006-01-02 15:04:05"))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 179, Col: 87}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</td></tr>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</tbody></table></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</tbody></table></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -461,12 +476,12 @@ func TriggerDetail(vm *TriggerDetailVM) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var23 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var23 == nil {
-			templ_7745c5c3_Var23 = templ.NopComponent
+		templ_7745c5c3_Var24 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var24 == nil {
+			templ_7745c5c3_Var24 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var24 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var25 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -478,7 +493,7 @@ func TriggerDetail(vm *TriggerDetailVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Var25 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_Var26 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 				if !templ_7745c5c3_IsBuffer {
@@ -490,113 +505,118 @@ func TriggerDetail(vm *TriggerDetailVM) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<div class=\"p-6 max-w-7xl mx-auto flex flex-col gap-6\"><!-- Breadcrumb & Header --><div class=\"flex flex-col md:flex-row md:items-center justify-between gap-4\"><div><div class=\"text-xs breadcrumbs mb-1\"><ul><li><a href=\"/ui/triggers\">Triggers</a></li><li class=\"font-semibold\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var26 string
-				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 198, Col: 49}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</li></ul></div><h1 class=\"text-2xl font-bold tracking-tight m3-headline flex items-center gap-3\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<div class=\"p-6 max-w-7xl mx-auto flex flex-col gap-6\"><!-- Breadcrumb & Header --><div class=\"flex flex-col md:flex-row md:items-center justify-between gap-4\"><div><div class=\"text-xs breadcrumbs mb-1\"><ul><li><a href=\"/ui/triggers\">Triggers</a></li><li class=\"font-semibold\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 202, Col: 22}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 202, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</li></ul></div><h1 class=\"text-2xl font-bold tracking-tight m3-headline flex items-center gap-3\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var28 string
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 206, Col: 22}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Trigger.Type == trigger.TypeEvent {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<span class=\"badge badge-secondary badge-sm\">event</span> ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<span class=\"badge badge-secondary badge-sm\">event</span> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else if vm.Trigger.Type == trigger.TypeSchedule {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<span class=\"badge badge-accent badge-sm\">schedule</span> ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<span class=\"badge badge-accent badge-sm\">schedule</span> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else if vm.Trigger.Type == trigger.TypeWorker {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<span class=\"badge badge-info badge-sm\">worker</span> ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<span class=\"badge badge-info badge-sm\">worker</span> ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else if vm.Trigger.Type == trigger.TypeManual {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<span class=\"badge badge-primary badge-sm\">manual</span> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 				if vm.Trigger.Enabled {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<span class=\"badge badge-success badge-sm\">enabled</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<span class=\"badge badge-success badge-sm\">enabled</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<span class=\"badge badge-neutral badge-sm\">disabled</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<span class=\"badge badge-neutral badge-sm\">disabled</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</h1>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</h1>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Trigger.Description != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<p class=\"text-sm text-base-content/60 mt-1\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<p class=\"text-sm text-base-content/60 mt-1\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var28 string
-					templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Description)
+					var templ_7745c5c3_Var29 string
+					templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Description)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 217, Col: 76}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 223, Col: 76}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</p>")
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</p>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</div><div class=\"flex items-center gap-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm text-xs\">&larr; Back</a> <a href=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var29 templ.SafeURL
-				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/edit", vm.Trigger.ID)))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 225, Col: 81}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\" class=\"btn btn-primary btn-sm rounded-xl flex items-center gap-1.5 shadow-xs\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z\"></path></svg> Edit Trigger</a><form method=\"POST\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</div><div class=\"flex items-center gap-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm text-xs\">&larr; Back</a> <a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var30 templ.SafeURL
-				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/delete", vm.Trigger.ID)))
+				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/edit", vm.Trigger.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 231, Col: 102}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 231, Col: 81}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\" onsubmit=\"return confirm('Are you sure you want to delete this trigger? This cannot be undone.');\" class=\"inline\"><button type=\"submit\" class=\"btn btn-ghost btn-sm text-error hover:bg-error/10 rounded-xl\" title=\"Delete Trigger\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></form></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" class=\"btn btn-primary btn-sm rounded-xl flex items-center gap-1.5 shadow-xs\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z\"></path></svg> Edit Trigger</a><form method=\"POST\" action=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var31 templ.SafeURL
+				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/delete", vm.Trigger.ID)))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 237, Col: 102}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\" onsubmit=\"return confirm('Are you sure you want to delete this trigger? This cannot be undone.');\" class=\"inline\"><button type=\"submit\" class=\"btn btn-ghost btn-sm text-error hover:bg-error/10 rounded-xl\" title=\"Delete Trigger\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></form></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -604,228 +624,209 @@ func TriggerDetail(vm *TriggerDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<!-- Grid: Configuration & Manual Run --><div class=\"grid grid-cols-1 lg:grid-cols-2 gap-6\"><!-- Action Configuration Card --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-base\">Trigger Action & Policy</h2>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<!-- Grid: Configuration & Manual Run --><div class=\"grid grid-cols-1 lg:grid-cols-2 gap-6\"><!-- Action Configuration Card --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-base\">Trigger Action & Policy</h2>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.FilePath != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"text-xs text-base-content/50 font-mono truncate max-w-xs\" title=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var31 string
-					templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.FilePath)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 250, Col: 98}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<span class=\"text-xs text-base-content/50 font-mono truncate max-w-xs\" title=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var32 string
-					templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(vm.FilePath)
+					templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(vm.FilePath)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 250, Col: 114}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 256, Col: 98}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</span>")
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var33 string
+					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(vm.FilePath)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 256, Col: 114}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</span>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</div><div class=\"p-5 flex flex-col gap-4 text-sm\"><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Executable Command:</span><div class=\"font-mono bg-base-200 p-2.5 rounded-xl mt-1 text-xs break-all\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</div><div class=\"p-5 flex flex-col gap-4 text-sm\"><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Executable Command:</span><div class=\"font-mono bg-base-200 p-2.5 rounded-xl mt-1 text-xs break-all\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var33 string
-				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.Exec)
+				var templ_7745c5c3_Var34 string
+				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.Exec)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 256, Col: 107}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 262, Col: 107}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if len(vm.Trigger.Action.Args) > 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Arguments:</span><div class=\"font-mono bg-base-200 p-2.5 rounded-xl mt-1 text-xs break-all flex flex-wrap gap-1.5\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Arguments:</span><div class=\"font-mono bg-base-200 p-2.5 rounded-xl mt-1 text-xs break-all flex flex-wrap gap-1.5\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					for _, arg := range vm.Trigger.Action.Args {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<span class=\"px-2 py-0.5 bg-base-300 rounded-md\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<span class=\"px-2 py-0.5 bg-base-300 rounded-md\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var34 string
-						templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(arg)
+						var templ_7745c5c3_Var35 string
+						templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(arg)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 263, Col: 65}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 269, Col: 65}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</span>")
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</div></div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				if vm.Trigger.Action.Dir != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Working Directory:</span><div class=\"font-mono bg-base-200 p-2 rounded-lg mt-1 text-xs\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var35 string
-					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.Dir)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 271, Col: 95}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</span>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
 					}
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<div class=\"grid grid-cols-2 gap-3\"><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Pass Event:</span><div class=\"font-medium mt-1 text-xs\">")
+				if vm.Trigger.Action.Dir != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Working Directory:</span><div class=\"font-mono bg-base-200 p-2 rounded-lg mt-1 text-xs\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var36 string
+					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.Dir)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 277, Col: 95}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</div></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<div class=\"grid grid-cols-2 gap-3\"><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Pass Event:</span><div class=\"font-medium mt-1 text-xs\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var36 string
-				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(string(vm.Trigger.Action.PassEvent))
+				var templ_7745c5c3_Var37 string
+				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(string(vm.Trigger.Action.PassEvent))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 277, Col: 84}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 283, Col: 84}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Trigger.Action.Timeout > 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Timeout:</span><div class=\"font-medium mt-1 text-xs font-mono\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var37 string
-					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.Timeout.String())
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 282, Col: 94}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</div></div>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if vm.Trigger.Type == trigger.TypeSchedule {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Schedule Expression:</span><div class=\"font-mono bg-base-200 p-2 rounded-lg mt-1 text-xs\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Timeout:</span><div class=\"font-medium mt-1 text-xs font-mono\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var38 string
-					templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Schedule)
+					templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.Timeout.String())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 289, Col: 93}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 288, Col: 94}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</div></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "</div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				if vm.Trigger.Type == trigger.TypeEvent && vm.Trigger.Match != nil {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Match Condition:</span><div class=\"font-mono bg-base-200 p-2.5 rounded-xl mt-1 text-xs\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.Trigger.Type == trigger.TypeSchedule {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Schedule Expression:</span><div class=\"font-mono bg-base-200 p-2 rounded-lg mt-1 text-xs\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if vm.Trigger.Match.Field != "" {
-						var templ_7745c5c3_Var39 string
-						templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s %s %v", vm.Trigger.Match.Field, vm.Trigger.Match.Op, vm.Trigger.Match.Value))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 297, Col: 105}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					} else {
-						var templ_7745c5c3_Var40 string
-						templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs("Compound Boolean Expression (AND/OR/NOT)")
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 299, Col: 55}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
+					var templ_7745c5c3_Var39 string
+					templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Schedule)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 295, Col: 93}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
 					}
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				if vm.Trigger.Type == trigger.TypeEvent && (vm.Trigger.Debounce > 0 || vm.Trigger.Throttle > 0) {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div class=\"grid grid-cols-2 gap-3\">")
+				if vm.Trigger.Type == trigger.TypeEvent && vm.Trigger.Match != nil {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Match Condition:</span><div class=\"font-mono bg-base-200 p-2.5 rounded-xl mt-1 text-xs\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if vm.Trigger.Debounce > 0 {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Debounce:</span><div class=\"font-medium mt-1 text-xs font-mono\">")
+					if vm.Trigger.Match.Field != "" {
+						var templ_7745c5c3_Var40 string
+						templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s %s %v", vm.Trigger.Match.Field, vm.Trigger.Match.Op, vm.Trigger.Match.Value))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 303, Col: 105}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
+					} else {
 						var templ_7745c5c3_Var41 string
-						templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Debounce.String())
+						templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs("Compound Boolean Expression (AND/OR/NOT)")
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 309, Col: 89}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 305, Col: 55}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "</div></div>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
 					}
-					if vm.Trigger.Throttle > 0 {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Throttle:</span><div class=\"font-medium mt-1 text-xs font-mono\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</div></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				if vm.Trigger.Type == trigger.TypeEvent && (vm.Trigger.Debounce > 0 || vm.Trigger.Throttle > 0) {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<div class=\"grid grid-cols-2 gap-3\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if vm.Trigger.Debounce > 0 {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Debounce:</span><div class=\"font-medium mt-1 text-xs font-mono\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var42 string
-						templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Throttle.String())
+						templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Debounce.String())
 						if templ_7745c5c3_Err != nil {
 							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 315, Col: 89}
 						}
@@ -838,221 +839,221 @@ func TriggerDetail(vm *TriggerDetailVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</div>")
+					if vm.Trigger.Throttle > 0 {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Throttle:</span><div class=\"font-medium mt-1 text-xs font-mono\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var43 string
+						templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Throttle.String())
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 321, Col: 89}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</div></div>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 				if vm.Trigger.Type == trigger.TypeWorker {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<div class=\"grid grid-cols-3 gap-2\"><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Restart Policy:</span><div class=\"font-medium mt-1 text-xs\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var43 string
-					templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(string(vm.Trigger.Action.Restart))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 324, Col: 83}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</div></div><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Restart Delay:</span><div class=\"font-medium mt-1 text-xs\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<div class=\"grid grid-cols-3 gap-2\"><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Restart Policy:</span><div class=\"font-medium mt-1 text-xs\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var44 string
-					templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.RestartDelay.String())
+					templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(string(vm.Trigger.Action.Restart))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 328, Col: 89}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 330, Col: 83}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</div></div><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Max Restarts:</span><div class=\"font-medium mt-1 text-xs\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</div></div><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Restart Delay:</span><div class=\"font-medium mt-1 text-xs\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var45 string
-					templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", vm.Trigger.Action.MaxRestarts))
+					templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.Action.RestartDelay.String())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 332, Col: 98}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 334, Col: 89}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</div></div></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "</div></div><div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Max Restarts:</span><div class=\"font-medium mt-1 text-xs\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var46 string
+					templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", vm.Trigger.Action.MaxRestarts))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 338, Col: 98}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "</div></div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 				if len(vm.Trigger.Action.Env) > 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Environment Variables:</span><div class=\"grid grid-cols-2 gap-1.5 mt-1\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<div><span class=\"text-xs text-base-content/50 uppercase font-semibold\">Environment Variables:</span><div class=\"grid grid-cols-2 gap-1.5 mt-1\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					for k, v := range vm.Trigger.Action.Env {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<div class=\"text-xs font-mono bg-base-200 px-2 py-1 rounded truncate\"><span class=\"text-base-content/60\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var46 string
-						templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(k)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 342, Col: 50}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, ":</span> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<div class=\"text-xs font-mono bg-base-200 px-2 py-1 rounded truncate\"><span class=\"text-base-content/60\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var47 string
-						templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(v)
+						templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 342, Col: 64}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 348, Col: 50}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "</div>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, ":</span> ")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var48 string
+						templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(v)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 348, Col: 64}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "</div>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "</div></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "</div></div><!-- Manual Test / Run Execution Card --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-base\">Execute / Test Action</h2></div><form method=\"POST\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "</div></div><!-- Manual Test / Run Execution Card --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-base\">Execute / Test Action</h2></div><form method=\"POST\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var48 templ.SafeURL
-				templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/run", vm.Trigger.ID)))
+				var templ_7745c5c3_Var49 templ.SafeURL
+				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s/run", vm.Trigger.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 356, Col: 99}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 362, Col: 99}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "\" class=\"p-5 flex flex-col gap-4\"><div><label class=\"label text-xs font-semibold uppercase text-base-content/60 p-0 mb-1\">Event Payload JSON (optional):</label> <textarea name=\"event_json\" class=\"textarea textarea-bordered w-full font-mono text-xs h-28 rounded-xl\" placeholder='{\"type\": \"sample.event\", \"data\": {\"key\": \"value\"}}'></textarea></div><div class=\"flex gap-2 justify-end\"><button type=\"submit\" class=\"btn btn-primary btn-sm rounded-xl\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 mr-1\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z\"></path> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg> Run Trigger Action</button></div></form></div></div><!-- Execution Result Output (if any) -->")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "\" class=\"p-5 flex flex-col gap-4\"><div><label class=\"label text-xs font-semibold uppercase text-base-content/60 p-0 mb-1\">Event Payload JSON (optional):</label> <textarea name=\"event_json\" class=\"textarea textarea-bordered w-full font-mono text-xs h-28 rounded-xl\" placeholder='{\"type\": \"sample.event\", \"data\": {\"key\": \"value\"}}'></textarea></div><div class=\"flex gap-2 justify-end\"><button type=\"submit\" class=\"btn btn-primary btn-sm rounded-xl\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 mr-1\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z\"></path> <path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg> Run Trigger Action</button></div></form></div></div><!-- Execution Result Output (if any) -->")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.RunResult != nil {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50\"><div class=\"flex items-center gap-3\"><h2 class=\"font-bold text-base\">Execution Result</h2>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50\"><div class=\"flex items-center gap-3\"><h2 class=\"font-bold text-base\">Execution Result</h2>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if vm.RunResult.Status == "success" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<span class=\"badge badge-success badge-sm\">success</span> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<span class=\"badge badge-success badge-sm\">success</span> ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<span class=\"badge badge-error badge-sm\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "<span class=\"badge badge-error badge-sm\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var49 string
-						templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(string(vm.RunResult.Status))
+						var templ_7745c5c3_Var50 string
+						templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(string(vm.RunResult.Status))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 383, Col: 79}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 389, Col: 79}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</span> ")
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "</span> ")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "<span class=\"text-xs text-base-content/60 font-mono\">Exit Code: ")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var50 string
-					templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", vm.RunResult.ExitCode))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 385, Col: 114}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "</span> <span class=\"text-xs text-base-content/60 font-mono\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "<span class=\"text-xs text-base-content/60 font-mono\">Exit Code: ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var51 string
-					templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", vm.RunResult.DurationMs))
+					templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", vm.RunResult.ExitCode))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 386, Col: 107}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 391, Col: 114}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "</span></div></div><div class=\"p-5 flex flex-col gap-4\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "</span> <span class=\"text-xs text-base-content/60 font-mono\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var52 string
+					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", vm.RunResult.DurationMs))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 392, Col: 107}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</span></div></div><div class=\"p-5 flex flex-col gap-4\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if vm.RunResult.Error != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<div class=\"alert alert-error text-xs rounded-xl\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var52 string
-						templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunResult.Error)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 391, Col: 78}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</div>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					}
-					if vm.RunResult.Stdout != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<div><div class=\"text-xs font-semibold uppercase text-base-content/60 mb-1\">Stdout:</div><pre class=\"bg-base-300 p-3 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre-wrap\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<div class=\"alert alert-error text-xs rounded-xl\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var53 string
-						templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunResult.Stdout)
+						templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunResult.Error)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 396, Col: 124}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 397, Col: 78}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "</pre></div>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "</div>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					if vm.RunResult.Stderr != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<div><div class=\"text-xs font-semibold uppercase text-base-content/60 mb-1\">Stderr:</div><pre class=\"bg-base-300 text-error p-3 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre-wrap\">")
+					if vm.RunResult.Stdout != "" {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<div><div class=\"text-xs font-semibold uppercase text-base-content/60 mb-1\">Stdout:</div><pre class=\"bg-base-300 p-3 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre-wrap\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var54 string
-						templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunResult.Stderr)
+						templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunResult.Stdout)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 402, Col: 135}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 402, Col: 124}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 						if templ_7745c5c3_Err != nil {
@@ -1063,155 +1064,174 @@ func TriggerDetail(vm *TriggerDetailVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "</div></div>")
+					if vm.RunResult.Stderr != "" {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<div><div class=\"text-xs font-semibold uppercase text-base-content/60 mb-1\">Stderr:</div><pre class=\"bg-base-300 text-error p-3 rounded-xl text-xs font-mono overflow-x-auto whitespace-pre-wrap\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var55 string
+						templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunResult.Stderr)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 408, Col: 135}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "</pre></div>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "<!-- Trigger Run History --><div class=\"card bg-base-100 border border-base-300 shadow-sm overflow-hidden rounded-2xl\"><div class=\"p-4 border-b border-base-300 bg-base-200/50\"><h2 class=\"font-bold text-base\">Run History for ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "<!-- Trigger Run History --><div class=\"card bg-base-100 border border-base-300 shadow-sm overflow-hidden rounded-2xl\"><div class=\"p-4 border-b border-base-300 bg-base-200/50\"><h2 class=\"font-bold text-base\">Run History for ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var55 string
-				templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
+				var templ_7745c5c3_Var56 string
+				templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 412, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 418, Col: 69}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</h2></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "</h2></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if len(vm.RecentRuns) == 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "<div class=\"p-8 text-center text-xs text-base-content/50\">No runs recorded for this trigger yet.</div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<div class=\"p-8 text-center text-xs text-base-content/50\">No runs recorded for this trigger yet.</div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<div class=\"overflow-x-auto\"><table class=\"table table-xs table-zebra w-full\"><thead><tr class=\"text-base-content/60\"><th>Run ID</th><th>Status</th><th>Exit Code</th><th>Duration</th><th>Started At</th><th class=\"text-right\">Actions</th></tr></thead> <tbody>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "<div class=\"overflow-x-auto\"><table class=\"table table-xs table-zebra w-full\"><thead><tr class=\"text-base-content/60\"><th>Run ID</th><th>Status</th><th>Exit Code</th><th>Duration</th><th>Started At</th><th class=\"text-right\">Actions</th></tr></thead> <tbody>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					for _, r := range vm.RecentRuns {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<tr><td class=\"font-mono\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<tr><td class=\"font-mono\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var56 string
-						templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
+						var templ_7745c5c3_Var57 string
+						templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(r.ID)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 434, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 440, Col: 39}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "</td><td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "</td><td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if r.Status == "success" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<span class=\"badge badge-success badge-xs\">success</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<span class=\"badge badge-success badge-xs\">success</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "<span class=\"badge badge-error badge-xs\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "<span class=\"badge badge-error badge-xs\">")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							var templ_7745c5c3_Var57 string
-							templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(r.Status)
+							var templ_7745c5c3_Var58 string
+							templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(r.Status)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 439, Col: 64}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 445, Col: 64}
 							}
-							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
-							if templ_7745c5c3_Err != nil {
-								return templ_7745c5c3_Err
-							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "</span>")
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "</td><td class=\"font-mono\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var58 string
-						templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", r.ExitCode))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 442, Col: 64}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</td><td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</td><td class=\"font-mono\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var59 string
-						templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", r.DurationMs))
+						templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", r.ExitCode))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 443, Col: 50}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 448, Col: 64}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</td><td class=\"text-base-content/60\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "</td><td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var60 string
-						templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(r.StartedAt.Format("2006-01-02 15:04:05"))
+						templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", r.DurationMs))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 444, Col: 87}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 449, Col: 50}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "</td><td class=\"text-right\"><a href=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "</td><td class=\"text-base-content/60\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var61 templ.SafeURL
-						templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/runs?id=%s", r.ID)))
+						var templ_7745c5c3_Var61 string
+						templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(r.StartedAt.Format("2006-01-02 15:04:05"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 446, Col: 72}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 450, Col: 87}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\" class=\"btn btn-ghost btn-xs text-xs\">View Logs</a></td></tr>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "</td><td class=\"text-right\"><a href=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var62 templ.SafeURL
+						templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/runs?id=%s", r.ID)))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 452, Col: 72}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "\" class=\"btn btn-ghost btn-xs text-xs\">View Logs</a></td></tr>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "</tbody></table></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "</tbody></table></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "</div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = Layout(vm.Base.Layout).Render(templ.WithChildren(ctx, templ_7745c5c3_Var25), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = Layout(vm.Base.Layout).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Index(vm.Base.Index).Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Index(vm.Base.Index).Render(templ.WithChildren(ctx, templ_7745c5c3_Var25), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1235,12 +1255,12 @@ func TriggerEdit(vm *TriggerEditVM) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var62 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var62 == nil {
-			templ_7745c5c3_Var62 = templ.NopComponent
+		templ_7745c5c3_Var63 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var63 == nil {
+			templ_7745c5c3_Var63 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var63 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var64 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -1252,7 +1272,7 @@ func TriggerEdit(vm *TriggerEditVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Var64 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_Var65 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 				templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 				templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 				if !templ_7745c5c3_IsBuffer {
@@ -1264,85 +1284,85 @@ func TriggerEdit(vm *TriggerEditVM) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "<div class=\"p-6 max-w-5xl mx-auto flex flex-col gap-6\" x-data=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "<div class=\"p-6 max-w-5xl mx-auto flex flex-col gap-6\" x-data=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var65 string
-				templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.ResolveAttributeValue(triggerAlpineData(vm.TriggerJSON, vm.YAML, vm.IsNew))
+				var templ_7745c5c3_Var66 string
+				templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.ResolveAttributeValue(triggerAlpineData(vm.TriggerJSON, vm.YAML, vm.IsNew))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 467, Col: 65}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 473, Col: 65}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var65)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "\"><!-- Breadcrumb & Header --><div class=\"flex flex-col md:flex-row md:items-center justify-between gap-4\"><div><div class=\"text-xs breadcrumbs mb-1\"><ul><li><a href=\"/ui/triggers\">Triggers</a></li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "\"><!-- Breadcrumb & Header --><div class=\"flex flex-col md:flex-row md:items-center justify-between gap-4\"><div><div class=\"text-xs breadcrumbs mb-1\"><ul><li><a href=\"/ui/triggers\">Triggers</a></li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.IsNew {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "<li class=\"font-semibold\">New Trigger</li>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<li class=\"font-semibold\">New Trigger</li>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "<li><a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<li><a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var66 templ.SafeURL
-					templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", vm.Trigger.ID)))
+					var templ_7745c5c3_Var67 templ.SafeURL
+					templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/ui/triggers/%s", vm.Trigger.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 478, Col: 83}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var67 string
-					templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 478, Col: 101}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 484, Col: 83}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "</a></li><li class=\"font-semibold\">Edit</li>")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</ul></div><h1 class=\"text-2xl font-bold tracking-tight m3-headline\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if vm.IsNew {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "Create New Trigger")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "Edit Trigger: ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var68 string
 					templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 487, Col: 37}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 484, Col: 101}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "</a></li><li class=\"font-semibold\">Edit</li>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "</h1><p class=\"text-sm text-base-content/60 mt-0.5\">Configure event matching rules, schedules, and supervised script actions.</p></div><div class=\"flex items-center gap-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm text-xs\">Cancel</a></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</ul></div><h1 class=\"text-2xl font-bold tracking-tight m3-headline\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.IsNew {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "Create New Trigger")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "Edit Trigger: ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var69 string
+					templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Trigger.ID)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 493, Col: 37}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "</h1><p class=\"text-sm text-base-content/60 mt-0.5\">Configure event matching rules, schedules, and supervised script actions.</p></div><div class=\"flex items-center gap-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm text-xs\">Cancel</a></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1350,111 +1370,111 @@ func TriggerEdit(vm *TriggerEditVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "<!-- Mode Tabs & Presets --><div class=\"flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-base-300 pb-3\"><div class=\"flex items-center gap-2\"><button type=\"button\" @click=\"tab = 'structured'\" class=\"btn btn-sm rounded-full transition-all text-xs font-medium\" :class=\"tab === 'structured' ? 'btn-primary' : 'btn-ghost text-base-content/70'\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 10h16M4 14h16M4 18h16\"></path></svg> Structured Editor</button> <button type=\"button\" @click=\"tab = 'raw'\" class=\"btn btn-sm rounded-full transition-all text-xs font-medium\" :class=\"tab === 'raw' ? 'btn-primary' : 'btn-ghost text-base-content/70'\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4\"></path></svg> Raw YAML</button></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "<!-- Mode Tabs & Presets --><div class=\"flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-base-300 pb-3\"><div class=\"flex items-center gap-2\"><button type=\"button\" @click=\"tab = 'structured'\" class=\"btn btn-sm rounded-full transition-all text-xs font-medium\" :class=\"tab === 'structured' ? 'btn-primary' : 'btn-ghost text-base-content/70'\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 10h16M4 14h16M4 18h16\"></path></svg> Structured Editor</button> <button type=\"button\" @click=\"tab = 'raw'\" class=\"btn btn-sm rounded-full transition-all text-xs font-medium\" :class=\"tab === 'raw' ? 'btn-primary' : 'btn-ghost text-base-content/70'\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4\"></path></svg> Raw YAML</button></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.IsNew {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<div class=\"flex items-center gap-1.5 text-xs text-base-content/60\"><span class=\"font-medium mr-1\">Presets:</span> <button type=\"button\" @click=\"fillTemplate('event')\" class=\"btn btn-xs btn-outline rounded-lg\">Event (TS / Bun)</button> <button type=\"button\" @click=\"fillTemplate('schedule')\" class=\"btn btn-xs btn-outline rounded-lg\">Schedule (Cron)</button> <button type=\"button\" @click=\"fillTemplate('worker')\" class=\"btn btn-xs btn-outline rounded-lg\">Worker (Daemon)</button></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<div class=\"flex items-center gap-1.5 text-xs text-base-content/60\"><span class=\"font-medium mr-1\">Presets:</span> <button type=\"button\" @click=\"fillTemplate('event')\" class=\"btn btn-xs btn-outline rounded-lg\">Event (TS / Bun)</button> <button type=\"button\" @click=\"fillTemplate('schedule')\" class=\"btn btn-xs btn-outline rounded-lg\">Schedule (Cron)</button> <button type=\"button\" @click=\"fillTemplate('worker')\" class=\"btn btn-xs btn-outline rounded-lg\">Worker (Daemon)</button> <button type=\"button\" @click=\"fillTemplate('manual')\" class=\"btn btn-xs btn-outline rounded-lg\">Manual (Script)</button></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "</div><!-- Structured Editor Form --><div x-show=\"tab === 'structured'\" class=\"flex flex-col gap-6\"><form method=\"POST\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</div><!-- Structured Editor Form --><div x-show=\"tab === 'structured'\" class=\"flex flex-col gap-6\"><form method=\"POST\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var69 templ.SafeURL
-				templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(ternary(vm.IsNew, "/ui/triggers", fmt.Sprintf("/ui/triggers/%s", vm.Trigger.ID))))
+				var templ_7745c5c3_Var70 templ.SafeURL
+				templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(ternary(vm.IsNew, "/ui/triggers", fmt.Sprintf("/ui/triggers/%s", vm.Trigger.ID))))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 544, Col: 110}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "\" id=\"structuredTriggerForm\" class=\"flex flex-col gap-6\"><input type=\"hidden\" name=\"trigger_json\" :value=\"JSON.stringify(trig)\"><!-- 1. Identity & Type --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Trigger Identity & Mechanism</h2></div><div class=\"p-5 grid grid-cols-1 md:grid-cols-2 gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Trigger ID *</label> <input type=\"text\" x-model=\"trig.id\" placeholder=\"e.g. email-invoice-processor\" required class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"><p class=\"text-xs text-base-content/50 mt-1\">Unique slug used in logs, audit records, and file naming.</p></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Display Name</label> <input type=\"text\" x-model=\"trig.name\" placeholder=\"e.g. Email Invoice Processor\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div><div class=\"md:col-span-2\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Description</label> <input type=\"text\" x-model=\"trig.description\" placeholder=\"Brief description of what this automation does\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Trigger Type *</label> <select x-model=\"trig.type\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40 font-medium\"><option value=\"event\">Event (CloudEvents smart rule match)</option> <option value=\"schedule\">Schedule (Cron / time interval)</option> <option value=\"worker\">Worker (Supervised background daemon)</option></select></div><div class=\"flex items-center gap-3 pt-6\"><input type=\"checkbox\" x-model=\"trig.enabled\" class=\"toggle toggle-primary toggle-sm\"> <span class=\"text-sm font-medium\" x-text=\"trig.enabled ? 'Enabled' : 'Disabled'\">Enabled</span></div></div></div><!-- 2. Type-Specific Config: Event Matching Rule --><div x-show=\"trig.type === 'event'\" class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Event Matching Rules</h2><span class=\"badge badge-secondary badge-xs\">event trigger</span></div><div class=\"p-5 flex flex-col gap-4\"><div class=\"grid grid-cols-1 sm:grid-cols-3 gap-3\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Field Path</label> <input type=\"text\" x-model=\"trig.rule_field\" placeholder=\"e.g. type or data.subject\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"> <span class=\"text-xs text-base-content/50 mt-1 block\">Supports dot notation (`data.mailbox`)</span></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Operator</label> <select x-model=\"trig.rule_op\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40\"><option value=\"equals\">equals (=)</option> <option value=\"not_equals\">not_equals (!=)</option> <option value=\"contains\">contains</option> <option value=\"not_contains\">not_contains</option> <option value=\"starts_with\">starts_with</option> <option value=\"ends_with\">ends_with</option> <option value=\"regex\">regex</option> <option value=\"in\">in (collection membership)</option> <option value=\"not_in\">not_in</option> <option value=\"gt\">greater than (&gt;)</option> <option value=\"gte\">greater or equal (&gt;=)</option> <option value=\"lt\">less than (&lt;)</option> <option value=\"lte\">less or equal (&lt;=)</option> <option value=\"exists\">exists</option> <option value=\"not_exists\">not_exists</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Expected Value</label> <input type=\"text\" x-model=\"trig.rule_value\" placeholder=\"e.g. email.received or Invoice\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div></div><div class=\"divider my-0 text-xs text-base-content/40\">OR ADVANCED COMPOUND RULE (YAML)</div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Custom Boolean AST Rule (optional):</label> <textarea x-model=\"trig.rule_yaml\" placeholder=\"and:&#10;  - field: type&#10;    op: equals&#10;    value: email.received&#10;  - or:&#10;      - field: data.subject&#10;        op: contains&#10;        value: Urgent\" rows=\"5\" class=\"textarea textarea-bordered w-full rounded-xl font-mono text-xs bg-base-200/40\"></textarea><p class=\"text-xs text-base-content/50 mt-1\">If provided, this compound YAML rule overrides the single field condition above.</p></div><div class=\"divider my-0 text-xs text-base-content/40\">TIMING &amp; RATE LIMITING (OPTIONAL)</div><div class=\"grid grid-cols-1 sm:grid-cols-2 gap-3\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Debounce</label> <input type=\"text\" x-model=\"trig.debounce\" placeholder=\"e.g. 500ms or 2s\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"> <span class=\"text-xs text-base-content/50 mt-1 block\">Delay execution until events stop arriving</span></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Throttle</label> <input type=\"text\" x-model=\"trig.throttle\" placeholder=\"e.g. 1s or 10s\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"> <span class=\"text-xs text-base-content/50 mt-1 block\">Limit rate of consecutive executions</span></div></div></div></div><!-- 2. Type-Specific Config: Schedule --><div x-show=\"trig.type === 'schedule'\" class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Schedule Configuration</h2><span class=\"badge badge-accent badge-xs\">schedule trigger</span></div><div class=\"p-5 flex flex-col gap-3\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Cron Expression / Interval *</label> <input type=\"text\" x-model=\"trig.schedule\" placeholder=\"e.g. @every 5m or 0 * * * *\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div class=\"text-xs text-base-content/60 bg-base-200 p-3 rounded-xl flex flex-col gap-1\"><div class=\"font-semibold text-base-content/80\">Supported Formats:</div><div>&bull; Interval shorthand: <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var70 string
-				templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs("@every 1m")
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 719, Col: 110}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 551, Col: 110}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</code>, <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "\" id=\"structuredTriggerForm\" class=\"flex flex-col gap-6\"><input type=\"hidden\" name=\"trigger_json\" :value=\"JSON.stringify(trig)\"><!-- 1. Identity & Type --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Trigger Identity & Mechanism</h2></div><div class=\"p-5 grid grid-cols-1 md:grid-cols-2 gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Trigger ID *</label> <input type=\"text\" x-model=\"trig.id\" placeholder=\"e.g. email-invoice-processor\" required class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"><p class=\"text-xs text-base-content/50 mt-1\">Unique slug used in logs, audit records, and file naming.</p></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Display Name</label> <input type=\"text\" x-model=\"trig.name\" placeholder=\"e.g. Email Invoice Processor\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div><div class=\"md:col-span-2\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Description</label> <input type=\"text\" x-model=\"trig.description\" placeholder=\"Brief description of what this automation does\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Trigger Type *</label> <select x-model=\"trig.type\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40 font-medium\"><option value=\"event\">Event (CloudEvents smart rule match)</option> <option value=\"schedule\">Schedule (Cron / time interval)</option> <option value=\"worker\">Worker (Supervised background daemon)</option> <option value=\"manual\">Manual (Direct / manual execution only)</option></select></div><div class=\"flex items-center gap-3 pt-6\"><input type=\"checkbox\" x-model=\"trig.enabled\" class=\"toggle toggle-primary toggle-sm\"> <span class=\"text-sm font-medium\" x-text=\"trig.enabled ? 'Enabled' : 'Disabled'\">Enabled</span></div></div></div><!-- 2. Type-Specific Config: Event Matching Rule --><div x-show=\"trig.type === 'event'\" class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Event Matching Rules</h2><span class=\"badge badge-secondary badge-xs\">event trigger</span></div><div class=\"p-5 flex flex-col gap-4\"><div class=\"grid grid-cols-1 sm:grid-cols-3 gap-3\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Field Path</label> <input type=\"text\" x-model=\"trig.rule_field\" placeholder=\"e.g. type or data.subject\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"> <span class=\"text-xs text-base-content/50 mt-1 block\">Supports dot notation (`data.mailbox`)</span></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Operator</label> <select x-model=\"trig.rule_op\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40\"><option value=\"equals\">equals (=)</option> <option value=\"not_equals\">not_equals (!=)</option> <option value=\"contains\">contains</option> <option value=\"not_contains\">not_contains</option> <option value=\"starts_with\">starts_with</option> <option value=\"ends_with\">ends_with</option> <option value=\"regex\">regex</option> <option value=\"in\">in (collection membership)</option> <option value=\"not_in\">not_in</option> <option value=\"gt\">greater than (&gt;)</option> <option value=\"gte\">greater or equal (&gt;=)</option> <option value=\"lt\">less than (&lt;)</option> <option value=\"lte\">less or equal (&lt;=)</option> <option value=\"exists\">exists</option> <option value=\"not_exists\">not_exists</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Expected Value</label> <input type=\"text\" x-model=\"trig.rule_value\" placeholder=\"e.g. email.received or Invoice\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div></div><div class=\"divider my-0 text-xs text-base-content/40\">OR ADVANCED COMPOUND RULE (YAML)</div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Custom Boolean AST Rule (optional):</label> <textarea x-model=\"trig.rule_yaml\" placeholder=\"and:&#10;  - field: type&#10;    op: equals&#10;    value: email.received&#10;  - or:&#10;      - field: data.subject&#10;        op: contains&#10;        value: Urgent\" rows=\"5\" class=\"textarea textarea-bordered w-full rounded-xl font-mono text-xs bg-base-200/40\"></textarea><p class=\"text-xs text-base-content/50 mt-1\">If provided, this compound YAML rule overrides the single field condition above.</p></div><div class=\"divider my-0 text-xs text-base-content/40\">TIMING &amp; RATE LIMITING (OPTIONAL)</div><div class=\"grid grid-cols-1 sm:grid-cols-2 gap-3\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Debounce</label> <input type=\"text\" x-model=\"trig.debounce\" placeholder=\"e.g. 500ms or 2s\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"> <span class=\"text-xs text-base-content/50 mt-1 block\">Delay execution until events stop arriving</span></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Throttle</label> <input type=\"text\" x-model=\"trig.throttle\" placeholder=\"e.g. 1s or 10s\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"> <span class=\"text-xs text-base-content/50 mt-1 block\">Limit rate of consecutive executions</span></div></div></div></div><!-- 2. Type-Specific Config: Schedule --><div x-show=\"trig.type === 'schedule'\" class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Schedule Configuration</h2><span class=\"badge badge-accent badge-xs\">schedule trigger</span></div><div class=\"p-5 flex flex-col gap-3\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Cron Expression / Interval *</label> <input type=\"text\" x-model=\"trig.schedule\" placeholder=\"e.g. @every 5m or 0 * * * *\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div class=\"text-xs text-base-content/60 bg-base-200 p-3 rounded-xl flex flex-col gap-1\"><div class=\"font-semibold text-base-content/80\">Supported Formats:</div><div>&bull; Interval shorthand: <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var71 string
-				templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs("@every 1h30m")
+				templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs("@every 1m")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 719, Col: 193}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 727, Col: 110}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</code></div><div>&bull; Standard 5-field cron: <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">0 * * * *</code> (hourly), <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">0 0 * * *</code> (daily at midnight)</div><div>&bull; 6-field with seconds: <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">*/30 * * * * *</code> (every 30 seconds)</div></div></div></div><!-- 2. Type-Specific Config: Worker --><div x-show=\"trig.type === 'worker'\" class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Worker Supervision Policy</h2><span class=\"badge badge-info badge-xs\">worker trigger</span></div><div class=\"p-5 grid grid-cols-1 sm:grid-cols-3 gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Restart Policy</label> <select x-model=\"trig.restart\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40\"><option value=\"always\">always (let it fail daemon)</option> <option value=\"on_failure\">on_failure (only if exit code != 0)</option> <option value=\"never\">never (single run)</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Restart Delay</label> <input type=\"text\" x-model=\"trig.restart_delay\" placeholder=\"e.g. 2s, 5s, 10s\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Max Restarts</label> <input type=\"number\" x-model.number=\"trig.max_restarts\" placeholder=\"0 (unlimited)\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div></div></div><!-- 3. Action Execution & Command --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Action & Execution</h2></div><div class=\"p-5 flex flex-col gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Executable Command *</label> <input type=\"text\" x-model=\"trig.exec\" placeholder=\"e.g. lua scripts/process_invoice.lua or python3 workers/bridge.py\" required class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div class=\"grid grid-cols-1 sm:grid-cols-3 gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Pass Event Mode</label> <select x-model=\"trig.pass_event\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40\"><option value=\"stdin\">stdin (JSON stream into standard input)</option> <option value=\"env\">env (CLARA_EVENT_DATA environment var)</option> <option value=\"arg\">arg (appended as command argument)</option> <option value=\"none\">none (do not pass payload)</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Timeout</label> <input type=\"text\" x-model=\"trig.timeout\" placeholder=\"e.g. 30s, 1m, 5m\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Working Directory</label> <input type=\"text\" x-model=\"trig.dir\" placeholder=\"Optional working dir\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div></div><!-- Arguments Builder --><div><div class=\"flex items-center justify-between mb-1.5\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70\">CLI Arguments</label> <button type=\"button\" @click=\"addArg\" class=\"text-xs link link-primary font-medium\">+ Add Arg</button></div><div class=\"flex flex-wrap gap-2 items-center min-h-[36px] bg-base-200/40 p-2.5 rounded-xl border border-base-300/70\"><template x-for=\"(arg, index) in trig.args\" :key=\"index\"><div class=\"badge badge-neutral gap-1 text-xs py-2 px-2.5 font-mono\"><span x-text=\"arg\"></span> <button type=\"button\" @click=\"removeArg(index)\" class=\"text-error hover:opacity-80 ml-1\">&times;</button></div></template><div class=\"flex items-center gap-1\"><input type=\"text\" x-model=\"argInput\" @keydown.enter.prevent=\"addArg\" placeholder=\"Type argument & enter...\" class=\"input input-xs input-ghost text-xs font-mono w-44\"> <button type=\"button\" @click=\"addArg\" class=\"btn btn-xs btn-ghost text-xs font-semibold\">Add</button></div></div></div><!-- Environment Variables --><div><div class=\"flex items-center justify-between mb-1.5\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70\">Environment Variables</label> <button type=\"button\" @click=\"addEnv\" class=\"text-xs link link-primary font-medium\">+ Add Env Variable</button></div><div class=\"flex flex-col gap-2\"><template x-for=\"(env, index) in trig.env\" :key=\"index\"><div class=\"flex items-center gap-2\"><input type=\"text\" x-model=\"env.key\" placeholder=\"KEY\" class=\"input input-sm input-bordered rounded-xl text-xs font-mono w-1/3 bg-base-200/40\"> <input type=\"text\" x-model=\"env.value\" placeholder=\"VALUE\" class=\"input input-sm input-bordered rounded-xl text-xs font-mono flex-1 bg-base-200/40\"> <button type=\"button\" @click=\"removeEnv(index)\" class=\"btn btn-sm btn-ghost text-error\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></div></template><p x-show=\"!trig.env || trig.env.length === 0\" class=\"text-xs text-base-content/40 italic\">No custom environment variables defined.</p></div></div></div></div><!-- Form Submit Actions --><div class=\"flex items-center justify-end gap-3 pt-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm rounded-xl\">Cancel</a> <button type=\"submit\" class=\"btn btn-primary btn-sm rounded-xl shadow-xs\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</code>, <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if vm.IsNew {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "Create Trigger")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "Save Changes")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "</button></div></form></div><!-- Raw YAML Editor Form --><div x-show=\"tab === 'raw'\" class=\"flex flex-col gap-6\"><form method=\"POST\" action=\"")
+				var templ_7745c5c3_Var72 string
+				templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs("@every 1h30m")
 				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var72 templ.SafeURL
-				templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(ternary(vm.IsNew, "/ui/triggers", fmt.Sprintf("/ui/triggers/%s", vm.Trigger.ID))))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 893, Col: 110}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 727, Col: 193}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "\" id=\"rawTriggerForm\" class=\"flex flex-col gap-4\"><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Trigger YAML Definition</h2><span class=\"text-xs font-mono text-base-content/50\">YAML syntax</span></div><div class=\"p-4\"><textarea name=\"yaml\" x-model=\"rawYaml\" rows=\"18\" class=\"textarea textarea-bordered w-full font-mono text-xs leading-relaxed bg-base-200/30 rounded-xl\" placeholder=\"id: my-trigger&#10;name: My Trigger&#10;type: event&#10;match:&#10;  field: type&#10;  op: equals&#10;  value: custom.event&#10;action:&#10;  exec: bun&#10;  args: [run, scripts/handle.ts]\"></textarea></div></div><!-- Form Submit Actions --><div class=\"flex items-center justify-end gap-3 pt-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm rounded-xl\">Cancel</a> <button type=\"submit\" class=\"btn btn-primary btn-sm rounded-xl shadow-xs\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "</code></div><div>&bull; Standard 5-field cron: <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">0 * * * *</code> (hourly), <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">0 0 * * *</code> (daily at midnight)</div><div>&bull; 6-field with seconds: <code class=\"font-mono bg-base-300 px-1 py-0.5 rounded\">*/30 * * * * *</code> (every 30 seconds)</div></div></div></div><!-- 2. Type-Specific Config: Worker --><div x-show=\"trig.type === 'worker'\" class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Worker Supervision Policy</h2><span class=\"badge badge-info badge-xs\">worker trigger</span></div><div class=\"p-5 grid grid-cols-1 sm:grid-cols-3 gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Restart Policy</label> <select x-model=\"trig.restart\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40\"><option value=\"always\">always (let it fail daemon)</option> <option value=\"on_failure\">on_failure (only if exit code != 0)</option> <option value=\"never\">never (single run)</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Restart Delay</label> <input type=\"text\" x-model=\"trig.restart_delay\" placeholder=\"e.g. 2s, 5s, 10s\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Max Restarts</label> <input type=\"number\" x-model.number=\"trig.max_restarts\" placeholder=\"0 (unlimited)\" class=\"input input-bordered w-full rounded-xl text-sm bg-base-200/40\"></div></div></div><!-- 3. Action Execution & Command --><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Action & Execution</h2></div><div class=\"p-5 flex flex-col gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Executable Command *</label> <input type=\"text\" x-model=\"trig.exec\" placeholder=\"e.g. lua scripts/process_invoice.lua or python3 workers/bridge.py\" required class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div class=\"grid grid-cols-1 sm:grid-cols-3 gap-4\"><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Pass Event Mode</label> <select x-model=\"trig.pass_event\" class=\"select select-bordered w-full rounded-xl text-sm bg-base-200/40\"><option value=\"stdin\">stdin (JSON stream into standard input)</option> <option value=\"env\">env (CLARA_EVENT_DATA environment var)</option> <option value=\"arg\">arg (appended as command argument)</option> <option value=\"none\">none (do not pass payload)</option></select></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Timeout</label> <input type=\"text\" x-model=\"trig.timeout\" placeholder=\"e.g. 30s, 1m, 5m\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div><div><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70 mb-1\">Working Directory</label> <input type=\"text\" x-model=\"trig.dir\" placeholder=\"Optional working dir\" class=\"input input-bordered w-full rounded-xl text-sm font-mono bg-base-200/40\"></div></div><!-- Arguments Builder --><div><div class=\"flex items-center justify-between mb-1.5\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70\">CLI Arguments</label> <button type=\"button\" @click=\"addArg\" class=\"text-xs link link-primary font-medium\">+ Add Arg</button></div><div class=\"flex flex-wrap gap-2 items-center min-h-[36px] bg-base-200/40 p-2.5 rounded-xl border border-base-300/70\"><template x-for=\"(arg, index) in trig.args\" :key=\"index\"><div class=\"badge badge-neutral gap-1 text-xs py-2 px-2.5 font-mono\"><span x-text=\"arg\"></span> <button type=\"button\" @click=\"removeArg(index)\" class=\"text-error hover:opacity-80 ml-1\">&times;</button></div></template><div class=\"flex items-center gap-1\"><input type=\"text\" x-model=\"argInput\" @keydown.enter.prevent=\"addArg\" placeholder=\"Type argument & enter...\" class=\"input input-xs input-ghost text-xs font-mono w-44\"> <button type=\"button\" @click=\"addArg\" class=\"btn btn-xs btn-ghost text-xs font-semibold\">Add</button></div></div></div><!-- Environment Variables --><div><div class=\"flex items-center justify-between mb-1.5\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-base-content/70\">Environment Variables</label> <button type=\"button\" @click=\"addEnv\" class=\"text-xs link link-primary font-medium\">+ Add Env Variable</button></div><div class=\"flex flex-col gap-2\"><template x-for=\"(env, index) in trig.env\" :key=\"index\"><div class=\"flex items-center gap-2\"><input type=\"text\" x-model=\"env.key\" placeholder=\"KEY\" class=\"input input-sm input-bordered rounded-xl text-xs font-mono w-1/3 bg-base-200/40\"> <input type=\"text\" x-model=\"env.value\" placeholder=\"VALUE\" class=\"input input-sm input-bordered rounded-xl text-xs font-mono flex-1 bg-base-200/40\"> <button type=\"button\" @click=\"removeEnv(index)\" class=\"btn btn-sm btn-ghost text-error\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16\"></path></svg></button></div></template><p x-show=\"!trig.env || trig.env.length === 0\" class=\"text-xs text-base-content/40 italic\">No custom environment variables defined.</p></div></div></div></div><!-- Form Submit Actions --><div class=\"flex items-center justify-end gap-3 pt-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm rounded-xl\">Cancel</a> <button type=\"submit\" class=\"btn btn-primary btn-sm rounded-xl shadow-xs\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.IsNew {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "Create Trigger from YAML")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "Create Trigger")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "Save YAML Changes")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "Save Changes")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "</button></div></form></div></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "</button></div></form></div><!-- Raw YAML Editor Form --><div x-show=\"tab === 'raw'\" class=\"flex flex-col gap-6\"><form method=\"POST\" action=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var73 templ.SafeURL
+				templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(ternary(vm.IsNew, "/ui/triggers", fmt.Sprintf("/ui/triggers/%s", vm.Trigger.ID))))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `triggers.templ`, Line: 901, Col: 110}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "\" id=\"rawTriggerForm\" class=\"flex flex-col gap-4\"><div class=\"card bg-base-100 border border-base-300 shadow-sm rounded-2xl overflow-hidden\"><div class=\"p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center\"><h2 class=\"font-bold text-sm uppercase tracking-wider text-base-content/80\">Trigger YAML Definition</h2><span class=\"text-xs font-mono text-base-content/50\">YAML syntax</span></div><div class=\"p-4\"><textarea name=\"yaml\" x-model=\"rawYaml\" rows=\"18\" class=\"textarea textarea-bordered w-full font-mono text-xs leading-relaxed bg-base-200/30 rounded-xl\" placeholder=\"id: my-trigger&#10;name: My Trigger&#10;type: event&#10;match:&#10;  field: type&#10;  op: equals&#10;  value: custom.event&#10;action:&#10;  exec: bun&#10;  args: [run, scripts/handle.ts]\"></textarea></div></div><!-- Form Submit Actions --><div class=\"flex items-center justify-end gap-3 pt-2\"><a href=\"/ui/triggers\" class=\"btn btn-ghost btn-sm rounded-xl\">Cancel</a> <button type=\"submit\" class=\"btn btn-primary btn-sm rounded-xl shadow-xs\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.IsNew {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "Create Trigger from YAML")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "Save YAML Changes")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "</button></div></form></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = Layout(vm.Base.Layout).Render(templ.WithChildren(ctx, templ_7745c5c3_Var64), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = Layout(vm.Base.Layout).Render(templ.WithChildren(ctx, templ_7745c5c3_Var65), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Index(vm.Base.Index).Render(templ.WithChildren(ctx, templ_7745c5c3_Var63), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = Index(vm.Base.Index).Render(templ.WithChildren(ctx, templ_7745c5c3_Var64), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

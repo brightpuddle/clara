@@ -21,7 +21,7 @@ templ Dashboard(vm *DashboardVM) {
 
 				<!-- Stats section (M3 Tonal Metric Cards) -->
 				<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-					@statCard("Triggers", itoa(vm.TriggersCount), fmt.Sprintf("%d event, %d sched, %d worker", vm.EventTriggersCount, vm.ScheduleTriggersCount, vm.WorkerTriggersCount), "primary")
+					@statCard("Triggers", itoa(vm.TriggersCount), fmt.Sprintf("%d event, %d sched, %d worker, %d manual", vm.EventTriggersCount, vm.ScheduleTriggersCount, vm.WorkerTriggersCount, vm.ManualTriggersCount), "primary")
 					@statCard("Workers", itoa(vm.WorkerTriggersCount), "supervised background", "accent")
 					@statCard("MCP Tools", itoa(vm.ToolsCount), "registered callable tools", "info")
 					@statCard("Sensors / MCP", itoa(vm.IntegrationsCount), "integrations active", "neutral")
@@ -68,6 +68,8 @@ templ Dashboard(vm *DashboardVM) {
 													<span class="badge badge-accent badge-sm">schedule</span>
 												} else if t.Type == trigger.TypeWorker {
 													<span class="badge badge-info badge-sm">worker</span>
+												} else if t.Type == trigger.TypeManual {
+													<span class="badge badge-primary badge-sm">manual</span>
 												}
 											</td>
 											<td class="text-sm py-3 font-mono text-xs">
@@ -79,8 +81,10 @@ templ Dashboard(vm *DashboardVM) {
 													} else {
 														{ "*" }
 													}
-												} else {
+												} else if t.Type == trigger.TypeWorker {
 													{ fmt.Sprintf("restart:%s", t.Action.Restart) }
+												} else {
+													{ "manual" }
 												}
 											</td>
 											<td class="text-xs font-mono py-3 truncate max-w-xs">{ t.Action.Exec }</td>

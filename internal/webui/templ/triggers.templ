@@ -74,6 +74,8 @@ templ Triggers(vm *TriggersVM) {
 													<span class="badge badge-accent badge-sm">schedule</span>
 												} else if t.Type == trigger.TypeWorker {
 													<span class="badge badge-info badge-sm">worker</span>
+												} else if t.Type == trigger.TypeManual {
+													<span class="badge badge-primary badge-sm">manual</span>
 												}
 											</td>
 											<td>
@@ -90,6 +92,8 @@ templ Triggers(vm *TriggersVM) {
 														}
 													} else if t.Type == trigger.TypeWorker {
 														{ fmt.Sprintf("restart:%s", t.Action.Restart) }
+													} else if t.Type == trigger.TypeManual {
+														{ "manual" }
 													}
 												</code>
 											</td>
@@ -206,6 +210,8 @@ templ TriggerDetail(vm *TriggerDetailVM) {
 								<span class="badge badge-accent badge-sm">schedule</span>
 							} else if vm.Trigger.Type == trigger.TypeWorker {
 								<span class="badge badge-info badge-sm">worker</span>
+							} else if vm.Trigger.Type == trigger.TypeManual {
+								<span class="badge badge-primary badge-sm">manual</span>
 							}
 							if vm.Trigger.Enabled {
 								<span class="badge badge-success badge-sm">enabled</span>
@@ -533,6 +539,7 @@ templ TriggerEdit(vm *TriggerEditVM) {
 							<button type="button" @click="fillTemplate('event')" class="btn btn-xs btn-outline rounded-lg">Event (TS / Bun)</button>
 							<button type="button" @click="fillTemplate('schedule')" class="btn btn-xs btn-outline rounded-lg">Schedule (Cron)</button>
 							<button type="button" @click="fillTemplate('worker')" class="btn btn-xs btn-outline rounded-lg">Worker (Daemon)</button>
+							<button type="button" @click="fillTemplate('manual')" class="btn btn-xs btn-outline rounded-lg">Manual (Script)</button>
 						</div>
 					}
 				</div>
@@ -591,6 +598,7 @@ templ TriggerEdit(vm *TriggerEditVM) {
 										<option value="event">Event (CloudEvents smart rule match)</option>
 										<option value="schedule">Schedule (Cron / time interval)</option>
 										<option value="worker">Worker (Supervised background daemon)</option>
+										<option value="manual">Manual (Direct / manual execution only)</option>
 									</select>
 								</div>
 								<div class="flex items-center gap-3 pt-6">

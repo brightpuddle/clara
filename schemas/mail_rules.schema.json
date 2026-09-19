@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://brightpuddle.github.io/clara/schemas/mail_rules.schema.json",
+  "title": "Clara Mail Triage Rules Configuration",
+  "description": "Schema for Clara email triage deterministic rules (single rule or list under 'rules').",
+  "oneOf": [
+    {
+      "$ref": "#/definitions/rule"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "description": "Ordered list of email triage rules evaluated top-to-bottom",
+          "items": {
+            "$ref": "#/definitions/rule"
+          }
+        }
+      },
+      "required": ["rules"],
+      "additionalProperties": false
+    }
+  ],
+  "definitions": {
+    "rule": {
+      "type": "object",
+      "description": "A single email triage rule definition",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this rule",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable label for this rule"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed explanation or notes about what this rule matches"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether this rule is active (default: true)",
+          "default": true
+        },
+        "action": {
+          "type": "string",
+          "description": "Triage destination category",
+          "enum": ["inbox", "review", "archive", "deleted"]
+        },
+        "target_folder": {
+          "type": "string",
+          "description": "Explicit destination mailbox name in Mail.app (e.g. '@Review', 'Archive', 'Deleted Items')"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Rule confidence score between 0.0 and 1.0 (default: 1.0)",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1.0
+        },
+        "match": {
+          "$ref": "#/definitions/match_node",
+          "description": "Matching criteria AST (boolean condition or nested and/or/not)"
+        }
+      },
+      "required": ["id", "action", "match"],
+      "additionalProperties": false
+    },
+    "match_node": {
+      "type": "object",
+      "description": "A single match condition or a logical combination (and/or/not)",
+      "properties": {
+        "and": {
+          "type": "array",
+          "description": "All child conditions must match",
+          "items": {
+            "$ref": "#/definitions/match_node"
+          },
+          "minItems": 1
+        },
+        "or": {
+          "type": "array",
+          "description": "At least one child condition must match",
+          "items": {
+            "$ref": "#/definitions/match_node"
+          },
+          "minItems": 1
+        },
+        "not": {
+          "$ref": "#/definitions/match_node",
+          "description": "Negates the child condition"
+        },
+        "field": {
+          "type": "string",
+          "description": "Message field to evaluate ('sender', 'subject', 'to', 'cc', 'is_direct_recipient', 'headers.<name>')"
+        },
+        "op": {
+          "type": "string",
+          "description": "Comparison operator",
+          "enum": [
+            "equals",
+            "contains",
+            "starts_with",
+            "ends_with",
+            "regex",
+            "exists"
+          ]
+        },
+        "value": {
+          "type": ["string", "boolean", "number"],
+          "description": "Expected value or pattern to match"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

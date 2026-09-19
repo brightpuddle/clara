@@ -386,3 +386,197 @@ func TestManager_Throttle(t *testing.T) {
 		t.Fatalf("expected exactly 2 runs after throttle window passed, got %d", len(runs))
 	}
 }
+
+func TestManager_DirectoryWatching_AddUpdateDelete(t *testing.T) {
+	dir := t.TempDir()
+	mgr := trigger.NewManager(nil, nil, nil)
+	if err := mgr.LoadFromDir(dir); err != nil {
+		t.Fatalf("failed to load from dir: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := mgr.Start(ctx); err != nil {
+		t.Fatalf("failed to start manager: %v", err)
+	}
+	defer mgr.Stop()
+
+	// 1. Create a trigger file in watched directory
+	triggerPath := filepath.Join(dir, "my_trigger.yaml")
+	contentV1 := `id: "auto-watch-test"
+name: "Auto Watch Test V1"
+enabled: true
+type: "event"
+match:
+  field: "type"
+  op: "equals"
+  value: "test.event"
+action:
+  exec: "/usr/bin/true"
+`
+	if err := os.WriteFile(triggerPath, []byte(contentV1), 0o644); err != nil {
+		t.Fatalf("failed to write trigger: %v", err)
+	}
+
+	// Poll until trigger is auto-loaded
+	var def *trigger.Definition
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if d, ok := mgr.Get("auto-watch-test"); ok {
+			def = d
+			break
+		}
+	}
+	if def == nil {
+		t.Fatalf("expected trigger to be automatically loaded after file creation")
+	}
+	if def.Name != "Auto Watch Test V1" {
+		t.Errorf("expected name %q, got %q", "Auto Watch Test V1", def.Name)
+	}
+
+	// 2. Update the trigger file
+	contentV2 := `id: "auto-watch-test"
+name: "Auto Watch Test V2"
+enabled: true
+type: "event"
+match:
+  field: "type"
+  op: "equals"
+  value: "test.event"
+action:
+  exec: "/usr/bin/true"
+`
+	if err := os.WriteFile(triggerPath, []byte(contentV2), 0o644); err != nil {
+		t.Fatalf("failed to update trigger: %v", err)
+	}
+
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if d, ok := mgr.Get("auto-watch-test"); ok && d.Name == "Auto Watch Test V2" {
+			def = d
+			break
+		}
+	}
+	if def.Name != "Auto Watch Test V2" {
+		t.Fatalf("expected trigger name to update to V2, got %q", def.Name)
+	}
+
+	// 3. Delete the trigger file
+	if err := os.Remove(triggerPath); err != nil {
+		t.Fatalf("failed to remove trigger file: %v", err)
+	}
+
+	deleted := false
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if _, ok := mgr.Get("auto-watch-test"); !ok {
+			deleted = true
+			break
+		}
+	}
+	if !deleted {
+		t.Fatalf("expected trigger to be automatically unregistered after file deletion")
+	}
+}
+
+func TestManager_DirectoryWatching_Symlink(t *testing.T) {
+	tempBase := t.TempDir()
+	availDir := filepath.Join(tempBase, "triggers-available")
+	enabledDir := filepath.Join(tempBase, "triggers")
+
+	if err := os.MkdirAll(availDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(enabledDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := trigger.NewManager(nil, nil, nil)
+	if err := mgr.LoadFromDir(enabledDir); err != nil {
+		t.Fatalf("failed to load from dir: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := mgr.Start(ctx); err != nil {
+		t.Fatalf("failed to start manager: %v", err)
+	}
+	defer mgr.Stop()
+
+	// 1. Create trigger in triggers-available
+	sourcePath := filepath.Join(availDir, "symlink_test.yaml")
+	sourceContent := `id: "symlink-trigger"
+name: "Symlink Trigger V1"
+enabled: true
+type: "event"
+action:
+  exec: "/usr/bin/true"
+`
+	if err := os.WriteFile(sourcePath, []byte(sourceContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Symlink into triggers
+	symlinkPath := filepath.Join(enabledDir, "symlink_test.yaml")
+	if err := os.Symlink(sourcePath, symlinkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	// Poll until trigger is auto-loaded
+	var def *trigger.Definition
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if d, ok := mgr.Get("symlink-trigger"); ok {
+			def = d
+			break
+		}
+	}
+	if def == nil {
+		t.Fatalf("expected symlinked trigger to be automatically loaded")
+	}
+	if def.Name != "Symlink Trigger V1" {
+		t.Errorf("expected name %q, got %q", "Symlink Trigger V1", def.Name)
+	}
+
+	// 3. Edit source in triggers-available
+	sourceContentV2 := `id: "symlink-trigger"
+name: "Symlink Trigger V2"
+enabled: true
+type: "event"
+action:
+  exec: "/usr/bin/true"
+`
+	if err := os.WriteFile(sourcePath, []byte(sourceContentV2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if d, ok := mgr.Get("symlink-trigger"); ok && d.Name == "Symlink Trigger V2" {
+			def = d
+			break
+		}
+	}
+	if def.Name != "Symlink Trigger V2" {
+		t.Fatalf("expected symlinked trigger to update after source edit, got %q", def.Name)
+	}
+
+	// 4. Remove symlink from triggers
+	if err := os.Remove(symlinkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	unregistered := false
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		if _, ok := mgr.Get("symlink-trigger"); !ok {
+			unregistered = true
+			break
+		}
+	}
+	if !unregistered {
+		t.Fatalf("expected trigger to be unregistered after symlink removal")
+	}
+}

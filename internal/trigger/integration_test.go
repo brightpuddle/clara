@@ -111,9 +111,13 @@ fi
 	})
 
 	// Allow execution and store recording to complete
-	time.Sleep(300 * time.Millisecond)
-
-	runs, err = st.ListTriggerRuns(context.Background(), 10, "e2e-event-hello")
+	for i := 0; i < 40; i++ {
+		time.Sleep(50 * time.Millisecond)
+		runs, err = st.ListTriggerRuns(context.Background(), 10, "e2e-event-hello")
+		if err == nil && len(runs) == 1 {
+			break
+		}
+	}
 	if err != nil {
 		t.Fatalf("failed to list trigger runs: %v", err)
 	}
@@ -256,11 +260,15 @@ exit 1
 	defer mgr.Stop()
 
 	// Wait for worker restarts to complete (3 total runs for MaxRestarts: 3)
-	time.Sleep(600 * time.Millisecond)
-
-	runs, err := st.ListTriggerRuns(context.Background(), 10, "e2e-worker-hello")
-	if err != nil {
-		t.Fatalf("failed to list trigger runs: %v", err)
+	var runs []store.TriggerRunRecord
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		var err error
+		runs, err = st.ListTriggerRuns(context.Background(), 10, "e2e-worker-hello")
+		if err == nil && len(runs) >= 3 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	if len(runs) != 3 {
@@ -277,6 +285,92 @@ exit 1
 		if !strings.Contains(r.Stdout, "hello world from worker") {
 			t.Errorf("run %d: expected stdout to contain greeting, got: %q", i, r.Stdout)
 		}
+	}
+}
+
+func TestIntegration_ManualTrigger(t *testing.T) {
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "clara.db")
+	st, err := store.Open(dbPath, zerolog.Nop())
+	if err != nil {
+		t.Fatalf("failed to open store: %v", err)
+	}
+	defer st.Close()
+
+	bus := supervisor.NewEventBus()
+	runner := trigger.NewRunner(5 * time.Second)
+	mgr := trigger.NewManager(runner, bus, st)
+
+	scriptPath := filepath.Join(tempDir, "manual_script.sh")
+	scriptContent := `#!/bin/sh
+echo "hello from manual trigger: $CLARA_TRIGGER_ID"
+`
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0o755); err != nil {
+		t.Fatalf("failed to write manual script: %v", err)
+	}
+
+	def := trigger.Definition{
+		ID:          "manual-task-1",
+		Name:        "Manual Task 1",
+		Description: "A script that only runs on manual invocation",
+		Enabled:     true,
+		Type:        trigger.TypeManual,
+		Action: trigger.Action{
+			Exec: scriptPath,
+		},
+	}
+
+	if err := mgr.Register(def); err != nil {
+		t.Fatalf("failed to register manual trigger: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := mgr.Start(ctx); err != nil {
+		t.Fatalf("failed to start manager: %v", err)
+	}
+	defer mgr.Stop()
+
+	// 1. Emit random events to ensure manual trigger never auto-fires
+	bus.PublishCloud(supervisor.CloudEvent{
+		ID:     "ev-1",
+		Source: "test",
+		Type:   "custom.event",
+		Time:   time.Now(),
+	})
+	time.Sleep(100 * time.Millisecond)
+
+	runs, err := st.ListTriggerRuns(context.Background(), 10, "manual-task-1")
+	if err != nil {
+		t.Fatalf("failed to list runs: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected 0 runs before manual execution, got %d", len(runs))
+	}
+
+	// 2. Explicitly execute manual trigger via mgr.Run
+	runRecord, err := mgr.Run(ctx, "manual-task-1", map[string]any{"user": "nathan"})
+	if err != nil {
+		t.Fatalf("failed to run manual trigger: %v", err)
+	}
+	if runRecord.Status != trigger.StatusSuccess {
+		t.Errorf("expected success, got %s", runRecord.Status)
+	}
+	if !strings.Contains(runRecord.Stdout, "hello from manual trigger: manual-task-1") {
+		t.Errorf("unexpected stdout: %s", runRecord.Stdout)
+	}
+
+	// 3. Verify audit record stored
+	runs, err = st.ListTriggerRuns(context.Background(), 10, "manual-task-1")
+	if err != nil {
+		t.Fatalf("failed to list runs: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 run in store, got %d", len(runs))
+	}
+	if runs[0].TriggerType != string(trigger.TypeManual) {
+		t.Errorf("expected trigger_type %s, got %s", trigger.TypeManual, runs[0].TriggerType)
 	}
 }
 
@@ -298,7 +392,7 @@ func TestIntegration_AllTriggers_CombinedTaskDirectory(t *testing.T) {
 	runner := trigger.NewRunner(5 * time.Second)
 	mgr := trigger.NewManager(runner, bus, st)
 
-	// Create scripts for all 3
+	// Create scripts for all 4
 	eventScript := filepath.Join(tempDir, "event.sh")
 	_ = os.WriteFile(eventScript, []byte("#!/bin/sh\necho \"all-triggers-event: $CLARA_TRIGGER_ID\"\n"), 0o755)
 
@@ -307,6 +401,9 @@ func TestIntegration_AllTriggers_CombinedTaskDirectory(t *testing.T) {
 
 	workerScript := filepath.Join(tempDir, "worker.sh")
 	_ = os.WriteFile(workerScript, []byte("#!/bin/sh\necho \"all-triggers-worker: $CLARA_TRIGGER_ID\"\nexit 0\n"), 0o755)
+
+	manualScript := filepath.Join(tempDir, "manual.sh")
+	_ = os.WriteFile(manualScript, []byte("#!/bin/sh\necho \"all-triggers-manual: $CLARA_TRIGGER_ID\"\n"), 0o755)
 
 	// Write YAML definitions into tasks directory
 	eventYAML := fmt.Sprintf(`
@@ -342,6 +439,15 @@ action:
   restart: never
 `, workerScript)
 
+	manualYAML := fmt.Sprintf(`
+id: task-dir-manual
+name: Task Dir Manual
+enabled: true
+type: manual
+action:
+  exec: %s
+`, manualScript)
+
 	if err := os.WriteFile(filepath.Join(taskDir, "01-event.yaml"), []byte(eventYAML), 0o644); err != nil {
 		t.Fatalf("failed to write event YAML: %v", err)
 	}
@@ -351,6 +457,9 @@ action:
 	if err := os.WriteFile(filepath.Join(taskDir, "03-worker.yaml"), []byte(workerYAML), 0o644); err != nil {
 		t.Fatalf("failed to write worker YAML: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(taskDir, "04-manual.yaml"), []byte(manualYAML), 0o644); err != nil {
+		t.Fatalf("failed to write manual YAML: %v", err)
+	}
 
 	// Load directory
 	if err := mgr.LoadFromDir(taskDir); err != nil {
@@ -358,8 +467,8 @@ action:
 	}
 
 	list := mgr.List()
-	if len(list) != 3 {
-		t.Fatalf("expected 3 triggers loaded, got %d", len(list))
+	if len(list) != 4 {
+		t.Fatalf("expected 4 triggers loaded, got %d", len(list))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -377,6 +486,15 @@ action:
 		Type:   "system.ping",
 		Time:   time.Now(),
 	})
+
+	// Run manual trigger
+	manRec, err := mgr.Run(ctx, "task-dir-manual", nil)
+	if err != nil {
+		t.Fatalf("failed to run manual trigger: %v", err)
+	}
+	if manRec.Status != trigger.StatusSuccess {
+		t.Errorf("manual trigger expected success, got %s", manRec.Status)
+	}
 
 	// Wait for event, schedule tick, and worker execution
 	time.Sleep(1300 * time.Millisecond)
@@ -406,5 +524,14 @@ action:
 	}
 	if !strings.Contains(workerRuns[0].Stdout, "all-triggers-worker: task-dir-worker") {
 		t.Errorf("unexpected worker stdout: %s", workerRuns[0].Stdout)
+	}
+
+	// Verify manual run
+	manRuns, err := st.ListTriggerRuns(context.Background(), 5, "task-dir-manual")
+	if err != nil || len(manRuns) == 0 {
+		t.Fatalf("expected manual run, got %v (err: %v)", manRuns, err)
+	}
+	if !strings.Contains(manRuns[0].Stdout, "all-triggers-manual: task-dir-manual") {
+		t.Errorf("unexpected manual stdout: %s", manRuns[0].Stdout)
 	}
 }

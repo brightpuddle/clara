@@ -23,6 +23,7 @@ func (w *WebUI) handleDashboard(c echo.Context) error {
 	eventCount := 0
 	schedCount := 0
 	workerCount := 0
+	manualCount := 0
 	for _, t := range triggers {
 		switch t.Type {
 		case trigger.TypeEvent:
@@ -31,6 +32,8 @@ func (w *WebUI) handleDashboard(c echo.Context) error {
 			schedCount++
 		case trigger.TypeWorker:
 			workerCount++
+		case trigger.TypeManual:
+			manualCount++
 		}
 	}
 
@@ -57,6 +60,7 @@ func (w *WebUI) handleDashboard(c echo.Context) error {
 		EventTriggersCount:    eventCount,
 		ScheduleTriggersCount: schedCount,
 		WorkerTriggersCount:   workerCount,
+		ManualTriggersCount:   manualCount,
 		ToolsCount:            toolsCount,
 		IntegrationsCount:     len(integrations),
 		Triggers:              triggers,
