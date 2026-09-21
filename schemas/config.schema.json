@@ -120,6 +120,13 @@
     "server": {
       "$ref": "#/definitions/server",
       "description": "HTTP and remote MCP server configuration"
+    },
+    "mcp_expose_profiles": {
+      "type": "object",
+      "description": "Named, whitelist-only tool subsets exposable via 'clara mcp serve --profile <name>'",
+      "additionalProperties": {
+        "$ref": "#/definitions/mcp_expose_profile"
+      }
     }
   },
   "additionalProperties": false,
@@ -223,6 +230,23 @@
         "shared_secret": {
           "type": "string",
           "description": "Shared bearer secret for remote MCP authentication"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcp_expose_profile": {
+      "type": "object",
+      "description": "A default-deny whitelist of tool name globs exposable via 'clara mcp serve'",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "Tool name globs to expose (e.g. 'mail.*', 'github.create_issue')",
+          "items": { "type": "string" }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "Tool name globs to exclude from an otherwise-included set",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false

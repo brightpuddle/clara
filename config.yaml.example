@@ -34,6 +34,18 @@ mcp_servers:
   #   env:
   #     GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 
+# ── MCP Expose Profiles ─────────────────────────────────────────────────────────
+# Named, whitelist-only subsets of tools that `clara mcp serve --profile <name>`
+# exposes as a stdio MCP server, for other agent harnesses to connect to.
+# Each profile is default-deny: only tools matching `include` are exposed.
+#
+# mcp_expose_profiles:
+#   claude-code:                       # clara mcp serve --profile claude-code
+#     include: ["mail.*", "task.*", "fs.*"]
+#     exclude: ["fs.delete_file"]      # carve an exception out of an included namespace
+#   github:                            # exposed separately, e.g. for a harness
+#     include: ["github.*"]           # without its own native GitHub MCP server
+
 # ── Notification backend ───────────────────────────────────────────────────────
 # Controls how notify.send and notify.ask deliver messages to you.
 #

@@ -433,6 +433,17 @@ func buildHandler(
 		case ipc.MethodToolList:
 			filter, _ := req.Params["filter"].(string)
 			view, _ := req.Params["view"].(string)
+			if view == "specs" {
+				var result []mcp.Tool
+				for _, t := range reg.Tools() {
+					if strings.HasSuffix(t.Name, ".clara_list_events") {
+						continue
+					}
+					result = append(result, t.Spec)
+				}
+				writeResp(&ipc.Response{Data: result})
+				return
+			}
 			if filter == "" && view != "tools" {
 				tools := reg.Tools()
 				catalogTools := make([]toolcatalog.Tool, len(tools))

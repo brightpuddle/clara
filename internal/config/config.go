@@ -107,6 +107,10 @@ type Config struct {
 	// Server configures the Clara HTTP server for remote MCP and webhooks.
 	Server ServerConfig `yaml:"server"`
 
+	// MCPExposeProfiles defines named, whitelist-only subsets of tools that
+	// `clara mcp serve --profile <name>` may expose to an external MCP client.
+	MCPExposeProfiles map[string]MCPExposeProfile `yaml:"mcp_expose_profiles"`
+
 	// Testing overrides
 	ControlSocketPathOverride string `yaml:"-"`
 }

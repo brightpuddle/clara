@@ -223,6 +223,7 @@ clara tool show <name>              # Show tool JSON schema
 clara tool call <name> -a '<json>'  # Execute a tool directly
 clara types gen [--out path]        # Auto-generate TypeScript definitions (.d.ts)
 clara mcp list                      # List configured external MCP servers
+clara mcp serve --profile <name>    # Expose a whitelisted tool subset as a stdio MCP server
 
 # Events
 clara event emit --type=<t> -d '<json>'  # Emit a CloudEvent onto the event bus
