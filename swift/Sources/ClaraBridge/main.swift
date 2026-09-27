@@ -452,6 +452,15 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                 ]
             ),
             tool(
+                name: "photos_album_hashes",
+                description: "List photo assets in an album with computed perceptual hashes (pHash).",
+                properties: [
+                    stringProperty("album_name", "Album name."),
+                    numberProperty("limit", "Optional limit."),
+                ],
+                required: ["album_name"]
+            ),
+            tool(
                 name: "theme_get",
                 description: "Return the current macOS interface theme (dark or light).",
                 properties: []
@@ -646,6 +655,9 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             return try toolResult(["status": "added"])
         case "photos_list_albums":
             let items = try await listPhotoAlbums(arguments)
+            return try toolResult(items)
+        case "photos_album_hashes":
+            let items = try await listPhotoAlbumHashes(arguments)
             return try toolResult(items)
         case "theme_get":
             return try toolResult(["theme": getTheme()])
@@ -1112,6 +1124,46 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             }
         }
         return albums
+    }
+
+    private func listPhotoAlbumHashes(_ args: [String: Any]) async throws -> [[String: Any]] {
+        try await ensurePhotosAccess()
+        let albumName = try requiredString(args, "album_name")
+        let limit = optionalInt(args, "limit")
+        let album = try photoAlbum(named: albumName)
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        let result = PHAsset.fetchAssets(in: album, options: options)
+
+        var assets: [PHAsset] = []
+        result.enumerateObjects { asset, _, stop in
+            if asset.mediaType == .image {
+                assets.append(asset)
+            }
+            if let limit, assets.count >= limit {
+                stop.pointee = true
+            }
+        }
+
+        var hashes: [[String: Any]] = []
+        for asset in assets {
+            var item: [String: Any] = [
+                "identifier": asset.localIdentifier,
+                "pixel_width": asset.pixelWidth,
+                "pixel_height": asset.pixelHeight,
+            ]
+            if let created = asset.creationDate {
+                item["created_at"] = ISO8601.dateString(from: created)
+            }
+
+            if let phash = await computePHash(for: asset) {
+                item["phash"] = String(format: "%016llx", phash)
+            }
+
+            hashes.append(item)
+        }
+
+        return hashes
     }
 
     private func defaultReminderList() async throws -> [String: Any] {
@@ -2077,6 +2129,124 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         default:
             return "unknown"
         }
+    }
+
+    private func computePHash(for asset: PHAsset) async -> UInt64? {
+        let options = PHImageRequestOptions()
+        options.isSynchronous = false
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.resizeMode = .exact
+
+        let cgImage: CGImage? = await withCheckedContinuation { continuation in
+            var didResume = false
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: CGSize(width: 256, height: 256),
+                contentMode: .aspectFit,
+                options: options
+            ) { image, info in
+                let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
+                if isDegraded { return }
+                if !didResume {
+                    didResume = true
+                    if let image = image {
+                        let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                        continuation.resume(returning: cg)
+                    } else {
+                        continuation.resume(returning: nil)
+                    }
+                }
+            }
+        }
+
+        guard let cg = cgImage else { return nil }
+        return computePHash(fromCGImage: cg)
+    }
+
+    nonisolated private func computePHash(fromCGImage cgImage: CGImage) -> UInt64? {
+        let w = cgImage.width
+        let h = cgImage.height
+        guard w > 0 && h > 0 else { return nil }
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        var rgba = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(
+            data: &rgba,
+            width: w,
+            height: h,
+            bitsPerComponent: 8,
+            bytesPerRow: w * 4,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        var gray = [Double](repeating: 0.0, count: 32 * 32)
+        for ty in 0..<32 {
+            let sy = (ty * h) / 32
+            for tx in 0..<32 {
+                let sx = (tx * w) / 32
+                let offset = (sy * w + sx) * 4
+                let r = Double(rgba[offset])
+                let g = Double(rgba[offset + 1])
+                let b = Double(rgba[offset + 2])
+                gray[ty * 32 + tx] = 0.299 * r + 0.587 * g + 0.114 * b
+            }
+        }
+
+        let size = 32
+        let dct = dct2D(gray, n: size)
+        let smallSize = 8
+        var coeffs = [Double]()
+        coeffs.reserveCapacity(smallSize * smallSize - 1)
+        for y in 0..<smallSize {
+            for x in 0..<smallSize {
+                if x == 0 && y == 0 { continue }
+                coeffs.append(dct[y * size + x])
+            }
+        }
+
+        let sorted = coeffs.sorted()
+        let mid = sorted.count / 2
+        let median = sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2.0
+
+        var hash: UInt64 = 0
+        var bitIndex = 0
+        for y in 0..<smallSize {
+            for x in 0..<smallSize {
+                if x == 0 && y == 0 { continue }
+                if dct[y * size + x] >= median {
+                    hash |= (UInt64(1) << bitIndex)
+                }
+                bitIndex += 1
+            }
+        }
+        return hash
+    }
+
+    nonisolated private func dct2D(_ matrix: [Double], n: Int) -> [Double] {
+        var dct = [Double](repeating: 0.0, count: n * n)
+        var c = [Double](repeating: 0.0, count: n)
+        c[0] = 1.0 / sqrt(Double(n))
+        for i in 1..<n {
+            c[i] = sqrt(2.0 / Double(n))
+        }
+
+        for u in 0..<n {
+            for v in 0..<n {
+                var sum: Double = 0.0
+                for i in 0..<n {
+                    for j in 0..<n {
+                        let pixel = matrix[i * n + j]
+                        let cosI = cos((2.0 * Double(i) + 1.0) * Double(u) * Double.pi / (2.0 * Double(n)))
+                        let cosJ = cos((2.0 * Double(j) + 1.0) * Double(v) * Double.pi / (2.0 * Double(n)))
+                        sum += pixel * cosI * cosJ
+                    }
+                }
+                dct[u * n + v] = c[u] * c[v] * sum
+            }
+        }
+        return dct
     }
 
     nonisolated private func serializeAlarm(_ alarm: EKAlarm) -> [String: Any] {

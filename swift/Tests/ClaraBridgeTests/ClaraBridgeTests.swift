@@ -52,5 +52,6 @@ final class ClaraBridgeTests: XCTestCase {
 
         XCTAssertTrue(toolNames.contains("photos_list_albums"))
         XCTAssertTrue(toolNames.contains("photos_album_assets"))
+        XCTAssertTrue(toolNames.contains("photos_album_hashes"))
     }
 }
