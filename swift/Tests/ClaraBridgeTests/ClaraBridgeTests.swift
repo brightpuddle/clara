@@ -44,4 +44,13 @@ final class ClaraBridgeTests: XCTestCase {
         XCTAssertTrue(toolNames.contains("mail_get_message"))
         XCTAssertTrue(toolNames.contains("mail_move"))
     }
+
+    func testPhotosToolsAreRegistered() {
+        let tools = BridgeTools()
+        let registeredTools = tools.listTools()
+        let toolNames = Set(registeredTools.compactMap { $0["name"] as? String })
+
+        XCTAssertTrue(toolNames.contains("photos_list_albums"))
+        XCTAssertTrue(toolNames.contains("photos_album_assets"))
+    }
 }

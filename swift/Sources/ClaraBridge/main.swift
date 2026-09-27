@@ -445,6 +445,13 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                 required: ["album_name", "asset_ids"]
             ),
             tool(
+                name: "photos_list_albums",
+                description: "List available Photos albums.",
+                properties: [
+                    numberProperty("limit", "Optional limit."),
+                ]
+            ),
+            tool(
                 name: "theme_get",
                 description: "Return the current macOS interface theme (dark or light).",
                 properties: []
@@ -637,6 +644,9 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         case "photos_album_add_assets":
             try await addPhotoAlbumAssets(arguments)
             return try toolResult(["status": "added"])
+        case "photos_list_albums":
+            let items = try await listPhotoAlbums(arguments)
+            return try toolResult(items)
         case "theme_get":
             return try toolResult(["theme": getTheme()])
         case "theme_get_appearance": // Backward compatibility
@@ -1085,6 +1095,23 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             "album_name": albumName,
             "added": assetIDs.count,
         ]
+    }
+
+    private func listPhotoAlbums(_ args: [String: Any]) async throws -> [[String: Any]] {
+        try await ensurePhotosAccess()
+        let limit = optionalInt(args, "limit")
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "localizedTitle", ascending: true)]
+        let result = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: options)
+
+        var albums: [[String: Any]] = []
+        result.enumerateObjects { collection, _, stop in
+            albums.append(self.serializePhotoAlbum(collection))
+            if let limit, albums.count >= limit {
+                stop.pointee = true
+            }
+        }
+        return albums
     }
 
     private func defaultReminderList() async throws -> [String: Any] {
@@ -1960,6 +1987,18 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
             result["updated_at"] = ISO8601.dateString(from: updated)
         }
         return result
+    }
+
+    nonisolated private func serializePhotoAlbum(_ collection: PHAssetCollection) -> [String: Any] {
+        var assetCount = collection.estimatedAssetCount
+        if assetCount == NSNotFound {
+            assetCount = PHAsset.fetchAssets(in: collection, options: nil).count
+        }
+        return [
+            "identifier": collection.localIdentifier,
+            "name": collection.localizedTitle ?? "",
+            "asset_count": assetCount,
+        ]
     }
 
     private func exportPhotoAsset(_ asset: PHAsset, destinationDir: String) async throws -> [String: Any] {
