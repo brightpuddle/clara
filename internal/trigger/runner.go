@@ -13,6 +13,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
+
+	"github.com/brightpuddle/clara/internal/builtin/pathutil"
 )
 
 // Runner is responsible for executing external scripts and recording output.
@@ -91,7 +93,7 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 
 	cmd := exec.CommandContext(execCtx, def.Action.Exec, cmdArgs...)
 	if def.Action.Dir != "" {
-		cmd.Dir = def.Action.Dir
+		cmd.Dir = pathutil.Resolve(def.Action.Dir)
 	}
 
 	// Environment variables

@@ -139,6 +139,7 @@ install-skills:
 ## install: install clara, plugins, ClaraBridge, agent skills, schemas, and restart or start the LaunchAgent
 install: build $(BRIDGE_APP_EXE) install-skills
 	install -m 755 bin/clara "$(INSTALL_BIN)"
+	@if [ -d "$(HOME)/.go/bin" ]; then install -m 755 bin/clara "$(HOME)/.go/bin/clara"; fi
 	# Re-sign at destination to ensure the embedded Info.plist is valid
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
 

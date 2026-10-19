@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	clarabuiltin "github.com/brightpuddle/clara/internal/builtin/clara"
 	dbbuiltin "github.com/brightpuddle/clara/internal/builtin/db"
 	fsbuiltin "github.com/brightpuddle/clara/internal/builtin/fs"
 	notifybuiltin "github.com/brightpuddle/clara/internal/builtin/notify"
@@ -81,6 +82,7 @@ func runTypesGen(cmd *cobra.Command, args []string) error {
 		_ = fsbuiltin.Register(ctx, nil, reg, zerolog.Nop())
 		_ = dbbuiltin.Register(ctx, nil, reg, zerolog.Nop())
 		_ = notifybuiltin.Register(ctx, cfg.Notify, reg, zerolog.Nop())
+		_ = clarabuiltin.Register(ctx, cfg, nil, nil, reg, zerolog.Nop())
 
 		// Also register configured MCP server placeholders if available in config
 		for _, srv := range cfg.MCPServers {

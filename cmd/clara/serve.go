@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	clarabuiltin "github.com/brightpuddle/clara/internal/builtin/clara"
 	dbbuiltin "github.com/brightpuddle/clara/internal/builtin/db"
 	fsbuiltin "github.com/brightpuddle/clara/internal/builtin/fs"
 	notifybuiltin "github.com/brightpuddle/clara/internal/builtin/notify"
@@ -24,6 +25,7 @@ import (
 	"github.com/brightpuddle/clara/internal/server"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
+	"github.com/brightpuddle/clara/internal/telemetry"
 	"github.com/brightpuddle/clara/internal/toolcatalog"
 	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/brightpuddle/clara/internal/typestub"
@@ -219,6 +221,11 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		}
 	}
 
+	// Register the clara builtin (runs, triggers, staging).
+	if err := clarabuiltin.Register(daemonCtx, cfg, db, triggerMgr, reg, logger); err != nil {
+		logger.Error().Err(err).Msg("failed to register clara builtin")
+	}
+
 	// Attach the web UI (served at /ui/ on the same port as the HTTP server).
 	uiCfgPath := cfgFile
 	if uiCfgPath == "" {
@@ -283,6 +290,11 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 				}
 			}
 		},
+		startTelemetry: func(ctx context.Context) error {
+			obs := telemetry.NewObserver(sup.EventBus(), db, 5*time.Second, logger)
+			obs.Start(ctx)
+			return nil
+		},
 	}, logger)
 }
 
@@ -296,6 +308,7 @@ type daemonServiceHooks struct {
 	startTriggers   func(context.Context) error
 	stopTriggers    func()
 	startEvaluator  func(context.Context) error
+	startTelemetry  func(context.Context) error
 }
 
 func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zerolog.Logger) error {
@@ -357,6 +370,14 @@ func runDaemonServices(ctx context.Context, hooks daemonServiceHooks, logger zer
 		wg.Go(func() {
 			if err := hooks.startEvaluator(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				logger.Error().Err(err).Msg("evaluator error")
+			}
+		})
+	}
+
+	if hooks.startTelemetry != nil {
+		wg.Go(func() {
+			if err := hooks.startTelemetry(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Error().Err(err).Msg("telemetry observer error")
 			}
 		})
 	}

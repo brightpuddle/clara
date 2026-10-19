@@ -107,6 +107,8 @@ func (s *Server) Start() error {
 	sseServer := mcpserver.NewSSEServer(mcpSrv)
 	mux.Handle("/mcp/sse", auth(sseServer.SSEHandler()))
 	mux.Handle("/mcp/messages", auth(sseServer.MessageHandler()))
+	mux.Handle("/mcp/message", auth(sseServer.MessageHandler()))
+	mux.Handle("/message", auth(sseServer.MessageHandler()))
 
 	// Events bridging
 	mux.HandleFunc("/events", authFunc(s.handleEvents))
@@ -125,9 +127,20 @@ func (s *Server) Start() error {
 		Handler: mux,
 	}
 
-	s.log.Info().Str("addr", s.cfg.Server.ListenAddr).Msg("starting Clara HTTP server")
+	useTLS := s.cfg.Server.CertFile != "" && s.cfg.Server.KeyFile != ""
+	proto := "HTTP"
+	if useTLS {
+		proto = "HTTPS"
+	}
+	s.log.Info().Str("addr", s.cfg.Server.ListenAddr).Str("proto", proto).Msg("starting Clara server")
 	go func() {
-		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if useTLS {
+			err = s.httpServer.ListenAndServeTLS(s.cfg.Server.CertFile, s.cfg.Server.KeyFile)
+		} else {
+			err = s.httpServer.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.log.Error().Err(err).Msg("HTTP server failed")
 		}
 	}()

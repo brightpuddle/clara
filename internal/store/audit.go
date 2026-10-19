@@ -71,6 +71,18 @@ func (s *Store) initAuditSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_tool_calls_run_id ON tool_calls(run_id);
 		CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
 		CREATE INDEX IF NOT EXISTS idx_tool_calls_called_at ON tool_calls(called_at DESC);
+
+		CREATE TABLE IF NOT EXISTS activity_samples (
+			id          TEXT PRIMARY KEY,
+			app_name    TEXT NOT NULL,
+			window_title TEXT NOT NULL DEFAULT '',
+			idle_secs   INTEGER NOT NULL DEFAULT 0,
+			metadata    TEXT NOT NULL DEFAULT '{}',
+			sampled_at  INTEGER NOT NULL
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_activity_samples_app_name ON activity_samples(app_name);
+		CREATE INDEX IF NOT EXISTS idx_activity_samples_sampled_at ON activity_samples(sampled_at DESC);
 	`)
 	if err != nil {
 		return errors.Wrap(err, "create audit schema")
@@ -246,5 +258,69 @@ func (s *Store) ListToolCalls(ctx context.Context, limit int, runID string) ([]T
 		records = append(records, c)
 	}
 
+	return records, rows.Err()
+}
+
+// ActivitySampleRecord represents a captured snapshot of active user activity on macOS.
+type ActivitySampleRecord struct {
+	ID          string    `json:"id"`
+	AppName     string    `json:"app_name"`
+	WindowTitle string    `json:"window_title"`
+	IdleSecs    int64     `json:"idle_secs"`
+	Metadata    string    `json:"metadata"`
+	SampledAt   time.Time `json:"sampled_at"`
+}
+
+// RecordActivitySample persists a desktop activity sample.
+func (s *Store) RecordActivitySample(ctx context.Context, sample ActivitySampleRecord) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO activity_samples (id, app_name, window_title, idle_secs, metadata, sampled_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, sample.ID, sample.AppName, sample.WindowTitle, sample.IdleSecs, sample.Metadata, sample.SampledAt.UnixMilli())
+	if err != nil {
+		return errors.Wrap(err, "record activity sample")
+	}
+	return nil
+}
+
+// ListActivitySamples queries recent activity samples.
+func (s *Store) ListActivitySamples(ctx context.Context, limit int, since time.Time) ([]ActivitySampleRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var rows *sql.Rows
+	var err error
+
+	if !since.IsZero() {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, app_name, window_title, idle_secs, metadata, sampled_at
+			FROM activity_samples
+			WHERE sampled_at >= ?
+			ORDER BY sampled_at DESC
+			LIMIT ?
+		`, since.UnixMilli(), limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx, `
+			SELECT id, app_name, window_title, idle_secs, metadata, sampled_at
+			FROM activity_samples
+			ORDER BY sampled_at DESC
+			LIMIT ?
+		`, limit)
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "list activity samples")
+	}
+	defer rows.Close()
+
+	var records []ActivitySampleRecord
+	for rows.Next() {
+		var a ActivitySampleRecord
+		var sampledAtMs int64
+		if err := rows.Scan(&a.ID, &a.AppName, &a.WindowTitle, &a.IdleSecs, &a.Metadata, &sampledAtMs); err != nil {
+			return nil, errors.Wrap(err, "scan activity sample")
+		}
+		a.SampledAt = time.UnixMilli(sampledAtMs)
+		records = append(records, a)
+	}
 	return records, rows.Err()
 }

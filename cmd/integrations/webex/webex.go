@@ -120,13 +120,15 @@ func (w *Webex) Tools() ([]byte, error) {
 			"message.reply",
 			mcp.WithDescription("Send a reply to a Webex room using the user account."),
 			mcp.WithString("room_id", mcp.Required(), mcp.Description("Webex room/space ID to post into.")),
-			mcp.WithString("text", mcp.Required(), mcp.Description("Plain-text message body.")),
+			mcp.WithString("text", mcp.Description("Plain-text message body (fallback if markdown is set).")),
+			mcp.WithString("markdown", mcp.Description("Markdown-formatted message body.")),
 		),
 		mcp.NewTool(
 			"notification.send",
 			mcp.WithDescription("Send a notification message to a Webex room via the bot account."),
 			mcp.WithString("room_id", mcp.Required(), mcp.Description("Webex room/space ID to post into.")),
-			mcp.WithString("text", mcp.Required(), mcp.Description("Notification message text.")),
+			mcp.WithString("text", mcp.Description("Plain-text message body (fallback if markdown is set).")),
+			mcp.WithString("markdown", mcp.Description("Markdown-formatted message body.")),
 		),
 		mcp.NewTool(
 			"interactive.request",
@@ -250,16 +252,24 @@ func (w *Webex) callMessageReply(args []byte) ([]byte, error) {
 		return nil, errors.New("webex user account not configured")
 	}
 	var a struct {
-		RoomID string `json:"room_id"`
-		Text   string `json:"text"`
+		RoomID   string `json:"room_id"`
+		Text     string `json:"text"`
+		Markdown string `json:"markdown"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, errors.Wrap(err, "unmarshal args")
 	}
-	if a.RoomID == "" || a.Text == "" {
-		return nil, errors.New("room_id and text required")
+	if a.RoomID == "" {
+		return nil, errors.New("room_id required")
 	}
-	msg, err := w.user.SendMessage(a.RoomID, a.Text)
+	if a.Text == "" && a.Markdown == "" {
+		return nil, errors.New("text or markdown required")
+	}
+	text := a.Text
+	if text == "" {
+		text = a.Markdown
+	}
+	msg, err := w.user.SendMessage(a.RoomID, text, a.Markdown)
 	if err != nil {
 		return nil, err
 	}
@@ -271,16 +281,24 @@ func (w *Webex) callNotificationSend(args []byte) ([]byte, error) {
 		return nil, errors.New("webex bot account not configured")
 	}
 	var a struct {
-		RoomID string `json:"room_id"`
-		Text   string `json:"text"`
+		RoomID   string `json:"room_id"`
+		Text     string `json:"text"`
+		Markdown string `json:"markdown"`
 	}
 	if err := json.Unmarshal(args, &a); err != nil {
 		return nil, errors.Wrap(err, "unmarshal args")
 	}
-	if a.RoomID == "" || a.Text == "" {
-		return nil, errors.New("room_id and text required")
+	if a.RoomID == "" {
+		return nil, errors.New("room_id required")
 	}
-	msg, err := w.bot.SendMessage(a.RoomID, a.Text)
+	if a.Text == "" && a.Markdown == "" {
+		return nil, errors.New("text or markdown required")
+	}
+	text := a.Text
+	if text == "" {
+		text = a.Markdown
+	}
+	msg, err := w.bot.SendMessage(a.RoomID, text, a.Markdown)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +358,7 @@ func (w *Webex) callInteractiveRequest(args []byte) ([]byte, error) {
 		if err := w.bot.DeleteMessage(sentMsg.ID); err != nil {
 			log.Warn().Err(err).Str("message_id", sentMsg.ID).Msg("webex: could not delete interactive card")
 		}
-		if _, err := w.bot.SendMessage(a.RoomID, summary); err != nil {
+		if _, err := w.bot.SendMessage(a.RoomID, summary, summary); err != nil {
 			log.Warn().Err(err).Msg("webex: could not send answer summary")
 		}
 	}

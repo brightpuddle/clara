@@ -112,9 +112,9 @@ func sendRawRequest(socketPath string, req ipc.Request) (*ipc.Response, error) {
 	}
 	defer conn.Close()
 
-	// Tool calls can take a long time (e.g. browser automation, slow LLMs).
+	// Tool calls and trigger runs can take a while (e.g. browser automation, batch scripts).
 	deadline := 10 * time.Minute
-	if req.Method != ipc.MethodToolCall {
+	if req.Method != ipc.MethodToolCall && req.Method != ipc.MethodTriggerRun {
 		deadline = 10 * time.Second
 	}
 	conn.SetDeadline(time.Now().Add(deadline)) //nolint:errcheck

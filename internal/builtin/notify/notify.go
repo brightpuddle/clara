@@ -184,8 +184,9 @@ func webexSend(
 			return nil, errors.New("notify.send: message is required")
 		}
 		result, err := reg.Call(ctx, "webex.notification.send", map[string]any{
-			"room_id": roomID,
-			"text":    message,
+			"room_id":  roomID,
+			"text":     message,
+			"markdown": message,
 		})
 		if err != nil {
 			log.Error().Err(err).Str("backend", "webex").Msg("notify.send failed")

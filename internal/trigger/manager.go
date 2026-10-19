@@ -38,6 +38,7 @@ type Manager struct {
 	fsWatcher      *fsnotify.Watcher
 	fileDebounces  map[string]*time.Timer
 	fileDebounceMu sync.Mutex
+	fileModTimes   map[string]time.Time
 }
 
 // NewManager creates a new trigger manager.
@@ -46,18 +47,25 @@ func NewManager(runner *Runner, eventBus *supervisor.EventBus, st *store.Store) 
 		runner = NewRunner(60 * time.Second)
 	}
 	return &Manager{
-		triggers:       make(map[string]Definition),
-		filePaths:      make(map[string]string),
-		runner:         runner,
-		eventBus:       eventBus,
-		store:          st,
-		cron:           cron.New(cron.WithSeconds()),
+		triggers:  make(map[string]Definition),
+		filePaths: make(map[string]string),
+		runner:    runner,
+		eventBus:  eventBus,
+		store:     st,
+		cron: cron.New(
+			cron.WithParser(
+				cron.NewParser(
+					cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+				),
+			),
+		),
 		cronEntries:    make(map[string]cron.EntryID),
 		workers:        make(map[string]context.CancelFunc),
 		debounceTimers: make(map[string]*time.Timer),
 		lastTriggerRun: make(map[string]time.Time),
 		primaryDirs:    make(map[string]bool),
 		fileDebounces:  make(map[string]*time.Timer),
+		fileModTimes:   make(map[string]time.Time),
 	}
 }
 
@@ -519,6 +527,14 @@ func (m *Manager) processFileEvent(eventPath string) {
 		return
 	}
 
+	m.fileDebounceMu.Lock()
+	if lastMod, ok := m.fileModTimes[eventPath]; ok && !info.ModTime().After(lastMod) {
+		m.fileDebounceMu.Unlock()
+		return
+	}
+	m.fileModTimes[eventPath] = info.ModTime()
+	m.fileDebounceMu.Unlock()
+
 	if err := m.ReloadFile(eventPath); err != nil {
 		log.Warn().Err(err).Str("file", eventPath).Msg("failed to reload trigger file on change")
 		return
@@ -598,6 +614,11 @@ func (m *Manager) LoadFromDir(dir string) error {
 		ext := filepath.Ext(entry.Name())
 		if ext == ".yaml" || ext == ".yml" {
 			fullPath := filepath.Join(dir, entry.Name())
+			if fi, err := entry.Info(); err == nil {
+				m.fileDebounceMu.Lock()
+				m.fileModTimes[fullPath] = fi.ModTime()
+				m.fileDebounceMu.Unlock()
+			}
 			if err := m.ReloadFile(fullPath); err != nil {
 				log.Warn().Err(err).Str("file", fullPath).Msg("failed to load trigger file")
 			}

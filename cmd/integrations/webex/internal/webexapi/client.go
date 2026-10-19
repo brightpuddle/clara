@@ -96,9 +96,16 @@ func (c *Client) GetMessage(id string) (*Message, error) {
 	return &msg, nil
 }
 
-func (c *Client) SendMessage(roomID, text string) (*Message, error) {
+func (c *Client) SendMessage(roomID, text, markdown string) (*Message, error) {
 	var msg Message
-	if err := c.post("/messages", map[string]any{"roomId": roomID, "text": text}, &msg); err != nil {
+	body := map[string]any{"roomId": roomID}
+	if text != "" {
+		body["text"] = text
+	}
+	if markdown != "" {
+		body["markdown"] = markdown
+	}
+	if err := c.post("/messages", body, &msg); err != nil {
 		return nil, err
 	}
 	return &msg, nil

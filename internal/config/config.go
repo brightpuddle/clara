@@ -123,6 +123,12 @@ type ServerConfig struct {
 
 	// SharedSecret is the bearer token expected from remote Clara instances.
 	SharedSecret string `yaml:"shared_secret"`
+
+	// CertFile is an optional path to a TLS certificate file for HTTPS.
+	CertFile string `yaml:"cert_file"`
+
+	// KeyFile is an optional path to a TLS private key file for HTTPS.
+	KeyFile string `yaml:"key_file"`
 }
 
 // MCPServerConfig describes a single MCP server managed by the Clara daemon.
