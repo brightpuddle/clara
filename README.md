@@ -12,7 +12,7 @@ Clara is an efficient, Go-based supervisor and integration bridge. It acts as a 
 - **Smart Rule Triggers:** Event-driven automations use a declarative boolean AST (supporting `and`, `or`, `not`, dot-notation path extraction, regex, and comparison operators) to route incoming CloudEvents to specific scripts.
 - **"Let It Fail" Supervision:** External processes are monitored with configurable timeouts, execution caps, and worker restart policies (`always`, `on_failure`, `never`).
 - **Complete Audit Trail:** Every script execution (stdout, stderr, exit codes, duration) and MCP tool call is recorded to a local SQLite store for instant inspection.
-- **Rich Observability:** Full browser-based Web Management UI (built with Go Templ, Tailwind CSS v4, DaisyUI v5, HTMX, and Alpine.js) and a fast Unix-socket CLI.
+- **Rich Observability:** Full browser-based Web Management UI (built with React 19, TanStack Query, shadcn/ui, Tailwind CSS v4) and a fast Unix-socket CLI.
 
 ---
 
@@ -75,7 +75,7 @@ External Signals / Sensors
 
 ### Installation & Build
 
-Prerequisites: Go 1.24+, Node.js/pnpm, Bun (recommended for scripts), `templ`.
+Prerequisites: Go 1.24+, Node.js/pnpm, Bun (recommended for scripts).
 
 ```bash
 # Clone the repository

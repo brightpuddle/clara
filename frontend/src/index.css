@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --text-xs: 0.875rem; /* Enforce minimum 14px */
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.875rem; /* 14px */
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;   /* 16px default */
+  --text-base--line-height: 1.5rem;
+
+  /* shadcn/ui color variables mapped to Tailwind theme */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #fff8f4;
+  --foreground: #201a17;
+
+  --card: #ffffff;
+  --card-foreground: #201a17;
+
+  --popover: #ffffff;
+  --popover-foreground: #201a17;
+
+  /* Warm M3 Tonal Palette */
+  --primary: #9a4600;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f5ebe6;
+  --secondary-foreground: #775747;
+
+  --muted: #f4ece7;
+  --muted-foreground: #775747;
+
+  --accent: #ffede1;
+  --accent-foreground: #9a4600;
+
+  --destructive: #ba1a1a;
+  --destructive-foreground: #ffffff;
+
+  --border: #e8dcd5;
+  --input: #e8dcd5;
+  --ring: #9a4600;
+
+  --radius: 0.75rem;
+}
+
+:root[data-theme="dark"],
+.dark {
+  --background: #18120f;
+  --foreground: #ede0db;
+
+  --card: #201a17;
+  --card-foreground: #ede0db;
+
+  --popover: #201a17;
+  --popover-foreground: #ede0db;
+
+  --primary: #ffb590;
+  --primary-foreground: #552000;
+
+  --secondary: #3b2f29;
+  --secondary-foreground: #d7c2b8;
+
+  --muted: #2e2420;
+  --muted-foreground: #a08c84;
+
+  --accent: #552000;
+  --accent-foreground: #ffb590;
+
+  --destructive: #ffb4ab;
+  --destructive-foreground: #690005;
+
+  --border: #3b2f29;
+  --input: #3b2f29;
+  --ring: #ffb590;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    font-size: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+}

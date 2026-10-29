@@ -2,16 +2,8 @@ package webui
 
 import (
 	"encoding/json"
-	"net/http"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
-	"github.com/brightpuddle/clara/internal/config"
-	ui "github.com/brightpuddle/clara/internal/webui/templ"
-	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v3"
 )
 
@@ -108,266 +100,126 @@ type CustomIntegPayload struct {
 	YAML string `json:"yaml"`
 }
 
-// handleConfigGet renders the structured configuration editor.
-func (w *WebUI) handleConfigGet(c echo.Context) error {
-	return w.renderConfig(c, "", "")
-}
-
-// handleConfigPost handles saving the structured config or raw YAML.
-func (w *WebUI) handleConfigPost(c echo.Context) error {
-	if w.cfgPath == "" {
-		return w.renderConfig(c, "error", "No config file path configured")
-	}
-
-	rawJSON := c.FormValue("config_json")
-	rawYAML := c.FormValue("yaml")
-
-	var finalYAML []byte
-
-	if rawJSON != "" {
-		var sc StructuredConfig
-		if err := json.Unmarshal([]byte(rawJSON), &sc); err != nil {
-			return w.renderConfig(c, "error", "Invalid structured data: "+err.Error())
-		}
-
-		outYAML, err := structuredToYAML(&sc)
-		if err != nil {
-			return w.renderConfig(c, "error", "Failed to generate YAML: "+err.Error())
-		}
-		finalYAML = outYAML
-	} else if rawYAML != "" {
-		var tmp any
-		if err := yaml.Unmarshal([]byte(rawYAML), &tmp); err != nil {
-			return w.renderConfig(c, "error", "Invalid YAML: "+err.Error())
-		}
-		finalYAML = []byte(rawYAML)
-	} else {
-		return w.renderConfig(c, "error", "No configuration data provided")
-	}
-
-	// Ensure destination directory exists
-	if err := os.MkdirAll(filepath.Dir(w.cfgPath), 0o750); err != nil {
-		return w.renderConfig(c, "error", "Failed to create directory: "+err.Error())
-	}
-
-	// Write YAML to file
-	if err := os.WriteFile(w.cfgPath, finalYAML, 0o644); err != nil {
-		return w.renderConfig(c, "error", "Save failed: "+err.Error())
-	}
-
-	return w.renderConfig(c, "success", "Configuration saved. Restart the agent to apply changes.")
-}
-
-func (w *WebUI) renderConfig(c echo.Context, flashKind, flash string) error {
-	readOnly := w.cfgPath == ""
-	var yamlStr string
-	if w.cfgPath != "" {
-		data, err := os.ReadFile(w.cfgPath)
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err == nil {
-			yamlStr = string(data)
-		} else {
-			defaultCfg := &config.Config{}
-			b, _ := yaml.Marshal(defaultCfg)
-			yamlStr = string(b)
-		}
-	}
-
-	sc := yamlToStructured(yamlStr)
-	jsonBytes, _ := json.Marshal(sc)
-
-	vm := &ui.ConfigVM{
-		Base:       w.baseVM("Configuration", "/ui/config"),
-		ConfigJSON: string(jsonBytes),
-		YAML:       yamlStr,
-		Flash:      flash,
-		FlashKind:  flashKind,
-		ReadOnly:   readOnly,
-	}
-
-	return render(c, http.StatusOK, ui.Config(vm))
-}
-
-func yamlToStructured(yamlStr string) *StructuredConfig {
+func buildStructuredConfig(m map[string]any) *StructuredConfig {
 	sc := &StructuredConfig{
-		LogLevel:              "info",
-		TaskDirs:              []string{},
-		Plugins:               []PluginPayload{},
-		PluginSearchPaths:     []string{},
-		MCPCommandSearchPaths: []string{},
-		MCPServers:            []MCPServerPayload{},
-		CustomIntegrations:    []CustomIntegPayload{},
+		LogLevel: formatStr(m["log_level"]),
+		DataDir:  formatStr(m["data_dir"]),
 	}
-
-	if strings.TrimSpace(yamlStr) == "" {
-		return sc
+	if sc.LogLevel == "" {
+		sc.LogLevel = "info"
 	}
-
-	var raw map[string]any
-	if err := yaml.Unmarshal([]byte(yamlStr), &raw); err != nil {
-		return sc
-	}
-
-	if v, ok := raw["log_level"].(string); ok && v != "" {
-		sc.LogLevel = v
-	}
-	if v, ok := raw["data_dir"].(string); ok {
-		sc.DataDir = v
-	}
-	if v, ok := raw["builder_repo_root"].(string); ok {
+	if v, ok := m["builder_repo_root"].(string); ok {
 		sc.BuilderRepoRoot = v
 	}
-	if v, ok := raw["mcp_startup_timeout"]; ok && v != nil {
-		switch t := v.(type) {
-		case string:
-			sc.MCPStartupTimeout = t
-		case time.Duration:
-			sc.MCPStartupTimeout = t.String()
-		case int:
-			sc.MCPStartupTimeout = (time.Duration(t) * time.Second).String()
-		}
+	if v, ok := m["mcp_startup_timeout"].(string); ok {
+		sc.MCPStartupTimeout = v
 	}
 
-	if srv, ok := raw["server"].(map[string]any); ok {
-		if v, ok := srv["listen_addr"].(string); ok {
-			sc.Server.ListenAddr = v
-		}
-		if v, ok := srv["shared_secret"].(string); ok {
-			sc.Server.SharedSecret = v
-		}
+	if srv, ok := m["server"].(map[string]any); ok {
+		sc.Server.ListenAddr = formatStr(srv["listen_addr"])
+		sc.Server.SharedSecret = formatStr(srv["shared_secret"])
 	}
 
-	if notif, ok := raw["notify"].(map[string]any); ok {
-		if v, ok := notif["backend"].(string); ok {
-			sc.Notify.Backend = v
-		}
+	if notif, ok := m["notify"].(map[string]any); ok {
+		sc.Notify.Backend = formatStr(notif["backend"])
 		if wx, ok := notif["webex"].(map[string]any); ok {
-			if v, ok := wx["room_id"].(string); ok {
-				sc.Notify.Webex.RoomID = v
-			}
+			sc.Notify.Webex.RoomID = formatStr(wx["room_id"])
 		}
 		if dc, ok := notif["discord"].(map[string]any); ok {
-			if v, ok := dc["channel_id"].(string); ok {
-				sc.Notify.Discord.ChannelID = v
-			}
+			sc.Notify.Discord.ChannelID = formatStr(dc["channel_id"])
 		}
 	}
 
-	if td, ok := raw["task_dirs"].([]any); ok {
-		for _, item := range td {
-			if s, ok := item.(string); ok && s != "" {
+	if td, ok := m["task_dirs"].([]any); ok {
+		for _, d := range td {
+			if s, ok := d.(string); ok {
 				sc.TaskDirs = append(sc.TaskDirs, s)
 			}
 		}
 	}
 
-	if pl, ok := raw["plugins"].([]any); ok {
-		for _, item := range pl {
-			if m, ok := item.(map[string]any); ok {
-				name, _ := m["name"].(string)
-				path, _ := m["path"].(string)
-				if name != "" {
-					sc.Plugins = append(sc.Plugins, PluginPayload{Name: name, Path: path})
-				}
-			}
-		}
-	}
-
-	if psp, ok := raw["plugin_search_paths"].([]any); ok {
-		for _, item := range psp {
-			if s, ok := item.(string); ok && s != "" {
-				sc.PluginSearchPaths = append(sc.PluginSearchPaths, s)
-			}
-		}
-	}
-
-	if mcpsp, ok := raw["mcp_command_search_paths"].([]any); ok {
-		for _, item := range mcpsp {
-			if s, ok := item.(string); ok && s != "" {
-				sc.MCPCommandSearchPaths = append(sc.MCPCommandSearchPaths, s)
-			}
-		}
-	}
-
-	if ms, ok := raw["mcp_servers"].([]any); ok {
-		for _, item := range ms {
-			if m, ok := item.(map[string]any); ok {
-				name, _ := m["name"].(string)
-				desc, _ := m["description"].(string)
-				cmd, _ := m["command"].(string)
-				url, _ := m["url"].(string)
-				tok, _ := m["token"].(string)
-				skipV, _ := m["skip_verify"].(bool)
-
-				sType := "command"
-				if url != "" {
-					sType = "http"
-				}
-
-				var envPairs []EnvPair
-				if envMap, ok := m["env"].(map[string]any); ok {
-					var keys []string
-					for k := range envMap {
-						keys = append(keys, k)
-					}
-					sort.Strings(keys)
-					for _, k := range keys {
-						envPairs = append(envPairs, EnvPair{
-							Key:   k,
-							Value: formatAny(envMap[k]),
-						})
-					}
-				}
-
-				sc.MCPServers = append(sc.MCPServers, MCPServerPayload{
-					Name:        name,
-					ServerType:  sType,
-					Command:     cmd,
-					URL:         url,
-					Token:       tok,
-					SkipVerify:  skipV,
-					Description: desc,
-					Env:         envPairs,
+	if plugs, ok := m["plugins"].([]any); ok {
+		for _, p := range plugs {
+			if pm, ok := p.(map[string]any); ok {
+				sc.Plugins = append(sc.Plugins, PluginPayload{
+					Name: formatStr(pm["name"]),
+					Path: formatStr(pm["path"]),
 				})
 			}
 		}
 	}
 
-	if integ, ok := raw["integrations"].(map[string]any); ok {
-		for k, v := range integ {
-			subMap, isMap := v.(map[string]any)
-			if !isMap {
-				continue
+	if psp, ok := m["plugin_search_paths"].([]any); ok {
+		for _, p := range psp {
+			if s, ok := p.(string); ok {
+				sc.PluginSearchPaths = append(sc.PluginSearchPaths, s)
 			}
+		}
+	}
 
-			switch k {
-			case "db":
-				if p, ok := subMap["path"].(string); ok {
-					sc.Integrations.DB.Path = p
+	if mcpsp, ok := m["mcp_command_search_paths"].([]any); ok {
+		for _, p := range mcpsp {
+			if s, ok := p.(string); ok {
+				sc.MCPCommandSearchPaths = append(sc.MCPCommandSearchPaths, s)
+			}
+		}
+	}
+
+	if srvs, ok := m["mcp_servers"].([]any); ok {
+		for _, s := range srvs {
+			if sm, ok := s.(map[string]any); ok {
+				payload := MCPServerPayload{
+					Name:        formatStr(sm["name"]),
+					Command:     formatStr(sm["command"]),
+					URL:         formatStr(sm["url"]),
+					Token:       formatStr(sm["token"]),
+					Description: formatStr(sm["description"]),
 				}
-			case "zk":
-				if vr, ok := subMap["vault_root"].(string); ok {
-					sc.Integrations.ZK.VaultRoot = vr
+				if payload.URL != "" {
+					payload.ServerType = "http"
+				} else {
+					payload.ServerType = "command"
 				}
-			case "webex":
-				sc.Integrations.Webex.ClientID = formatStr(subMap["client_id"])
-				sc.Integrations.Webex.ClientSecret = formatStr(subMap["client_secret"])
-				sc.Integrations.Webex.BotToken = formatStr(subMap["bot_token"])
-				sc.Integrations.Webex.WebhookSecret = formatStr(subMap["webhook_secret"])
-				sc.Integrations.Webex.BaseURL = formatStr(subMap["base_url"])
-				sc.Integrations.Webex.Secret = formatStr(subMap["secret"])
-			case "discord":
-				sc.Integrations.Discord.Token = formatStr(subMap["token"])
-				sc.Integrations.Discord.Secret = formatStr(subMap["secret"])
-				sc.Integrations.Discord.EveURL = formatStr(subMap["eve_url"])
-				sc.Integrations.Discord.Machine = formatStr(subMap["machine"])
-			default:
-				b, _ := yaml.Marshal(subMap)
+				if sv, ok := sm["skip_verify"].(bool); ok {
+					payload.SkipVerify = sv
+				}
+				if envMap, ok := sm["env"].(map[string]any); ok {
+					for k, v := range envMap {
+						payload.Env = append(payload.Env, EnvPair{Key: k, Value: formatStr(v)})
+					}
+				}
+				sc.MCPServers = append(sc.MCPServers, payload)
+			}
+		}
+	}
+
+	knownKeys := map[string]bool{"db": true, "zk": true, "webex": true, "discord": true}
+	if integ, ok := m["integrations"].(map[string]any); ok {
+		if db, ok := integ["db"].(map[string]any); ok {
+			sc.Integrations.DB.Path = formatStr(db["path"])
+		}
+		if zk, ok := integ["zk"].(map[string]any); ok {
+			sc.Integrations.ZK.VaultRoot = formatStr(zk["vault_root"])
+		}
+		if wx, ok := integ["webex"].(map[string]any); ok {
+			sc.Integrations.Webex.ClientID = formatStr(wx["client_id"])
+			sc.Integrations.Webex.ClientSecret = formatStr(wx["client_secret"])
+			sc.Integrations.Webex.BotToken = formatStr(wx["bot_token"])
+			sc.Integrations.Webex.WebhookSecret = formatStr(wx["webhook_secret"])
+			sc.Integrations.Webex.BaseURL = formatStr(wx["base_url"])
+			sc.Integrations.Webex.Secret = formatStr(wx["secret"])
+		}
+		if dc, ok := integ["discord"].(map[string]any); ok {
+			sc.Integrations.Discord.Token = formatStr(dc["token"])
+			sc.Integrations.Discord.Secret = formatStr(dc["secret"])
+			sc.Integrations.Discord.EveURL = formatStr(dc["eve_url"])
+			sc.Integrations.Discord.Machine = formatStr(dc["machine"])
+		}
+		for k, v := range integ {
+			if !knownKeys[k] {
 				sc.CustomIntegrations = append(sc.CustomIntegrations, CustomIntegPayload{
 					Name: k,
-					YAML: strings.TrimSpace(string(b)),
+					YAML: formatAny(v),
 				})
 			}
 		}

@@ -10,14 +10,14 @@ test.describe('Dashboard Page', () => {
 
     // Stat cards within main content area
     const main = page.locator('main');
-    await expect(main.getByText('Actuators', { exact: true })).toBeVisible();
-    await expect(main.getByText('Pending Approvals', { exact: true })).toBeVisible();
-    await expect(main.getByText('Tools', { exact: true })).toBeVisible();
-    await expect(main.getByText('Integrations', { exact: true })).toBeVisible();
+    await expect(main.getByText('Triggers', { exact: true })).toBeVisible();
+    await expect(main.getByText('Workers', { exact: true })).toBeVisible();
+    await expect(main.getByText('MCP Tools', { exact: true })).toBeVisible();
+    await expect(main.getByText('Sensors / MCP', { exact: true })).toBeVisible();
 
     // Automations table
-    await expect(page.getByText('GitHub PR Reviewer')).toBeVisible();
-    await expect(page.getByText('Slack Incident Responder')).toBeVisible();
+    await expect(page.getByText('github-pr-reviewer')).toBeVisible();
+    await expect(page.getByText('slack-incident-responder')).toBeVisible();
 
     // Root redirect to /ui/
     await page.goto('/');

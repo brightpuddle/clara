@@ -8,23 +8,8 @@ import (
 	"os"
 	"time"
 
-	ui "github.com/brightpuddle/clara/internal/webui/templ"
 	"github.com/labstack/echo/v4"
 )
-
-// handleLogs renders the agent log page with recent log lines.
-func (w *WebUI) handleLogs(c echo.Context) error {
-	level := c.QueryParam("level")
-	lines := tailFileFiltered(w.cfg.LogPath(), 200, level)
-
-	vm := &ui.LogsVM{
-		Base:        w.baseVM("Logs", "/ui/logs"),
-		Lines:       lines,
-		LevelFilter: level,
-	}
-
-	return render(c, http.StatusOK, ui.Logs(vm))
-}
 
 // handleLogsStream streams new daemon log lines via SSE.
 func (w *WebUI) handleLogsStream(c echo.Context) error {
@@ -109,6 +94,26 @@ func tailFileFiltered(path string, n int, level string) []string {
 			ring = ring[1:]
 		}
 		ring = append(ring, line)
+	}
+	return ring
+}
+
+// tailFile reads the last n lines from a file, returning an empty slice on error.
+func tailFile(path string, n int) []string {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	ring := make([]string, 0, n)
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 256*1024), 256*1024)
+	for sc.Scan() {
+		if len(ring) >= n {
+			ring = ring[1:]
+		}
+		ring = append(ring, sc.Text())
 	}
 	return ring
 }

@@ -9,7 +9,7 @@
 3. Coordinates **Schedule Triggers** (cron / intervals) and **Worker Triggers** (supervised long-running background processes with configurable restart policies).
 4. Supervises **External Scripts** (primarily TypeScript via Bun, alongside Python and shell binaries) in a "let it fail" process model, capturing stdout, stderr, execution durations, and exit codes into a local SQLite audit store.
 5. Hosts a full **Model Context Protocol (MCP)** tool server (via HTTP/SSE and internal registry) exposing built-in tools (filesystem, database, shell, search, chrome automation, macOS bridge) and native Go plugins (`hashicorp/go-plugin`), with auto-generated TypeScript definitions (`clara types gen`).
-6. Exposes a fast Unix-socket **CLI** and a modern browser-based **Web Management UI** (`/ui/` with Go Templ, Tailwind CSS v4, DaisyUI v5, HTMX, Alpine.js).
+6. Exposes a fast Unix-socket **CLI** and a modern browser-based **Web Management UI** (`/ui/` with React 19, TanStack Query, Radix UI & shadcn/ui, Tailwind CSS v4).
 
 > **Exploratory Branch:** Zero backwards compatibility is required. Workflows and logic live in external scripts (e.g. TypeScript / Bun) calling MCP tools, while Clara itself focuses on robust supervision, routing, and tool hosting.
 
@@ -152,7 +152,7 @@ action:
 
 ```bash
 pnpm install        # install webui frontend dependencies
-make build          # generate templ, build vite assets, and compile bin/clara
+make build          # build frontend assets and compile bin/clara
 go build ./cmd/clara
 
 make test           # go test ./... -timeout 60s
@@ -190,8 +190,8 @@ internal/
   registry/         # Central tool registry with audit logging
   server/           # HTTP & MCP SSE server
   supervisor/       # EventBus and CloudEvent core types
-  webui/            # Templ-based Web Management UI (/ui/)
-    templ/          # Templ template components
+  webui/            # Web Management UI (/ui/ and embedded SPA dist)
+frontend/           # React 19 SPA (TanStack Query, shadcn/ui, Tailwind CSS v4)
     dist/           # Compiled Vite assets
   config/           # Config loader (~/.config/clara/config.yaml)
   ipc/              # Unix domain socket IPC protocol

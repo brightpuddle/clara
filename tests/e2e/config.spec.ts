@@ -1,7 +1,7 @@
 import { test, expect } from './fixtures';
 
 test.describe('Config Page', () => {
-  test('switches between Structured and Raw YAML tabs using Alpine without errors', async ({ claraPage: page }) => {
+  test('switches between Structured and Raw YAML tabs without errors', async ({ claraPage: page }) => {
     await page.goto('/ui/config');
 
     await expect(page.locator('h1')).toContainText('Configuration');
@@ -26,10 +26,10 @@ test.describe('Config Page', () => {
     await expect(structuredForm).toBeVisible();
   });
 
-  test('interacts with Alpine form controls and saves structured config', async ({ claraPage: page }) => {
+  test('interacts with form controls and saves structured config', async ({ claraPage: page }) => {
     await page.goto('/ui/config');
 
-    // Add a new task directory via Alpine list
+    // Add a new task directory
     const addTaskDirBtn = page.getByRole('button', { name: '+ Add Directory' });
     if (await addTaskDirBtn.isVisible()) {
       await addTaskDirBtn.click();

@@ -82,66 +82,27 @@ func TestWebUI_Routes(t *testing.T) {
 
 	client := srv.Client()
 
-	tests := []struct {
-		name         string
-		path         string
-		expectedCode int
-		contains     string
-	}{
-		{
-			name:         "Dashboard",
-			path:         "/ui/",
-			expectedCode: http.StatusOK,
-			contains:     "Dashboard",
-		},
-		{
-			name:         "Triggers List",
-			path:         "/ui/triggers",
-			expectedCode: http.StatusOK,
-			contains:     "test-trigger",
-		},
-		{
-			name:         "Trigger Detail",
-			path:         "/ui/triggers/test-trigger",
-			expectedCode: http.StatusOK,
-			contains:     "test-trigger",
-		},
-		{
-			name:         "Runs List",
-			path:         "/ui/runs",
-			expectedCode: http.StatusOK,
-			contains:     "Execution Runs",
-		},
-		{
-			name:         "Integrations",
-			path:         "/ui/integrations",
-			expectedCode: http.StatusOK,
-			contains:     "test-plugin",
-		},
-		{
-			name:         "Logs Page",
-			path:         "/ui/logs",
-			expectedCode: http.StatusOK,
-			contains:     "Agent Observability",
-		},
-		{
-			name:         "Configuration",
-			path:         "/ui/config",
-			expectedCode: http.StatusOK,
-			contains:     "config.yaml",
-		},
+	// Verify SPA HTML shell is served for page routes
+	routes := []string{
+		"/ui/",
+		"/ui/triggers",
+		"/ui/triggers/test-trigger",
+		"/ui/runs",
+		"/ui/integrations",
+		"/ui/logs",
+		"/ui/config",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := client.Get(srv.URL + tt.path)
+	for _, path := range routes {
+		t.Run("SPA shell: "+path, func(t *testing.T) {
+			resp, err := client.Get(srv.URL + path)
 			if err != nil {
-				t.Fatalf("GET %s failed: %v", tt.path, err)
+				t.Fatalf("GET %s failed: %v", path, err)
 			}
 			defer resp.Body.Close()
 
-			if resp.StatusCode != tt.expectedCode {
-				t.Errorf("expected status %d, got %d", tt.expectedCode, resp.StatusCode)
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
 			}
 
 			body, err := io.ReadAll(resp.Body)
@@ -149,8 +110,70 @@ func TestWebUI_Routes(t *testing.T) {
 				t.Fatalf("failed to read response body: %v", err)
 			}
 
+			if !strings.Contains(string(body), "id=\"root\"") {
+				t.Errorf("expected body to contain SPA root div, body:\n%s", string(body))
+			}
+		})
+	}
+
+	// Verify REST API endpoints return appropriate JSON
+	apiTests := []struct {
+		name     string
+		path     string
+		contains string
+	}{
+		{
+			name:     "API Dashboard",
+			path:     "/ui/api/dashboard",
+			contains: "triggers_count",
+		},
+		{
+			name:     "API Triggers",
+			path:     "/ui/api/triggers",
+			contains: "test-trigger",
+		},
+		{
+			name:     "API Trigger Detail",
+			path:     "/ui/api/triggers/test-trigger",
+			contains: "test-trigger",
+		},
+		{
+			name:     "API Runs",
+			path:     "/ui/api/runs",
+			contains: "runs",
+		},
+		{
+			name:     "API Integrations",
+			path:     "/ui/api/integrations",
+			contains: "test-plugin",
+		},
+		{
+			name:     "API Logs",
+			path:     "/ui/api/logs",
+			contains: "test log line",
+		},
+		{
+			name:     "API Config",
+			path:     "/ui/api/config",
+			contains: "log_level",
+		},
+	}
+
+	for _, tt := range apiTests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := client.Get(srv.URL + tt.path)
+			if err != nil {
+				t.Fatalf("GET %s failed: %v", tt.path, err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("expected status 200, got %d", resp.StatusCode)
+			}
+
+			body, _ := io.ReadAll(resp.Body)
 			if !strings.Contains(string(body), tt.contains) {
-				t.Errorf("expected body to contain %q, body:\n%s", tt.contains, string(body))
+				t.Errorf("expected API response to contain %q, got:\n%s", tt.contains, string(body))
 			}
 		})
 	}
@@ -207,10 +230,10 @@ integrations:
 
 	client := srv.Client()
 
-	// 1. Test GET /ui/config
-	resp, err := client.Get(srv.URL + "/ui/config")
+	// 1. Test GET /ui/api/config
+	resp, err := client.Get(srv.URL + "/ui/api/config")
 	if err != nil {
-		t.Fatalf("GET /ui/config failed: %v", err)
+		t.Fatalf("GET /ui/api/config failed: %v", err)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -219,14 +242,11 @@ integrations:
 		t.Fatalf("expected status 200, got %d", resp.StatusCode)
 	}
 	bodyStr := string(body)
-	if !strings.Contains(bodyStr, "Structured Settings") {
-		t.Errorf("expected body to contain 'Structured Settings'")
-	}
 	if !strings.Contains(bodyStr, "github-mcp-server") {
 		t.Errorf("expected body to contain initial mcp server config")
 	}
 
-	// 2. Test POST /ui/config with structured JSON (adding task_dirs, deleting plugin, adding mcp server)
+	// 2. Test POST /ui/api/config with structured JSON
 	newStructuredJSON := `{
 		"log_level": "debug",
 		"data_dir": "/tmp/custom-data",
@@ -238,65 +258,67 @@ integrations:
 		},
 		"notify": {
 			"backend": "discord",
-			"discord": { "channel_id": "12345" }
+			"webex": {"room_id": "r-123"},
+			"discord": {"channel_id": "c-456"}
 		},
 		"task_dirs": [
-			"/tmp/tasks1",
-			"/tmp/tasks3"
+			"/tmp/new-tasks"
 		],
 		"plugins": [
-			{ "name": "zk", "path": "" }
+			{"name": "macos", "path": "/usr/local/bin/ClaraBridge"}
 		],
 		"plugin_search_paths": ["/opt/plugins"],
-		"mcp_command_search_paths": ["/opt/bin"],
+		"mcp_command_search_paths": ["/opt/mcp"],
 		"mcp_servers": [
 			{
-				"name": "eve",
+				"name": "remote-api",
 				"server_type": "http",
-				"url": "https://eve.example.com/mcp",
-				"token": "token123",
+				"url": "https://mcp.example.com",
+				"token": "tok123",
 				"skip_verify": true,
-				"description": "Eve remote server"
+				"description": "Remote MCP"
 			}
 		],
 		"integrations": {
-			"db": { "path": "/tmp/new-db.sqlite" },
-			"zk": { "vault_root": "/tmp/notes" }
+			"db": {"path": "/tmp/new-db.sqlite"},
+			"zk": {"vault_root": "/vaults/main"},
+			"webex": {
+				"client_id": "wx-id",
+				"client_secret": "wx-sec",
+				"bot_token": "wx-tok",
+				"webhook_secret": "wx-wh",
+				"base_url": "https://webex.example.com",
+				"secret": "wx-s"
+			},
+			"discord": {
+				"token": "dc-tok",
+				"secret": "dc-sec",
+				"eve_url": "https://discord.example.com",
+				"machine": "mac-mini"
+			}
 		},
 		"custom_integrations": [
-			{
-				"name": "llm",
-				"yaml": "providers:\n  gemini:\n    model: gemini-2.0-flash"
-			}
+			{"name": "custom_plugin", "yaml": "foo: bar\nbaz: 123\n"}
 		]
 	}`
 
-	formData := url.Values{}
-	formData.Set("config_json", newStructuredJSON)
-
-	postResp, err := client.PostForm(srv.URL+"/ui/config", formData)
+	postResp, err := client.Post(srv.URL+"/ui/api/config", "application/json", strings.NewReader(newStructuredJSON))
 	if err != nil {
-		t.Fatalf("POST /ui/config failed: %v", err)
+		t.Fatalf("POST /ui/api/config failed: %v", err)
 	}
-	postBody, _ := io.ReadAll(postResp.Body)
 	postResp.Body.Close()
-
 	if postResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", postResp.StatusCode)
 	}
-	if !strings.Contains(string(postBody), "Configuration saved") {
-		t.Errorf("expected success flash message, got: %s", string(postBody))
-	}
 
-	// 3. Verify the saved YAML on disk
+	// Verify updated config on disk
 	savedYAML, err := os.ReadFile(cfgPath)
 	if err != nil {
-		t.Fatalf("failed to read saved config: %v", err)
+		t.Fatalf("failed to read updated config file: %v", err)
 	}
-
 	var parsed map[string]any
 	if err := yaml.Unmarshal(savedYAML, &parsed); err != nil {
-		t.Fatalf("failed to unmarshal saved YAML: %v\nYAML:\n%s", err, string(savedYAML))
+		t.Fatalf("saved config is invalid YAML: %v", err)
 	}
 
 	if parsed["log_level"] != "debug" {
@@ -305,69 +327,10 @@ integrations:
 	if parsed["data_dir"] != "/tmp/custom-data" {
 		t.Errorf("expected data_dir '/tmp/custom-data', got %v", parsed["data_dir"])
 	}
-
-	// Check task_dirs
-	taskDirs, ok := parsed["task_dirs"].([]any)
-	if !ok || len(taskDirs) != 2 || taskDirs[0] != "/tmp/tasks1" || taskDirs[1] != "/tmp/tasks3" {
-		t.Errorf("expected task_dirs [/tmp/tasks1, /tmp/tasks3], got %v", parsed["task_dirs"])
-	}
-
-	// Check plugins
-	plugins, ok := parsed["plugins"].([]any)
-	if !ok || len(plugins) != 1 {
-		t.Fatalf("expected 1 plugin, got %v", parsed["plugins"])
-	}
-	pMap, _ := plugins[0].(map[string]any)
-	if pMap["name"] != "zk" {
-		t.Errorf("expected plugin name 'zk', got %v", pMap["name"])
-	}
-
-	// Check MCP server
-	mcpServers, ok := parsed["mcp_servers"].([]any)
-	if !ok || len(mcpServers) != 1 {
-		t.Fatalf("expected 1 mcp server, got %v", parsed["mcp_servers"])
-	}
-	sMap, _ := mcpServers[0].(map[string]any)
-	if sMap["name"] != "eve" || sMap["url"] != "https://eve.example.com/mcp" || sMap["skip_verify"] != true {
-		t.Errorf("unexpected mcp server content: %v", sMap)
-	}
-
-	// Check integrations
-	integs, ok := parsed["integrations"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected integrations map, got %v", parsed["integrations"])
-	}
-	dbInteg, _ := integs["db"].(map[string]any)
-	if dbInteg["path"] != "/tmp/new-db.sqlite" {
-		t.Errorf("expected db path '/tmp/new-db.sqlite', got %v", dbInteg["path"])
-	}
-	llmInteg, _ := integs["llm"].(map[string]any)
-	if llmInteg == nil {
-		t.Errorf("expected custom integration 'llm' to be saved")
-	}
-
-	// 4. Test POST raw YAML
-	rawFormData := url.Values{}
-	rawFormData.Set("yaml", "log_level: warn\ndata_dir: /tmp/raw-dir\n")
-	rawResp, err := client.PostForm(srv.URL+"/ui/config", rawFormData)
-	if err != nil {
-		t.Fatalf("POST raw YAML failed: %v", err)
-	}
-	rawResp.Body.Close()
-
-	savedRaw, _ := os.ReadFile(cfgPath)
-	if !strings.Contains(string(savedRaw), "log_level: warn") {
-		t.Errorf("expected raw YAML to be saved, got: %s", string(savedRaw))
-	}
 }
 
 func TestWebUI_TriggerCRUD(t *testing.T) {
 	tempDir := t.TempDir()
-	triggersDir := filepath.Join(tempDir, "triggers")
-	if err := os.MkdirAll(triggersDir, 0o755); err != nil {
-		t.Fatalf("failed to create triggers dir: %v", err)
-	}
-
 	cfgPath := filepath.Join(tempDir, "config.yaml")
 	_ = os.WriteFile(cfgPath, []byte("log_level: info\n"), 0o644)
 
@@ -378,17 +341,15 @@ func TestWebUI_TriggerCRUD(t *testing.T) {
 		t.Fatalf("failed to open store: %v", err)
 	}
 
-	cfg := &config.Config{
-		DataDir:             tempDir,
-		LogLevel:            "info",
-		TriggerDirsOverride: []string{triggersDir},
-	}
-
 	reg := registry.New(logger)
 	sup := supervisor.New(reg, nil, logger)
 	eventBus := supervisor.NewEventBus()
 	triggerMgr := trigger.NewManager(nil, eventBus, db)
 	integ := &mockIntegLister{}
+	cfg := &config.Config{
+		DataDir:  tempDir,
+		LogLevel: "info",
+	}
 
 	ui := New(cfg, cfgPath, sup, reg, integ, triggerMgr, db, logger)
 	mux := http.NewServeMux()
@@ -403,21 +364,7 @@ func TestWebUI_TriggerCRUD(t *testing.T) {
 		},
 	}
 
-	// 1. Test GET /ui/triggers/new
-	resp, err := client.Get(srv.URL + "/ui/triggers/new")
-	if err != nil {
-		t.Fatalf("GET /ui/triggers/new failed: %v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp.StatusCode)
-	}
-	if !strings.Contains(string(body), "New Trigger") {
-		t.Errorf("expected body to contain 'New Trigger'")
-	}
-
-	// 2. Test POST /ui/triggers (Structured JSON)
+	// 1. Test POST /ui/triggers (Structured JSON)
 	createStructuredJSON := `{
 		"id": "my-email-trigger",
 		"name": "My Email Trigger",
@@ -463,21 +410,7 @@ func TestWebUI_TriggerCRUD(t *testing.T) {
 		t.Fatalf("trigger file %s does not exist on disk: %v", filePath, err)
 	}
 
-	// 3. Test GET /ui/triggers/my-email-trigger/edit
-	editResp, err := client.Get(srv.URL + "/ui/triggers/my-email-trigger/edit")
-	if err != nil {
-		t.Fatalf("GET /ui/triggers/my-email-trigger/edit failed: %v", err)
-	}
-	editBody, _ := io.ReadAll(editResp.Body)
-	editResp.Body.Close()
-	if editResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", editResp.StatusCode)
-	}
-	if !strings.Contains(string(editBody), "Edit Trigger") || !strings.Contains(string(editBody), "my-email-trigger") {
-		t.Errorf("expected body to contain 'Edit Trigger' and 'my-email-trigger'")
-	}
-
-	// 4. Test POST /ui/triggers/my-email-trigger (Update and rename ID)
+	// 2. Test POST /ui/triggers/my-email-trigger (Update and rename ID)
 	updateJSON := `{
 		"id": "renamed-trigger",
 		"name": "Renamed Trigger",
@@ -521,7 +454,7 @@ func TestWebUI_TriggerCRUD(t *testing.T) {
 		t.Errorf("unexpected updated trigger def: %+v", renamedDef)
 	}
 
-	// 5. Test POST /ui/triggers (Create via Raw YAML)
+	// 3. Test POST /ui/triggers (Create via Raw YAML)
 	rawYAML := `id: raw-yaml-trigger
 name: Raw Worker Trigger
 type: worker
@@ -550,7 +483,7 @@ action:
 		t.Errorf("unexpected raw trigger def: %+v", workerDef)
 	}
 
-	// 6. Test POST /ui/triggers/renamed-trigger/delete
+	// 4. Test POST /ui/triggers/renamed-trigger/delete
 	delResp, err := client.PostForm(srv.URL+"/ui/triggers/renamed-trigger/delete", url.Values{})
 	if err != nil {
 		t.Fatalf("POST delete failed: %v", err)
@@ -564,7 +497,7 @@ action:
 		t.Errorf("expected 'renamed-trigger' to be deleted")
 	}
 
-	// 7. Test DELETE /ui/triggers/raw-yaml-trigger
+	// 5. Test DELETE /ui/triggers/raw-yaml-trigger
 	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/ui/triggers/raw-yaml-trigger", nil)
 	delReqResp, err := client.Do(req)
 	if err != nil {

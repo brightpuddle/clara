@@ -14,45 +14,14 @@ export const test = base.extend<ClaraFixtures>({
       pageErrors.push(err);
     });
 
-    // Capture console.error calls (including Alpine runtime warnings/errors)
+    // Capture console.error calls
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
         consoleErrors.push(msg.text());
       }
     });
 
-    // Inject HTMX error listeners before each navigation
-    await page.addInitScript(() => {
-      (window as any).__htmxErrors = [];
-      const recordHtmxError = (evtType: string) => (e: any) => {
-        (window as any).__htmxErrors.push({
-          event: evtType,
-          detail: e.detail ? JSON.stringify(e.detail) : undefined,
-        });
-      };
-
-      document.addEventListener('htmx:error', recordHtmxError('htmx:error'));
-      document.addEventListener('htmx:targetError', recordHtmxError('htmx:targetError'));
-      document.addEventListener('htmx:responseError', recordHtmxError('htmx:responseError'));
-      document.addEventListener('htmx:sendError', recordHtmxError('htmx:sendError'));
-      document.addEventListener('htmx:sseError', recordHtmxError('htmx:sseError'));
-    });
-
     await use(page);
-
-    // Retrieve HTMX errors from page context if available
-    let htmxErrors: any[] = [];
-    try {
-      htmxErrors = await page.evaluate(() => (window as any).__htmxErrors || []);
-    } catch {
-      // Ignore if page already closed
-    }
-
-    // Assert that no HTMX runtime errors were emitted
-    expect(
-      htmxErrors,
-      `HTMX runtime error(s) detected: ${JSON.stringify(htmxErrors, null, 2)}`
-    ).toEqual([]);
 
     // Assert that no unhandled page runtime errors occurred
     expect(

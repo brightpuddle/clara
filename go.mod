@@ -4,7 +4,6 @@ go 1.26.1
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
-	github.com/a-h/templ v0.3.1020
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/charmbracelet/lipgloss v1.1.0

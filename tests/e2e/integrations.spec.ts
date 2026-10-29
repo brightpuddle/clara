@@ -5,7 +5,7 @@ test.describe('Integrations Page', () => {
     await page.goto('/ui/integrations');
 
     await expect(page.locator('h1')).toContainText('Integrations');
-    await expect(page.getByText('chrome')).toBeVisible();
-    await expect(page.getByText('discord')).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'chrome', exact: true })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'discord', exact: true })).toBeVisible();
   });
 });

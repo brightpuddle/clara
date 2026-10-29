@@ -24,11 +24,11 @@ test.describe('Theme & Navigation Drawer', () => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/ui/');
 
-    const drawerToggle = page.locator('#clara-drawer');
-    await expect(drawerToggle).not.toBeChecked();
-
     const menuBtn = page.getByLabel('Open navigation menu');
+    await expect(menuBtn).toBeVisible();
     await menuBtn.click();
-    await expect(drawerToggle).toBeChecked();
+
+    // Sheet drawer opens
+    await expect(page.getByRole('dialog')).toBeVisible();
   });
 });
