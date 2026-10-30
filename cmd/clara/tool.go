@@ -49,23 +49,26 @@ Example:
 	SilenceUsage: true,
 }
 
+var toolCallArgsJSON string
+
 var toolCallCmd = &cobra.Command{
 	Use:   "call <tool_name> [key=value ...]",
 	Short: "Call a tool directly and print its JSON result",
 	Long: `Call a Clara tool directly through the running agent.
 
-Arguments are passed as key=value pairs. Values are parsed as JSON when
-possible, otherwise they are treated as strings.
+Arguments can be passed as a JSON object via -a/--args or as key=value pairs.
+Values in key=value pairs are parsed as JSON when possible, otherwise treated as strings.
 
 Examples:
   clara tool call db.query sql='SELECT 1 as n'
-  clara tool call db.query sql='SELECT ? as n' params='[1]'`,
+  clara tool call discord.message.send -a '{"channel_id":"1500154998045147156","content":"hello"}'`,
 	Args:         cobra.MinimumNArgs(1),
 	RunE:         runToolCall,
 	SilenceUsage: true,
 }
 
 func init() {
+	toolCallCmd.Flags().StringVarP(&toolCallArgsJSON, "args", "a", "", "JSON object of tool arguments")
 	toolCmd.AddCommand(toolListCmd, toolShowCmd, toolCallCmd)
 }
 
@@ -116,10 +119,19 @@ func runToolShow(cmd *cobra.Command, args []string) error {
 }
 
 func runToolCall(cmd *cobra.Command, args []string) error {
-	parsedArgs, err := parseToolCallArgs(args[1:])
-	if err != nil {
-		prettyPrint(map[string]any{"error": err.Error()})
-		return nil
+	var parsedArgs map[string]any
+	var err error
+	if toolCallArgsJSON != "" {
+		if err := json.Unmarshal([]byte(toolCallArgsJSON), &parsedArgs); err != nil {
+			prettyPrint(map[string]any{"error": fmt.Sprintf("invalid --args JSON: %v", err)})
+			return nil
+		}
+	} else {
+		parsedArgs, err = parseToolCallArgs(args[1:])
+		if err != nil {
+			prettyPrint(map[string]any{"error": err.Error()})
+			return nil
+		}
 	}
 
 	resp, err := sendRawRequest(cfg.ControlSocketPath(), ipc.Request{
@@ -169,6 +181,21 @@ func parseToolCallArgs(pairs []string) (map[string]any, error) {
 func parseToolCallValue(raw string) (any, error) {
 	if raw == "" {
 		return "", nil
+	}
+
+	// Preserve long numeric IDs (e.g. 64-bit Discord snowflakes >= 16 digits) as strings
+	// so they don't lose precision in IEEE-754 float64 or fail string unmarshaling.
+	isAllDigits := len(raw) >= 16
+	if isAllDigits {
+		for i := 0; i < len(raw); i++ {
+			if raw[i] < '0' || raw[i] > '9' {
+				isAllDigits = false
+				break
+			}
+		}
+		if isAllDigits {
+			return raw, nil
+		}
 	}
 
 	var value any

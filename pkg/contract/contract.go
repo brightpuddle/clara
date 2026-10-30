@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"errors"
 	"net/rpc"
 
 	"github.com/hashicorp/go-plugin"
@@ -95,6 +96,29 @@ func (g *IntegrationRPC) HandleHTTP(method, path string, headers map[string]stri
 	return resp.Status, resp.Body, err
 }
 
+func (g *IntegrationRPC) StreamEvents() (<-chan Event, error) {
+	var supported bool
+	if err := g.Client.Call("Plugin.SupportsEvents", EmptyArgs{}, &supported); err != nil {
+		return nil, err
+	}
+	if !supported {
+		return nil, errors.New("events not supported by plugin")
+	}
+
+	ch := make(chan Event, 16)
+	go func() {
+		defer close(ch)
+		for {
+			var ev Event
+			if err := g.Client.Call("Plugin.NextEvent", EmptyArgs{}, &ev); err != nil {
+				return
+			}
+			ch <- ev
+		}
+	}()
+	return ch, nil
+}
+
 // IntegrationRPCServer handles base Integration RPC calls.
 // It can be embedded in more specific integration RPC servers.
 type IntegrationRPCServer struct {
@@ -132,6 +156,29 @@ func (s *IntegrationRPCServer) HandleHTTP(req HTTPRequest, resp *HTTPResponse) e
 	}
 	resp.Status = 404
 	resp.Body = []byte("Not Implemented")
+	return nil
+}
+
+func (s *IntegrationRPCServer) SupportsEvents(_ EmptyArgs, resp *bool) error {
+	_, ok := s.Impl.(EventStreamer)
+	*resp = ok
+	return nil
+}
+
+func (s *IntegrationRPCServer) NextEvent(_ EmptyArgs, resp *Event) error {
+	streamer, ok := s.Impl.(EventStreamer)
+	if !ok {
+		return errors.New("events not supported")
+	}
+	ch, err := streamer.StreamEvents()
+	if err != nil {
+		return err
+	}
+	ev, ok := <-ch
+	if !ok {
+		return errors.New("event stream closed")
+	}
+	*resp = ev
 	return nil
 }
 

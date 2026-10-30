@@ -112,9 +112,29 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithDescription(
 				"Event source: fired when a message is posted in any Discord channel the bot can read. "+
 					"Use as a trigger: clara.on(discord.message_created). "+
-					"Event data: {channel_id, message_id, user, content}. "+
+					"Event data: {channel_id, channel_name, channel_topic, guild_id, message_id, user, content, attachment_url, attachment_type}. "+
 					"Filter by channel_id inside the handler.",
 			),
+		),
+		mcp.NewTool(
+			"channels.list",
+			mcp.WithDescription("List all channels in the Discord server (guild)."),
+			mcp.WithString("guild_id", mcp.Description("Optional Discord server (guild) ID. Defaults to the bot's primary server.")),
+		),
+		mcp.NewTool(
+			"channel.create",
+			mcp.WithDescription("Create (or reuse) a Discord text channel, e.g. for an active tmux/agent session."),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Channel name (e.g. 'session-clara' or 'session-ims').")),
+			mcp.WithString("topic", mcp.Description("Optional channel topic metadata (e.g. 'tmux:clara').")),
+			mcp.WithString("category", mcp.Description("Optional category name to place the channel under (default 'Active Agent Sessions').")),
+			mcp.WithString("guild_id", mcp.Description("Optional Discord server (guild) ID.")),
+		),
+		mcp.NewTool(
+			"channel.delete",
+			mcp.WithDescription("Delete a Discord channel by channel_id or name."),
+			mcp.WithString("channel_id", mcp.Description("Discord channel ID to delete.")),
+			mcp.WithString("name", mcp.Description("Discord channel name to delete if channel_id is omitted.")),
+			mcp.WithString("guild_id", mcp.Description("Optional Discord server (guild) ID.")),
 		),
 	}
 	return json.Marshal(tools)
@@ -128,6 +148,12 @@ func (d *Discord) CallTool(name string, args []byte) ([]byte, error) {
 		return d.callNotificationSend(args)
 	case "interactive.request":
 		return d.callInteractiveRequest(args)
+	case "channels.list":
+		return d.callChannelsList(args)
+	case "channel.create":
+		return d.callChannelCreate(args)
+	case "channel.delete":
+		return d.callChannelDelete(args)
 	case "message_created":
 		return json.Marshal(map[string]string{"error": "message_created is an event source, not a callable tool"})
 	default:
@@ -246,6 +272,63 @@ func (d *Discord) callInteractiveRequest(args []byte) ([]byte, error) {
 		res["custom_text"] = decision.CustomText
 	}
 	return json.Marshal(res)
+}
+
+func (d *Discord) callChannelsList(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		GuildID string `json:"guild_id"`
+	}
+	_ = json.Unmarshal(args, &a)
+	chs, err := d.bot.ListChannels(a.GuildID)
+	if err != nil {
+		return nil, errors.Wrap(err, "discord channels.list")
+	}
+	return json.Marshal(chs)
+}
+
+func (d *Discord) callChannelCreate(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		GuildID  string `json:"guild_id"`
+		Name     string `json:"name"`
+		Topic    string `json:"topic"`
+		Category string `json:"category"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord channel.create: unmarshal")
+	}
+	if a.Name == "" {
+		return nil, errors.New("name is required")
+	}
+	ch, err := d.bot.CreateChannel(a.GuildID, a.Name, a.Topic, a.Category, false)
+	if err != nil {
+		return nil, errors.Wrap(err, "discord channel.create")
+	}
+	return json.Marshal(ch)
+}
+
+func (d *Discord) callChannelDelete(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		GuildID   string `json:"guild_id"`
+		ChannelID string `json:"channel_id"`
+		Name      string `json:"name"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord channel.delete: unmarshal")
+	}
+	deletedID, err := d.bot.DeleteChannel(a.GuildID, a.ChannelID, a.Name)
+	if err != nil {
+		return nil, errors.Wrap(err, "discord channel.delete")
+	}
+	return json.Marshal(map[string]string{"deleted_channel_id": deletedID})
 }
 
 func (d *Discord) StreamEvents() (<-chan contract.Event, error) {

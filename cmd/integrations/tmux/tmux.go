@@ -64,6 +64,25 @@ func (t *Tmux) Tools() ([]byte, error) {
 				mcp.Description("Only return the last N lines of output (0 = all)."),
 			),
 		),
+		mcp.NewTool(
+			"pane.send_keys",
+			mcp.WithDescription(
+				"Send text or keystrokes to a tmux session's first pane (e.g., to interact with a running agent or shell).",
+			),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Name of the tmux session.")),
+			mcp.WithString(
+				"text",
+				mcp.Description("Literal text/prompt to type into the pane."),
+			),
+			mcp.WithBoolean(
+				"enter",
+				mcp.Description("Whether to press Enter after sending text (default true)."),
+			),
+			mcp.WithString(
+				"raw_key",
+				mcp.Description("Optional raw tmux key name to send (e.g., 'C-c', 'Escape', 'Enter')."),
+			),
+		),
 	}
 	return json.Marshal(tools)
 }
@@ -82,6 +101,13 @@ type sessionKillArgs struct {
 type paneCaptureArgs struct {
 	Name  string  `json:"name"`
 	Limit float64 `json:"limit"`
+}
+
+type paneSendKeysArgs struct {
+	Name   string `json:"name"`
+	Text   string `json:"text"`
+	Enter  *bool  `json:"enter"`
+	RawKey string `json:"raw_key"`
 }
 
 func (t *Tmux) CallTool(name string, args []byte) ([]byte, error) {
@@ -123,6 +149,20 @@ func (t *Tmux) CallTool(name string, args []byte) ([]byte, error) {
 			return nil, err
 		}
 		return json.Marshal(map[string]any{"name": a.Name, "content": content})
+
+	case "pane.send_keys":
+		var a paneSendKeysArgs
+		if err := json.Unmarshal(args, &a); err != nil {
+			return nil, errors.Wrap(err, "unmarshal pane.send_keys args")
+		}
+		pressEnter := true
+		if a.Enter != nil {
+			pressEnter = *a.Enter
+		}
+		if err := t.SendKeys(a.Name, a.Text, pressEnter, a.RawKey); err != nil {
+			return nil, err
+		}
+		return json.Marshal(map[string]any{"name": a.Name, "status": "sent"})
 
 	default:
 		return nil, errors.Newf("unknown tool: %q", name)
@@ -196,6 +236,30 @@ func (t *Tmux) CapturePane(name string, limit int) (string, error) {
 func (t *Tmux) KillSession(name string) error {
 	_, err := t.run(context.Background(), "kill-session", "-t", name)
 	return err
+}
+
+func (t *Tmux) SendKeys(name, text string, pressEnter bool, rawKey string) error {
+	target := fmt.Sprintf("%s:0", name)
+	if rawKey != "" {
+		if _, err := t.run(context.Background(), "send-keys", "-t", target, rawKey); err != nil {
+			return err
+		}
+	}
+	if text != "" {
+		if _, err := t.run(context.Background(), "send-keys", "-t", target, "-l", text); err != nil {
+			return err
+		}
+		if pressEnter {
+			if _, err := t.run(context.Background(), "send-keys", "-t", target, "Enter"); err != nil {
+				return err
+			}
+		}
+	} else if rawKey == "" && pressEnter {
+		if _, err := t.run(context.Background(), "send-keys", "-t", target, "Enter"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // run executes a tmux subcommand and returns combined stdout+stderr as a string.

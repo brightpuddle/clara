@@ -66,11 +66,14 @@ func (im *IngestManager) Stop() {
 }
 
 func (im *IngestManager) run() {
-	wsErr := im.runWebSocket()
-	if wsErr != nil {
-		log.Warn().Err(wsErr).Msg("webex: websocket ingestion failed, falling back to polling")
-		im.runPolling()
-	}
+	// Run Mercury WebSocket (for instant bot DMs and Adaptive Card button actions)
+	// alongside fast REST polling with shared message ID deduplication.
+	go func() {
+		if err := im.runWebSocket(); err != nil {
+			log.Debug().Err(err).Msg("webex: mercury websocket exited")
+		}
+	}()
+	im.runPolling()
 }
 
 // runWebSocket attempts to register a device and connect via Mercury WebSockets.
@@ -230,23 +233,46 @@ func (im *IngestManager) handleRawWSMessage(msg []byte) {
 	}
 
 	act := env.Data.Activity
+	if act.Verb == "cardAction" && act.Object.ID != "" {
+		go func(actionID string) {
+			action, err := im.client.GetAttachmentAction(actionID)
+			if err != nil {
+				log.Warn().Err(err).Str("action_id", actionID).Msg("webex: could not fetch attachment action from websocket")
+				return
+			}
+			requestID, _ := action.Inputs["request_id"].(string)
+			decision, _ := action.Inputs["decision"].(string)
+			customText, _ := action.Inputs["custom_text"].(string)
+			if requestID != "" && decision != "" {
+				log.Info().Str("request_id", requestID).Str("decision", decision).Msg("webex: interactive card resolved via websocket")
+				im.router.ResolveInteractive(requestID, InteractiveDecision{
+					Selection:  decision,
+					CustomText: customText,
+					User:       action.PersonID,
+				})
+			}
+		}(act.Object.ID)
+		return
+	}
+
 	if act.Verb == "post" && act.Object.ID != "" {
 		// New message posted. Fetch the message text using client.GetMessage to mirror webhook payload
 		messageID := act.Object.ID
-
-		im.seenMsgsMu.Lock()
-		alreadySeen := im.seenMsgs[messageID]
-		im.seenMsgs[messageID] = true
-		im.seenMsgsMu.Unlock()
-
-		if alreadySeen {
-			return
-		}
 
 		go func() {
 			msgDetails, err := im.client.GetMessage(messageID)
 			if err != nil {
 				log.Warn().Err(err).Str("message_id", messageID).Msg("webex: could not fetch message details for websocket event")
+				return
+			}
+
+			im.seenMsgsMu.Lock()
+			alreadySeen := im.seenMsgs[msgDetails.ID] || im.seenMsgs[messageID]
+			im.seenMsgs[msgDetails.ID] = true
+			im.seenMsgs[messageID] = true
+			im.seenMsgsMu.Unlock()
+
+			if alreadySeen {
 				return
 			}
 
@@ -266,31 +292,32 @@ func (im *IngestManager) handleRawWSMessage(msg []byte) {
 
 // runPolling executes an optimized polling loop.
 func (im *IngestManager) runPolling() {
-	log.Info().Msg("webex: starting polling fallback worker")
-	ticker := time.NewTicker(30 * time.Second)
+	log.Info().Msg("webex: starting fast polling worker (3s interval)")
+	im.lastPoll = time.Now().Add(-2 * time.Minute)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	// Initial poll
-	im.pollOnce()
+	// Initial poll seeds seenMsgs so we don't replay old messages on daemon restart
+	im.pollOnce(true)
 
 	for {
 		select {
 		case <-im.ctx.Done():
 			return
 		case <-ticker.C:
-			im.pollOnce()
+			im.pollOnce(false)
 		}
 	}
 }
 
-func (im *IngestManager) pollOnce() {
-	rooms, err := im.client.ListRooms(50)
+func (im *IngestManager) pollOnce(seedOnly bool) {
+	rooms, err := im.client.ListRooms(25)
 	if err != nil {
 		log.Warn().Err(err).Msg("webex poll: failed to list rooms")
 		return
 	}
 
-	pollStart := time.Now()
+	pollStart := time.Now().Add(-30 * time.Second)
 
 	for _, room := range rooms {
 		if room.LastActivity == "" {
@@ -302,7 +329,7 @@ func (im *IngestManager) pollOnce() {
 			laTime, err = time.Parse(time.RFC3339, room.LastActivity)
 		}
 
-		if err == nil && laTime.Before(im.lastPoll) {
+		if !seedOnly && err == nil && laTime.Before(im.lastPoll) {
 			// No new activity since last poll
 			continue
 		}
@@ -323,17 +350,7 @@ func (im *IngestManager) pollOnce() {
 			im.seenMsgs[msg.ID] = true
 			im.seenMsgsMu.Unlock()
 
-			if seen {
-				continue
-			}
-
-			// Parse message creation time
-			mTime, err := time.Parse(time.RFC3339Nano, msg.Created)
-			if err != nil {
-				mTime, err = time.Parse(time.RFC3339, msg.Created)
-			}
-			if err == nil && mTime.Before(im.lastPoll) {
-				// Old message from before we started tracking
+			if seen || seedOnly {
 				continue
 			}
 

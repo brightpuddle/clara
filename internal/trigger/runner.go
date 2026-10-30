@@ -98,7 +98,10 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 
 	// Environment variables
 	env := os.Environ()
+	homeDir, _ := os.UserHomeDir()
+	richPath := fmt.Sprintf("/opt/homebrew/bin:/usr/local/bin:%s/.go/bin:%s", homeDir, os.Getenv("PATH"))
 	env = append(env,
+		fmt.Sprintf("PATH=%s", richPath),
 		fmt.Sprintf("CLARA_RUN_ID=%s", runID),
 		fmt.Sprintf("CLARA_TRIGGER_ID=%s", def.ID),
 		fmt.Sprintf("CLARA_TRIGGER_TYPE=%s", def.Type),

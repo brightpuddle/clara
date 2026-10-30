@@ -323,22 +323,6 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 		return fmt.Errorf("plugin does not implement contract.Integration")
 	}
 
-	// Handle real-time events if supported
-	if streamer, ok := integration.(contract.EventStreamer); ok {
-		events, err := streamer.StreamEvents()
-		if err == nil {
-			go func() {
-				for ev := range events {
-					var params any
-					if len(ev.Data) > 0 {
-						_ = json.Unmarshal(ev.Data, &params)
-					}
-					l.reg.EmitNotification(name, ev.Name, params)
-				}
-			}()
-		}
-	}
-
 	var configBytes []byte
 	if l.cfg.Integrations != nil {
 		if cfg, ok := l.cfg.Integrations[name]; ok {
@@ -353,6 +337,22 @@ func (l *pluginLoader) loadIntegrationAt(name string, path string) error {
 	if err := integration.Configure(configBytes); err != nil {
 		client.Kill()
 		return fmt.Errorf("failed to configure integration: %w", err)
+	}
+
+	// Handle real-time events if supported (after Configure so channels/workers are initialized)
+	if streamer, ok := integration.(contract.EventStreamer); ok {
+		events, err := streamer.StreamEvents()
+		if err == nil {
+			go func() {
+				for ev := range events {
+					var params any
+					if len(ev.Data) > 0 {
+						_ = json.Unmarshal(ev.Data, &params)
+					}
+					l.reg.EmitNotification(name, ev.Name, params)
+				}
+			}()
+		}
 	}
 
 	desc, err := integration.Description()

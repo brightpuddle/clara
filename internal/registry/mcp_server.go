@@ -226,9 +226,21 @@ func (s *MCPServer) connectHTTP(ctx context.Context, r *Registry) error {
 	}
 
 	s.log.Debug().Str("url", s.url).Msg("attempting to connect to HTTP MCP server")
-	c, err := client.NewStreamableHttpClient(s.url, opts...)
+	var c *client.Client
+	var err error
+	if strings.HasSuffix(strings.ToLower(s.url), "/sse") {
+		var sseOpts []transport.ClientOption
+		if s.token != "" {
+			sseOpts = append(sseOpts, transport.WithHeaders(map[string]string{
+				"Authorization": "Bearer " + s.token,
+			}))
+		}
+		c, err = client.NewSSEMCPClient(s.url, sseOpts...)
+	} else {
+		c, err = client.NewStreamableHttpClient(s.url, opts...)
+	}
 	if err != nil {
-		return errors.Wrap(err, "create streamable HTTP MCP client")
+		return errors.Wrap(err, "create HTTP MCP client")
 	}
 
 	if err := c.Start(ctx); err != nil {

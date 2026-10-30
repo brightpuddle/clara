@@ -119,7 +119,13 @@ func (c *Chrome) Tools() ([]byte, error) {
 			mcp.WithBoolean(
 				"background",
 				mcp.Description(
-					"When true (default), the new tab is opened in the background without stealing focus.",
+					"When true (default), opens in a dedicated minimized background automation window without touching active windows.",
+				),
+			),
+			mcp.WithBoolean(
+				"foreground",
+				mcp.Description(
+					"When true, opens visibly in the active browser window for interactive debugging.",
 				),
 			),
 		),

@@ -13,7 +13,7 @@
  */
 
 const HOST_NAME = 'com.brightpuddle.clara';
-const VERSION   = '0.3.0';
+const VERSION   = '0.4.0';
 
 // Alarm name used for the service-worker keepalive heartbeat.
 const KEEPALIVE_ALARM = 'clara-keepalive';
@@ -169,18 +169,52 @@ async function handleGetTabs({ url_filter } = {}) {
   return tabs.map(t => ({ id: t.id, url: t.url, title: t.title }));
 }
 
-async function handleNavigate({ url, tab_id, background = true }) {
+async function getOrCreateWorkerWindow(initialUrl) {
+  const { workerWindowId } = await chrome.storage.local.get('workerWindowId');
+  if (workerWindowId != null) {
+    try {
+      const win = await chrome.windows.get(workerWindowId);
+      if (win) return { windowId: win.id, createdTab: null };
+    } catch (_) {
+      // Window was closed; fall through to create a new one.
+    }
+  }
+  const win = await chrome.windows.create({
+    url: initialUrl || 'about:blank',
+    focused: false,
+    type: 'normal',
+    state: 'minimized'
+  });
+  await chrome.storage.local.set({ workerWindowId: win.id });
+  const createdTab = win.tabs && win.tabs.length > 0 ? win.tabs[0] : null;
+  return { windowId: win.id, createdTab };
+}
+
+async function handleNavigate({ url, tab_id, background = true, foreground = false }) {
   if (!url) throw new Error('url is required');
   await maybeApplyHumanDelay(arguments[0]);
   if (tab_id != null) {
     const tab = await chrome.tabs.update(tab_id, { url });
     return { tab_id: tab.id, url: tab.url };
   }
-  const tab = await chrome.tabs.create({ url, active: !background });
+  const useBackground = foreground ? false : Boolean(background);
+  let tab;
+  if (useBackground) {
+    const { windowId, createdTab } = await getOrCreateWorkerWindow(url);
+    if (createdTab) {
+      tab = createdTab;
+    } else {
+      tab = await chrome.tabs.create({ windowId, url, active: false });
+    }
+  } else {
+    tab = await chrome.tabs.create({ url, active: true });
+  }
   const { ownedTabIds = [] } = await chrome.storage.local.get('ownedTabIds');
-  ownedTabIds.push(tab.id);
-  await chrome.storage.local.set({ ownedTabIds });
-  return { tab_id: tab.id, url: tab.pendingUrl || tab.url };
+  if (!ownedTabIds.includes(tab.id)) {
+    ownedTabIds.push(tab.id);
+    await chrome.storage.local.set({ ownedTabIds });
+  }
+  return { tab_id: tab.id, url: tab.pendingUrl || tab.url, window_id: tab.windowId };
 }
 
 async function handleClick({ tab_id, selector, wait_after_ms = 500 }) {
@@ -304,9 +338,26 @@ async function handleReadPage({ tab_id }) {
 
 async function handleScreenshot({ tab_id } = {}) {
   let windowId;
-  if (tab_id != null) { const tab = await chrome.tabs.get(tab_id); windowId = tab.windowId; await chrome.tabs.update(tab_id, { active: true }); }
-  const dataUrl = await chrome.tabs.captureVisibleTab(windowId ?? null, { format: 'png' });
-  return { data_url: dataUrl };
+  let restoreMinimized = false;
+  if (tab_id != null) {
+    const tab = await chrome.tabs.get(tab_id);
+    windowId = tab.windowId;
+    const win = await chrome.windows.get(windowId);
+    if (win.state === 'minimized') {
+      restoreMinimized = true;
+      await chrome.windows.update(windowId, { state: 'normal', focused: false });
+      await sleep(150);
+    }
+    await chrome.tabs.update(tab_id, { active: true });
+  }
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId ?? null, { format: 'png' });
+    return { data_url: dataUrl };
+  } finally {
+    if (restoreMinimized && windowId != null) {
+      try { await chrome.windows.update(windowId, { state: 'minimized' }); } catch (_) {}
+    }
+  }
 }
 
 async function handleUploadFile({ tab_id, selector, file_path, file_paths }) {
@@ -342,9 +393,12 @@ async function handleEval({ tab_id, script, args = {} }) {
 }
 
 async function handleCleanupTabs() {
-  const { ownedTabIds = [] } = await chrome.storage.local.get('ownedTabIds');
+  const { ownedTabIds = [], workerWindowId } = await chrome.storage.local.get(['ownedTabIds', 'workerWindowId']);
   for (const id of ownedTabIds) { try { await chrome.tabs.remove(id); } catch(e) {} }
-  await chrome.storage.local.set({ ownedTabIds: [] });
+  if (workerWindowId != null) {
+    try { await chrome.windows.remove(workerWindowId); } catch(e) {}
+  }
+  await chrome.storage.local.set({ ownedTabIds: [], workerWindowId: null });
   return { ok: true };
 }
 

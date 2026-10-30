@@ -41,7 +41,10 @@ func NewBot(cfg Config, router *Router, log zerolog.Logger) (*Bot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create discord session: %w", err)
 	}
-	sess.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
+	sess.Identify.Intents = discordgo.IntentsGuilds |
+		discordgo.IntentsGuildMessages |
+		discordgo.IntentsDirectMessages |
+		discordgo.IntentMessageContent
 
 	b := &Bot{cfg: cfg, sess: sess, router: router, log: log}
 	sess.AddHandler(b.onInteractionCreate)
@@ -280,16 +283,211 @@ func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.Interaction
 	}
 }
 
-func (b *Bot) onMessageCreate(_ *discordgo.Session, m *discordgo.MessageCreate) {
-	if m.Author.Bot {
+func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if m.Author == nil || m.Author.Bot {
 		return
 	}
+	channelName := ""
+	channelTopic := ""
+	if ch, err := s.State.Channel(m.ChannelID); err == nil && ch != nil {
+		channelName = ch.Name
+		channelTopic = ch.Topic
+	} else if ch, err := s.Channel(m.ChannelID); err == nil && ch != nil {
+		channelName = ch.Name
+		channelTopic = ch.Topic
+	}
+
+	attachmentURL := ""
+	attachmentType := ""
+	if len(m.Attachments) > 0 {
+		attachmentURL = m.Attachments[0].URL
+		attachmentType = m.Attachments[0].ContentType
+	}
+
 	data, _ := json.Marshal(map[string]string{
-		"channel_id": m.ChannelID,
-		"message_id": m.ID,
-		"user":       m.Author.Username,
-		"content":    m.Content,
+		"channel_id":      m.ChannelID,
+		"channel_name":    channelName,
+		"channel_topic":   channelTopic,
+		"guild_id":        m.GuildID,
+		"message_id":      m.ID,
+		"user":            m.Author.Username,
+		"content":         m.Content,
+		"attachment_url":  attachmentURL,
+		"attachment_type": attachmentType,
 	})
 	// Broadcast to all subscribers — intents filter by channel_id.
 	b.router.Publish("", Event{Type: "message_created", Data: data})
+}
+
+// ChannelInfo summarizes a Discord channel in a guild.
+type ChannelInfo struct {
+	ID       string `json:"id"`
+	GuildID  string `json:"guild_id"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	ParentID string `json:"parent_id,omitempty"`
+	Topic    string `json:"topic,omitempty"`
+}
+
+func (b *Bot) resolveGuildID(guildID string) (string, error) {
+	if guildID != "" {
+		return guildID, nil
+	}
+	if len(b.sess.State.Guilds) > 0 {
+		return b.sess.State.Guilds[0].ID, nil
+	}
+	guilds, err := b.sess.UserGuilds(10, "", "", false)
+	if err != nil {
+		return "", fmt.Errorf("fetch user guilds: %w", err)
+	}
+	if len(guilds) == 0 {
+		return "", fmt.Errorf("bot is not a member of any Discord server (guild)")
+	}
+	return guilds[0].ID, nil
+}
+
+// ListChannels lists channels in the specified guild (or the bot's primary guild if empty).
+func (b *Bot) ListChannels(guildID string) ([]ChannelInfo, error) {
+	gid, err := b.resolveGuildID(guildID)
+	if err != nil {
+		return nil, err
+	}
+	chs, err := b.sess.GuildChannels(gid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ChannelInfo, 0, len(chs))
+	for _, c := range chs {
+		kind := "other"
+		switch c.Type {
+		case discordgo.ChannelTypeGuildText:
+			kind = "text"
+		case discordgo.ChannelTypeGuildCategory:
+			kind = "category"
+		case discordgo.ChannelTypeGuildVoice:
+			kind = "voice"
+		case discordgo.ChannelTypeGuildForum:
+			kind = "forum"
+		}
+		out = append(out, ChannelInfo{
+			ID:       c.ID,
+			GuildID:  gid,
+			Name:     c.Name,
+			Type:     kind,
+			ParentID: c.ParentID,
+			Topic:    c.Topic,
+		})
+	}
+	return out, nil
+}
+
+// CreateChannel creates a text or category channel in the guild. If a channel with the same
+// name already exists in the guild, it updates its topic (if provided) and returns the existing channel.
+func (b *Bot) CreateChannel(guildID, name, topic, categoryName string, isCategory bool) (*ChannelInfo, error) {
+	gid, err := b.resolveGuildID(guildID)
+	if err != nil {
+		return nil, err
+	}
+	chs, err := b.sess.GuildChannels(gid)
+	if err != nil {
+		return nil, err
+	}
+
+	parentID := ""
+	if categoryName != "" && !isCategory {
+		for _, c := range chs {
+			if c.Type == discordgo.ChannelTypeGuildCategory && strings.EqualFold(c.Name, categoryName) {
+				parentID = c.ID
+				break
+			}
+		}
+		if parentID == "" {
+			cat, err := b.sess.GuildChannelCreateComplex(gid, discordgo.GuildChannelCreateData{
+				Name: nameOrDefault(categoryName, "Active Agent Sessions"),
+				Type: discordgo.ChannelTypeGuildCategory,
+			})
+			if err == nil && cat != nil {
+				parentID = cat.ID
+			}
+		}
+	}
+
+	targetType := discordgo.ChannelTypeGuildText
+	if isCategory {
+		targetType = discordgo.ChannelTypeGuildCategory
+	}
+
+	// Reuse existing channel if one already matches name & type
+	for _, c := range chs {
+		if c.Type == targetType && strings.EqualFold(c.Name, name) {
+			if topic != "" && c.Topic != topic {
+				_, _ = b.sess.ChannelEditComplex(c.ID, &discordgo.ChannelEdit{Topic: topic})
+			}
+			return &ChannelInfo{
+				ID:       c.ID,
+				GuildID:  gid,
+				Name:     c.Name,
+				Type:     "text",
+				ParentID: c.ParentID,
+				Topic:    topic,
+			}, nil
+		}
+	}
+
+	created, err := b.sess.GuildChannelCreateComplex(gid, discordgo.GuildChannelCreateData{
+		Name:     name,
+		Type:     targetType,
+		Topic:    topic,
+		ParentID: parentID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ChannelInfo{
+		ID:       created.ID,
+		GuildID:  gid,
+		Name:     created.Name,
+		Type:     "text",
+		ParentID: created.ParentID,
+		Topic:    created.Topic,
+	}, nil
+}
+
+// DeleteChannel deletes a channel by ID or by channel name.
+func (b *Bot) DeleteChannel(guildID, channelID, name string) (string, error) {
+	targetID := channelID
+	if targetID == "" && name != "" {
+		gid, err := b.resolveGuildID(guildID)
+		if err != nil {
+			return "", err
+		}
+		chs, err := b.sess.GuildChannels(gid)
+		if err != nil {
+			return "", err
+		}
+		for _, c := range chs {
+			if strings.EqualFold(c.Name, name) {
+				targetID = c.ID
+				break
+			}
+		}
+		if targetID == "" {
+			return "", fmt.Errorf("channel %q not found", name)
+		}
+	}
+	if targetID == "" {
+		return "", fmt.Errorf("channel_id or name is required")
+	}
+	deleted, err := b.sess.ChannelDelete(targetID)
+	if err != nil {
+		return "", err
+	}
+	return deleted.ID, nil
+}
+
+func nameOrDefault(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
 }

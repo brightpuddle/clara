@@ -56,13 +56,8 @@ func (w *Webex) Configure(raw []byte) error {
 		w.tokenMgr = tm
 		w.user = webexapi.NewUserClient(tm)
 
-		if tm.HasToken() {
-			if w.cfg.BaseURL != "" {
-				go w.ensureUserWebhook()
-			} else {
-				w.ingestMgr = webexapi.NewIngestManager(w.user, w.router)
-				w.ingestMgr.Start(context.Background())
-			}
+		if tm.HasToken() && w.cfg.BaseURL != "" {
+			go w.ensureUserWebhook()
 		}
 	}
 
@@ -70,10 +65,13 @@ func (w *Webex) Configure(raw []byte) error {
 		w.bot = webexapi.NewBotClient(w.cfg.BotToken)
 		if w.cfg.BaseURL != "" {
 			go w.ensureBotWebhook()
-		} else if w.ingestMgr == nil {
-			w.ingestMgr = webexapi.NewIngestManager(w.bot, w.router)
-			w.ingestMgr.Start(context.Background())
 		}
+		// Prefer the Bot client for real-time 1:1 ingestion & card actions
+		w.ingestMgr = webexapi.NewIngestManager(w.bot, w.router)
+		w.ingestMgr.Start(context.Background())
+	} else if w.user != nil && w.tokenMgr != nil && w.tokenMgr.HasToken() {
+		w.ingestMgr = webexapi.NewIngestManager(w.user, w.router)
+		w.ingestMgr.Start(context.Background())
 	}
 
 	// We subscribe to router events and forward them to Clara

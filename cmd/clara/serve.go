@@ -29,7 +29,6 @@ import (
 	"github.com/brightpuddle/clara/internal/toolcatalog"
 	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/brightpuddle/clara/internal/typestub"
-	"github.com/brightpuddle/clara/internal/webui"
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
@@ -226,13 +225,6 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Error().Err(err).Msg("failed to register clara builtin")
 	}
 
-	// Attach the web UI (served at /ui/ on the same port as the HTTP server).
-	uiCfgPath := cfgFile
-	if uiCfgPath == "" {
-		uiCfgPath = config.DefaultConfigPath()
-	}
-	ui := webui.New(cfg, uiCfgPath, sup, reg, loader, triggerMgr, db, logger)
-	httpServer.WebUI = ui
 	reg.SetAuditLogger(db)
 
 	handler := &daemonHandler{
@@ -281,12 +273,6 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 						return nil
 					}
 					handler.hub.PushEvent(ce.ID, ce.Type, ce.Source, ce.Data)
-					if err := evaluator.OnEvent(ctx, ce); err != nil {
-						logger.Error().Err(err).
-							Str("event_id", ce.ID).
-							Str("event_type", ce.Type).
-							Msg("evaluator error")
-					}
 				}
 			}
 		},
