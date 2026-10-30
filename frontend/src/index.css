@@ -36,67 +36,67 @@
 }
 
 :root {
-  --background: #fff8f4;
-  --foreground: #201a17;
+  --background: #f7faf3;
+  --foreground: #181d17;
 
   --card: #ffffff;
-  --card-foreground: #201a17;
+  --card-foreground: #181d17;
 
   --popover: #ffffff;
-  --popover-foreground: #201a17;
+  --popover-foreground: #181d17;
 
-  /* Warm M3 Tonal Palette */
-  --primary: #9a4600;
+  /* Material Design Natural Green (Botanical / Leaf) */
+  --primary: #2e6c38;
   --primary-foreground: #ffffff;
 
-  --secondary: #f5ebe6;
-  --secondary-foreground: #775747;
+  --secondary: #e6ede2;
+  --secondary-foreground: #3b503d;
 
-  --muted: #f4ece7;
-  --muted-foreground: #775747;
+  --muted: #edf2e8;
+  --muted-foreground: #516453;
 
-  --accent: #ffede1;
-  --accent-foreground: #9a4600;
+  --accent: #daf2d7;
+  --accent-foreground: #1a5325;
 
   --destructive: #ba1a1a;
   --destructive-foreground: #ffffff;
 
-  --border: #e8dcd5;
-  --input: #e8dcd5;
-  --ring: #9a4600;
+  --border: #d7e0d3;
+  --input: #d7e0d3;
+  --ring: #2e6c38;
 
   --radius: 0.75rem;
 }
 
 :root[data-theme="dark"],
 .dark {
-  --background: #18120f;
-  --foreground: #ede0db;
+  --background: #111511;
+  --foreground: #e1e4dc;
 
-  --card: #201a17;
-  --card-foreground: #ede0db;
+  --card: #181d18;
+  --card-foreground: #e1e4dc;
 
-  --popover: #201a17;
-  --popover-foreground: #ede0db;
+  --popover: #181d18;
+  --popover-foreground: #e1e4dc;
 
-  --primary: #ffb590;
-  --primary-foreground: #552000;
+  --primary: #85d88c;
+  --primary-foreground: #003912;
 
-  --secondary: #3b2f29;
-  --secondary-foreground: #d7c2b8;
+  --secondary: #253326;
+  --secondary-foreground: #c3d0c0;
 
-  --muted: #2e2420;
-  --muted-foreground: #a08c84;
+  --muted: #1e261f;
+  --muted-foreground: #8a9989;
 
-  --accent: #552000;
-  --accent-foreground: #ffb590;
+  --accent: #17421f;
+  --accent-foreground: #a1f3a7;
 
   --destructive: #ffb4ab;
   --destructive-foreground: #690005;
 
-  --border: #3b2f29;
-  --input: #3b2f29;
-  --ring: #ffb590;
+  --border: #2c382d;
+  --input: #2c382d;
+  --ring: #85d88c;
 }
 
 @layer base {
