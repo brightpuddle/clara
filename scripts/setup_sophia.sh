@@ -5,18 +5,13 @@
 # for the Mac mini ("eve") Clara Brain.
 #
 # Usage (run on sophia after `git pull && make install`):
-#   ./scripts/setup_sophia.sh <eve-ip-or-hostname>
-# Example:
-#   ./scripts/setup_sophia.sh eve.local
+#   ./scripts/setup_sophia.sh [eve-hostname]
+# Defaults to `eve.brightpuddle.com` (using forwarded SSH port 22, which works
+# whether sophia is on Cisco AnyConnect full-tunnel VPN, home Wi-Fi, or traveling).
 
 set -euo pipefail
 
-EVE_HOST="${1:-}"
-if [[ -z "$EVE_HOST" ]]; then
-  echo "Usage: $0 <eve-lan-ip-or-hostname>"
-  echo "Example: $0 eve.local   (or 192.168.86.x)"
-  exit 1
-fi
+EVE_HOST="${1:-eve.brightpuddle.com}"
 
 mkdir -p "$HOME/.config/clara/triggers"
 CONFIG_FILE="$HOME/.config/clara/config.yaml"
