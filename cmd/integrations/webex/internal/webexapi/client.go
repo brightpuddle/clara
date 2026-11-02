@@ -74,6 +74,56 @@ func (c *Client) ListRooms(max int) ([]Room, error) {
 	return result.Items, nil
 }
 
+// CreateRoom creates a new Webex space.
+func (c *Client) CreateRoom(title string) (*Room, error) {
+	var room Room
+	body := map[string]string{"title": title}
+	if err := c.post("/rooms", body, &room); err != nil {
+		return nil, err
+	}
+	return &room, nil
+}
+
+// DeleteRoom deletes a Webex space by ID.
+func (c *Client) DeleteRoom(roomID string) error {
+	token, err := c.getToken()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodDelete, apiBase+"/rooms/"+url.PathEscape(roomID), nil)
+	if err != nil {
+		return fmt.Errorf("webex: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("webex: DELETE room %s: %w", roomID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode != 404 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("webex: DELETE room %s: status %d: %s", roomID, resp.StatusCode, body)
+	}
+	return nil
+}
+
+// AddMembership adds a user or bot to a room by email or person ID.
+func (c *Client) AddMembership(roomID, personEmail, personID string) error {
+	body := map[string]any{"roomId": roomID}
+	if personEmail != "" {
+		body["personEmail"] = personEmail
+	}
+	if personID != "" {
+		body["personId"] = personID
+	}
+	var res map[string]any
+	if err := c.post("/memberships", body, &res); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *Client) ListMessages(roomID string, max int) ([]Message, error) {
 	if max <= 0 {
 		max = 50

@@ -154,6 +154,25 @@ func (w *Webex) Tools() ([]byte, error) {
 					"Event data: {message_id, room_id, room_type, person_email, person_id, text, created}.",
 			),
 		),
+		mcp.NewTool(
+			"room.create",
+			mcp.WithDescription("Create a new Webex space using the user account and optionally invite the bot."),
+			mcp.WithString("title", mcp.Required(), mcp.Description("Title of the Webex space.")),
+			mcp.WithBoolean("invite_bot", mcp.Description("Whether to automatically add the configured Clara bot to the space (default true).")),
+		),
+		mcp.NewTool(
+			"room.delete",
+			mcp.WithDescription("Delete a Webex space by room_id or title."),
+			mcp.WithString("room_id", mcp.Description("Webex room ID to delete.")),
+			mcp.WithString("title", mcp.Description("Webex room title to delete if room_id is omitted.")),
+		),
+		mcp.NewTool(
+			"membership.create",
+			mcp.WithDescription("Add a person or bot to a Webex space."),
+			mcp.WithString("room_id", mcp.Required(), mcp.Description("Target Webex room ID.")),
+			mcp.WithString("person_email", mcp.Description("Email address of person or bot to add.")),
+			mcp.WithString("person_id", mcp.Description("Webex person ID to add.")),
+		),
 	}
 	return json.Marshal(tools)
 }
@@ -162,6 +181,12 @@ func (w *Webex) CallTool(name string, args []byte) ([]byte, error) {
 	switch name {
 	case "rooms.list":
 		return w.callRoomsList(args)
+	case "room.create":
+		return w.callRoomCreate(args)
+	case "room.delete":
+		return w.callRoomDelete(args)
+	case "membership.create":
+		return w.callMembershipCreate(args)
 	case "messages.list":
 		return w.callMessagesList(args)
 	case "message.get":
@@ -198,6 +223,104 @@ func (w *Webex) callRoomsList(args []byte) ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(rooms)
+}
+
+func (w *Webex) callRoomCreate(args []byte) ([]byte, error) {
+	if w.user == nil {
+		return nil, errors.New("webex user account not configured")
+	}
+	var a struct {
+		Title     string `json:"title"`
+		InviteBot *bool  `json:"invite_bot"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "unmarshal args")
+	}
+	if a.Title == "" {
+		return nil, errors.New("title required")
+	}
+
+	room, err := w.user.CreateRoom(a.Title)
+	if err != nil {
+		return nil, errors.Wrap(err, "create room")
+	}
+
+	inviteBot := true
+	if a.InviteBot != nil {
+		inviteBot = *a.InviteBot
+	}
+
+	if inviteBot && w.cfg.BotEnabled() {
+		// Attempt to invite the bot to the newly created room
+		if err := w.user.AddMembership(room.ID, "oswin@webex.bot", ""); err != nil {
+			log.Warn().Err(err).Str("room_id", room.ID).Msg("webex: failed to invite bot to new room")
+		}
+	}
+
+	return json.Marshal(room)
+}
+
+func (w *Webex) callRoomDelete(args []byte) ([]byte, error) {
+	if w.user == nil {
+		return nil, errors.New("webex user account not configured")
+	}
+	var a struct {
+		RoomID string `json:"room_id"`
+		Title  string `json:"title"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "unmarshal args")
+	}
+
+	targetID := a.RoomID
+	if targetID == "" && a.Title != "" {
+		// Look up room ID by title
+		rooms, err := w.user.ListRooms(100)
+		if err == nil {
+			for _, r := range rooms {
+				if strings.EqualFold(r.Title, a.Title) {
+					targetID = r.ID
+					break
+				}
+			}
+		}
+	}
+
+	if targetID == "" {
+		return nil, errors.New("room_id or matching title required")
+	}
+
+	if err := w.user.DeleteRoom(targetID); err != nil {
+		return nil, errors.Wrap(err, "delete room")
+	}
+
+	return json.Marshal(map[string]any{"deleted": true, "room_id": targetID})
+}
+
+func (w *Webex) callMembershipCreate(args []byte) ([]byte, error) {
+	if w.user == nil {
+		return nil, errors.New("webex user account not configured")
+	}
+	var a struct {
+		RoomID      string `json:"room_id"`
+		PersonEmail string `json:"person_email"`
+		PersonID    string `json:"person_id"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "unmarshal args")
+	}
+	if a.RoomID == "" {
+		return nil, errors.New("room_id required")
+	}
+	if a.PersonEmail == "" && a.PersonID == "" {
+		return nil, errors.New("person_email or person_id required")
+	}
+
+	if err := w.user.AddMembership(a.RoomID, a.PersonEmail, a.PersonID); err != nil {
+		return nil, errors.Wrap(err, "add membership")
+	}
+
+	return json.Marshal(map[string]any{"added": true, "room_id": a.RoomID})
 }
 
 func (w *Webex) callMessagesList(args []byte) ([]byte, error) {

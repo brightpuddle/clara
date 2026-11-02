@@ -34,6 +34,16 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { callTool, readEvent, runID, triggerID } from "../clara.ts";
+import {
+  getPlatformAdapter,
+  getPrimaryAdapter,
+  getPrimaryPlatform,
+  resolveAnyBoundTmuxSession,
+  setPrimaryPlatform,
+  syncSessionChannels,
+} from "./platform/manager.ts";
+import type { BoundSessionInfo, PlatformType } from "./platform/types.ts";
+import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./platform/discord.ts";
 
 const HOME = homedir();
 const STATE_DIR = join(HOME, ".local/share/clara");
@@ -305,98 +315,8 @@ async function transcribeVoiceAttachment(attachmentUrl: string): Promise<string>
 }
 
 // ==========================================
-// Discord <-> Tmux Session Channel Multiplexer
+// Chat Platform & Tmux Session Multiplexer
 // ==========================================
-const LOCAL_HOST_PREFIX = "eve";
-const LAPTOP_HOST_PREFIX = "sophia";
-
-interface BoundSessionInfo {
-  host: "eve" | "sophia";
-  sessionName: string;
-}
-
-function sanitizeChannelSuffix(sessionName: string): string {
-  return sessionName
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-async function syncDiscordSessionChannels(): Promise<string> {
-  const eveSessions = ((await callTool("tmux.session.list" as any, {})) || []) as any[];
-  let sophiaSessions: any[] = [];
-  try {
-    const res = await callTool("laptop.tmux.session.list" as any, {});
-    if (Array.isArray(res)) sophiaSessions = res;
-  } catch {}
-
-  const channels = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
-
-  const activeMap = new Map<string, BoundSessionInfo>(); // channelName -> { host, sessionName }
-  for (const s of eveSessions) {
-    const chName = `${LOCAL_HOST_PREFIX}-${sanitizeChannelSuffix(s.name)}`;
-    activeMap.set(chName, { host: "eve", sessionName: s.name });
-  }
-  for (const s of sophiaSessions) {
-    const chName = `${LAPTOP_HOST_PREFIX}-${sanitizeChannelSuffix(s.name)}`;
-    activeMap.set(chName, { host: "sophia", sessionName: s.name });
-  }
-
-  const created: string[] = [];
-  const existing: string[] = [];
-  const removed: string[] = [];
-
-  // 1. Ensure a channel exists for every active tmux session on eve (and sophia when connected)
-  for (const [chName, info] of activeMap.entries()) {
-    let targetChannelId = "";
-    const found = channels.find(
-      (c) => c.type === "text" && String(c.name).toLowerCase() === chName
-    );
-    if (found) {
-      targetChannelId = String(found.id);
-      existing.push(`#${chName} (\`${info.host}:${info.sessionName}\`)`);
-    } else {
-      const createdCh = (await callTool("discord.channel.create" as any, {
-        name: chName,
-        topic: `tmux:${info.host}:${info.sessionName} — Type directly to send keys to ${info.host} tmux session '${info.sessionName}', or prefix with '? ' to ask AI`,
-        category: "Active Agent Sessions",
-      })) as any;
-      if (createdCh?.id) targetChannelId = String(createdCh.id);
-      created.push(`#${chName} (\`${info.host}:${info.sessionName}\`)`);
-    }
-
-    // Backfill history idempotently (only once per channel, checking existing discord messages)
-    if (targetChannelId) {
-      await backfillChannelHistoryIfNew(targetChannelId, info.host, info.sessionName);
-    }
-  }
-
-  // 2. Remove stale #eve-*, #sophia-*, or legacy #session-* channels whose tmux session no longer exists
-  for (const c of channels) {
-    const name = String(c.name || "").toLowerCase();
-    const isManagedPrefix =
-      name.startsWith(`${LOCAL_HOST_PREFIX}-`) ||
-      name.startsWith(`${LAPTOP_HOST_PREFIX}-`) ||
-      name.startsWith("session-");
-    if (c.type === "text" && isManagedPrefix && !activeMap.has(name)) {
-      try {
-        await callTool("discord.channel.delete" as any, { channel_id: c.id });
-        removed.push(`#${name}`);
-      } catch {}
-    }
-  }
-
-  return [
-    `### Discord ↔ Tmux Session Multiplexer Synced`,
-    `- **Active Session Channels (${activeMap.size}):** ${[...created, ...existing].join(", ") || "None"}`,
-    created.length > 0 ? `- **Created:** ${created.join(", ")}` : "",
-    removed.length > 0 ? `- **Cleaned Up Ended Sessions:** ${removed.join(", ")}` : "",
-    `\n*Tip: Jump into any \`#eve-*\` or \`#sophia-*\` channel on Discord to talk directly to that session, or prefix with \`?\` to ask AI about its output.*`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
 
 async function backfillChannelHistoryIfNew(
   channelId: string,
@@ -410,20 +330,6 @@ async function backfillChannelHistoryIfNew(
       .get(channelId);
     if (alreadyDone) return;
 
-    // Check if Discord channel already has messages
-    try {
-      const msgs = (await callTool("discord.messages.list" as any, {
-        channel_id: channelId,
-        limit: 10,
-      })) as any[];
-      if (Array.isArray(msgs) && msgs.length > 0) {
-        stateDb
-          .query("INSERT OR IGNORE INTO channel_backfill_done (channel_id, backfilled_at) VALUES (?, ?)")
-          .run(channelId, Date.now());
-        return;
-      }
-    } catch {}
-
     // 1. Capture the agent pane output directly (works for both OpenCode and Agy, local or remote)
     const captureTool = host === "sophia" ? "laptop.tmux.pane.capture" : "tmux.pane.capture";
     try {
@@ -435,10 +341,8 @@ async function backfillChannelHistoryIfNew(
       if (text) {
         const header = `📜 **--- Attached to Active Session (\`${host}:${sessionName}\`) Recent Output ---**\n\n`;
         const codeBlock = `\`\`\`text\n${text.slice(-1700)}\n\`\`\``;
-        await callTool("discord.message.send" as any, {
-          channel_id: channelId,
-          content: (header + codeBlock).slice(0, 1900),
-        });
+        const primary = getPrimaryAdapter();
+        await primary.sendMessage(channelId, header + codeBlock);
       }
     } catch (err: any) {
       console.warn(`[chat_router] Could not capture initial pane for ${host}:${sessionName}: ${err.message}`);
@@ -450,34 +354,6 @@ async function backfillChannelHistoryIfNew(
   } catch (err: any) {
     console.error(`[chat_router] Error backfilling channel ${channelId}:`, err);
   }
-}
-
-function resolveBoundTmuxSession(
-  channelName: string,
-  channelTopic: string
-): BoundSessionInfo | null {
-  const topicHostMatch = String(channelTopic || "").match(/^tmux:(eve|sophia):([^\s—-]+)/i);
-  if (topicHostMatch?.[1] && topicHostMatch?.[2]) {
-    return {
-      host: topicHostMatch[1].toLowerCase() as "eve" | "sophia",
-      sessionName: topicHostMatch[2].trim(),
-    };
-  }
-  const legacyTopicMatch = String(channelTopic || "").match(/^tmux:([^\s:—-]+)/i);
-  if (legacyTopicMatch?.[1]) {
-    return { host: "eve", sessionName: legacyTopicMatch[1].trim() };
-  }
-  const name = String(channelName || "").toLowerCase();
-  if (name.startsWith(`${LOCAL_HOST_PREFIX}-`)) {
-    return { host: "eve", sessionName: name.slice(`${LOCAL_HOST_PREFIX}-`.length) };
-  }
-  if (name.startsWith(`${LAPTOP_HOST_PREFIX}-`)) {
-    return { host: "sophia", sessionName: name.slice(`${LAPTOP_HOST_PREFIX}-`.length) };
-  }
-  if (name.startsWith("session-")) {
-    return { host: "eve", sessionName: name.slice("session-".length) };
-  }
-  return null;
 }
 
 // ==========================================
@@ -658,24 +534,26 @@ async function handleSessionsCommand(): Promise<string> {
 }
 
 function getHelpMarkdown(): string {
+  const currentPlat = getPrimaryPlatform().toUpperCase();
   return [
     `### Clara Conversational & Session Control Plane`,
     `**Fast Commands (Prefix with \`.\` to avoid Discord slash-command conflicts):**`,
     `- \`.status\` (or \`status\`) — System health, triggers, and Laptop (\`sophia\`) VPN status`,
-    `- \`.sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated \`#eve-<name>\` / \`#sophia-<name>\` Discord channels`,
+    `- \`.sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated channels/spaces on **${currentPlat}**`,
+    `- \`.platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
     `- \`.sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
-    `- \`.spawn <name> [cmd]\` — Launch a \`tmux\` session on \`eve\` + create its \`#eve-<name>\` Discord channel`,
+    `- \`.spawn <name> [cmd]\` — Launch a \`tmux\` session on \`eve\` + create its space/channel on **${currentPlat}**`,
     `- \`.send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
     `- \`.capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
     `- \`.runs\` / \`.triggers\` / \`.run <id>\` — Inspect or trigger Clara workflows`,
     `- \`.code <prompt>\` — Run headless \`opencode\` task in \`~/.config/clara\``,
     `- \`.new\` / \`.reset\` — Reset chat memory for this channel`,
     ``,
-    `**Inside an \`#eve-<name>\` or \`#sophia-<name>\` Discord Channel:**`,
+    `**Inside an Agent Session Channel/Space (\`#eve-*\`, \`[Clara:eve] *\`):**`,
     `- Type or record a **Voice Message** to send input directly to that \`tmux\` session`,
     `- Send \`./<command>\` (e.g. \`./clear\`, \`./plan\`) to pass a slash command cleanly to the agent`,
     `- Prefix with \`? <question>\` to ask AI about that session's terminal output`,
-    `- Type \`.kill\` or \`/kill\` to terminate the session and delete the channel`,
+    `- Type \`.kill\` or \`/kill\` to terminate the session and delete the space/channel`,
   ].join("\n");
 }
 
@@ -1067,6 +945,15 @@ async function main() {
       targetId = d.room_id || targetId;
       sender = d.person_email || "";
       text = String(d.text || "").trim();
+      // If room title wasn't in event, look it up if this is a group room
+      channelName = d.room_title || "";
+      if (!channelName && d.room_id && d.room_type === "group") {
+        try {
+          const rooms = ((await callTool("webex.rooms.list" as any, { max: 100 })) || []) as any[];
+          const matchRoom = rooms.find((r: any) => r.id === d.room_id);
+          if (matchRoom) channelName = matchRoom.title;
+        } catch {}
+      }
     }
   }
 
@@ -1075,6 +962,12 @@ async function main() {
     sender.toLowerCase().endsWith("@webex.bot") ||
     sender.toLowerCase().endsWith("@sparkbot.io")
   ) {
+    return;
+  }
+
+  // If this is a Webex group space, only process messages if it is a Clara-managed agent space!
+  if (platform === "webex" && channelName && !channelName.startsWith("[Clara:")) {
+    // Non-Clara Webex group space (ignore normal human conversations)
     return;
   }
 
@@ -1119,26 +1012,26 @@ async function main() {
 
   try {
     // ========================================================
-    // 1. Check if this is a Bound Per-Session Discord Channel!
+    // 1. Check if this is a Bound Per-Session Channel/Space!
     // ========================================================
-    const boundSession =
-      platform === "discord" ? resolveBoundTmuxSession(channelName, channelTopic) : null;
+    const boundSession = resolveAnyBoundTmuxSession(platform, channelName, channelTopic);
 
     if (boundSession) {
       const { host, sessionName } = boundSession;
       const killTool = host === "sophia" ? "laptop.tmux.session.kill" : "tmux.session.kill";
       const captureTool = host === "sophia" ? "laptop.tmux.pane.capture" : "tmux.pane.capture";
       const sendKeysTool = host === "sophia" ? "laptop.tmux.pane.send_keys" : "tmux.pane.send_keys";
+      const adapter = getPlatformAdapter(platform);
 
       if (lower === "/kill" || lower === "kill" || lower === ".kill") {
         await callTool(killTool as any, { name: sessionName });
         await sendReply(
           platform,
           targetId,
-          `🛑 Killed \`tmux\` session **\`${host}:${sessionName}\`**. Deleting channel...`,
+          `🛑 Killed \`tmux\` session **\`${host}:${sessionName}\`**. Deleting space/channel...`,
           isDryRun
         );
-        await callTool("discord.channel.delete" as any, { channel_id: targetId });
+        await adapter.deleteChannel(targetId);
         return;
       }
 
@@ -1162,7 +1055,7 @@ async function main() {
           name: sessionName,
           limit: 60,
         })) as any;
-        const paneContext = `This Discord channel (#${channelName}) is bound to ${host} tmux session '${sessionName}'.\nLatest terminal pane output:\n\`\`\`\n${String(cap?.content || "").slice(-4000)}\n\`\`\``;
+        const paneContext = `This channel/space (${channelName}) is bound to ${host} tmux session '${sessionName}'.\nLatest terminal pane output:\n\`\`\`\n${String(cap?.content || "").slice(-4000)}\n\`\`\``;
         const answer = await runConversationalAgent(platform, targetId, question, paneContext);
         await sendReply(platform, targetId, answer, isDryRun);
         return;
@@ -1175,7 +1068,7 @@ async function main() {
         sessionInput = sessionInput.slice(1);
       }
 
-      // Record prompt hash in agy_prompt_mirror so agy_prompt_hook doesn't echo it back to Discord
+      // Record prompt hash in agy_prompt_mirror so agy_prompt_hook doesn't echo it back to the channel
       try {
         let h = 0;
         for (let i = 0; i < sessionInput.length; i++) {
@@ -1190,16 +1083,10 @@ async function main() {
       } catch {}
 
       // Add instant visibility: reaction + typing indicator
-      if (platform === "discord" && messageId && !messageId.startsWith("cli-")) {
+      if (messageId && !messageId.startsWith("cli-")) {
         try {
-          await callTool("discord.message.react" as any, {
-            channel_id: targetId,
-            message_id: messageId,
-            emoji: "⏳",
-          });
-          await callTool("discord.channel.typing" as any, {
-            channel_id: targetId,
-          });
+          await adapter.addReaction(targetId, messageId, "⏳");
+          await adapter.sendTyping(targetId);
           stateDb
             .query(
               "INSERT OR REPLACE INTO pending_reactions (channel_id, message_id, session_name, created_at) VALUES (?, ?, ?, ?)"
@@ -1208,7 +1095,7 @@ async function main() {
         } catch {}
       }
 
-      // Default inside #eve-<name> or #sophia-<name>: send directly to tmux session!
+      // Default inside session space/channel: send directly to tmux session!
       await callTool(sendKeysTool as any, {
         name: sessionName,
         text: sessionInput,
@@ -1319,18 +1206,10 @@ async function main() {
       }
 
       // Resolve pending reactions (change ⏳ to ✅)
-      if (platform === "discord" && messageId && !messageId.startsWith("cli-")) {
+      if (messageId && !messageId.startsWith("cli-")) {
         try {
-          await callTool("discord.message.remove_reaction" as any, {
-            channel_id: targetId,
-            message_id: messageId,
-            emoji: "⏳",
-          });
-          await callTool("discord.message.react" as any, {
-            channel_id: targetId,
-            message_id: messageId,
-            emoji: "✅",
-          });
+          await adapter.removeReaction(targetId, messageId, "⏳");
+          await adapter.addReaction(targetId, messageId, "✅");
           stateDb
             .query(
               "DELETE FROM pending_reactions WHERE channel_id = ? AND message_id = ?"
@@ -1367,8 +1246,31 @@ async function main() {
     }
 
     if (strippedLower === "sync") {
-      const out = await syncDiscordSessionChannels();
+      const out = await syncSessionChannels(undefined, backfillChannelHistoryIfNew);
       await sendReply(platform, targetId, out, isDryRun);
+      return;
+    }
+
+    if (strippedLower === "platform" || strippedLower.startsWith("platform ")) {
+      const targetPlat = strippedLower.replace(/^platform\s*/i, "").trim().toLowerCase();
+      if (targetPlat === "webex" || targetPlat === "discord") {
+        await sendReply(
+          platform,
+          targetId,
+          `🔄 Switching primary agent platform to **${targetPlat.toUpperCase()}** and synchronizing sessions...`,
+          isDryRun
+        );
+        const out = await syncSessionChannels(targetPlat as PlatformType, backfillChannelHistoryIfNew);
+        await sendReply(platform, targetId, out, isDryRun);
+        return;
+      }
+      const cur = getPrimaryPlatform();
+      await sendReply(
+        platform,
+        targetId,
+        `Current primary agent development platform is **${cur.toUpperCase()}**.\nTo switch, run \`.platform webex\` or \`.platform discord\`.`,
+        isDryRun
+      );
       return;
     }
 
@@ -1432,22 +1334,18 @@ async function main() {
       const createTool = targetHost === "sophia" ? "laptop.tmux.session.create" : "tmux.session.create";
       const hostPrefix = targetHost === "sophia" ? LAPTOP_HOST_PREFIX : LOCAL_HOST_PREFIX;
       await callTool(createTool as any, { name: rawName, command: cmd });
-      const chName = `${hostPrefix}-${sanitizeChannelSuffix(rawName)}`;
-      let discordNote = "";
+      const primary = getPrimaryAdapter();
+      let platformNote = "";
       try {
-        const ch = (await callTool("discord.channel.create" as any, {
-          name: chName,
-          topic: `tmux:${targetHost}:${rawName} — Type directly to send keys to ${targetHost} tmux session '${rawName}', or prefix with '? ' to ask AI`,
-          category: "Active Agent Sessions",
-        })) as any;
+        const ch = await primary.ensureSessionChannel(targetHost, rawName);
         if (ch?.id) {
-          discordNote = `\nCreated Discord channel **\`#${chName}\`** (<#${ch.id}>).`;
+          platformNote = `\nCreated ${primary.platform === "webex" ? "Webex space" : "Discord channel"} **\`${ch.name}\`**.`;
         }
       } catch {}
       await sendReply(
         platform,
         targetId,
-        `Started detached \`tmux\` session **\`${rawName}\`** on **\`${targetHost}\`** running \`${cmd}\`.${discordNote}`,
+        `Started detached \`tmux\` session **\`${rawName}\`** on **\`${targetHost}\`** running \`${cmd}\`.${platformNote}`,
         isDryRun
       );
       return;

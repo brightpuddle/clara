@@ -16,6 +16,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import { callTool } from "../clara.ts";
+import { getPrimaryAdapter } from "./platform/manager.ts";
 
 const STATE_DIR = join(homedir(), ".local/share/clara");
 mkdirSync(STATE_DIR, { recursive: true });
@@ -80,32 +81,15 @@ async function main() {
       return;
     }
 
-    // Determine target Discord channel
+    // Look up target channel/space on primary platform
     const host = hostname().toLowerCase().includes("sophia") ? "sophia" : "eve";
-    const sanitize = (s: string) =>
-      s
-        .toLowerCase()
-        .replace(/[^a-z0-9-_]/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "");
-    const expectedChannelName = `${host}-${sanitize(tmuxSession)}`;
-
-    const channels = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
-    const match = channels.find(
-      (c) =>
-        c.type === "text" &&
-        (String(c.name || "").toLowerCase() === expectedChannelName ||
-          String(c.topic || "").toLowerCase().startsWith(`tmux:${host}:${tmuxSession.toLowerCase()}`) ||
-          String(c.topic || "").toLowerCase().startsWith(`tmux:${tmuxSession.toLowerCase()}`))
-    );
+    const primary = getPrimaryAdapter();
+    const match = await primary.findChannelForSession(host, tmuxSession);
 
     if (match?.id) {
-      // Mirror CLI prompt into Discord channel
+      // Mirror CLI prompt into primary channel
       const content = `🖥️ **Nathan (terminal):**\n${prompt}`;
-      await callTool("discord.message.send" as any, {
-        channel_id: String(match.id),
-        content: content.slice(0, 1900),
-      });
+      await primary.sendMessage(match.id, content);
     }
   } catch {
     // Non-blocking

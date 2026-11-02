@@ -19,7 +19,7 @@ mkdir -p "$GEMINI_CONFIG_DIR"
 
 # 1. Install assistant scripts
 if [ -d "$REPO_DIR/scripts/assistant" ]; then
-  cp -f "$REPO_DIR/scripts/assistant/"*.ts "$DEST_SCRIPTS_DIR/"
+  cp -Rf "$REPO_DIR/scripts/assistant/"* "$DEST_SCRIPTS_DIR/"
   chmod +x "$DEST_SCRIPTS_DIR/"*.ts 2>/dev/null || true
   echo "✅ Installed assistant hook scripts to $DEST_SCRIPTS_DIR"
 fi

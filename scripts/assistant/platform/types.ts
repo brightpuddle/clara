@@ -1,0 +1,70 @@
+/**
+ * scripts/assistant/platform/types.ts
+ *
+ * Internal chat & session multiplexer interfaces for Clara.
+ * Abstracts Discord and Webex so channels/spaces can be managed interchangeably.
+ */
+
+export type PlatformType = "discord" | "webex";
+
+export interface BoundSessionInfo {
+  host: "eve" | "sophia";
+  sessionName: string;
+}
+
+export interface ManagedChannel {
+  id: string;
+  name: string;
+  topic?: string;
+  boundSession?: BoundSessionInfo;
+}
+
+export interface ChatPlatformAdapter {
+  readonly platform: PlatformType;
+
+  /**
+   * List all channels or spaces currently managed for agent development.
+   */
+  listManagedChannels(): Promise<ManagedChannel[]>;
+
+  /**
+   * Find a managed channel by host and session name.
+   */
+  findChannelForSession(host: "eve" | "sophia", sessionName: string): Promise<ManagedChannel | null>;
+
+  /**
+   * Create or ensure a managed channel exists for a given host + tmux session.
+   */
+  ensureSessionChannel(host: "eve" | "sophia", sessionName: string): Promise<ManagedChannel>;
+
+  /**
+   * Delete a managed channel by its ID.
+   */
+  deleteChannel(channelId: string): Promise<void>;
+
+  /**
+   * Clean up all managed agent channels/spaces on this platform.
+   * Returns the list of deleted channel names.
+   */
+  cleanupAllManagedChannels(): Promise<string[]>;
+
+  /**
+   * Send a message to a channel/space (handling chunking if necessary).
+   */
+  sendMessage(channelId: string, content: string): Promise<string>;
+
+  /**
+   * Add a pending or status reaction/indicator.
+   */
+  addReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
+
+  /**
+   * Remove a reaction/indicator.
+   */
+  removeReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
+
+  /**
+   * Send a typing indicator.
+   */
+  sendTyping(channelId: string): Promise<void>;
+}

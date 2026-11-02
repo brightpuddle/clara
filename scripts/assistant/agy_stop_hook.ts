@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 import { callTool } from "../clara.ts";
+import { getPrimaryAdapter } from "./platform/manager.ts";
 
 const STATE_DIR = join(homedir(), ".local/share/clara");
 mkdirSync(STATE_DIR, { recursive: true });
@@ -115,15 +116,9 @@ async function main() {
       .query("INSERT OR IGNORE INTO agy_hook_dedup (step_key, sent_at) VALUES (?, ?)")
       .run(stepKey, Date.now());
 
-    // Look up the bound Discord channel
-    const channels = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
-    const match = channels.find(
-      (c) =>
-        c.type === "text" &&
-        (String(c.name || "").toLowerCase() === expectedChannelName ||
-          String(c.topic || "").toLowerCase().startsWith(`tmux:${host}:${tmuxSession.toLowerCase()}`) ||
-          String(c.topic || "").toLowerCase().startsWith(`tmux:${tmuxSession.toLowerCase()}`))
-    );
+    // Look up the bound channel/space on the primary platform
+    const primary = getPrimaryAdapter();
+    const match = await primary.findChannelForSession(host as "eve" | "sophia", tmuxSession);
 
     if (match?.id) {
       // Resolve any pending message reactions in this channel
@@ -133,36 +128,16 @@ async function main() {
           .all(match.id, tmuxSession) as { message_id: string }[];
 
         for (const p of pending) {
-          await callTool("discord.message.remove_reaction" as any, {
-            channel_id: match.id,
-            message_id: p.message_id,
-            emoji: "⏳",
-          });
-          await callTool("discord.message.react" as any, {
-            channel_id: match.id,
-            message_id: p.message_id,
-            emoji: "✅",
-          });
+          await primary.removeReaction(match.id, p.message_id, "⏳");
+          await primary.addReaction(match.id, p.message_id, "✅");
         }
         stateDb
           .query("DELETE FROM pending_reactions WHERE channel_id = ? AND session_name = ?")
           .run(match.id, tmuxSession);
       } catch {}
 
-      // Post final response chunks
-      const fullText = lastAssistantMessage;
-      const maxLen = 1900;
-      let remaining = fullText;
-      while (remaining.length > 0) {
-        let idx = remaining.length <= maxLen ? remaining.length : remaining.lastIndexOf("\n", maxLen);
-        if (idx < 400) idx = Math.min(maxLen, remaining.length);
-        const chunk = remaining.slice(0, idx);
-        remaining = remaining.slice(idx).trimStart();
-        await callTool("discord.message.send" as any, {
-          channel_id: String(match.id),
-          content: chunk,
-        });
-      }
+      // Post final response chunks via primary adapter
+      await primary.sendMessage(match.id, lastAssistantMessage);
     }
   } catch {
     // Never fail or block agy stop hook
