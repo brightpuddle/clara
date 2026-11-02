@@ -207,6 +207,22 @@ func runAgentStatus(cmd *cobra.Command, args []string) error {
 	}
 	if v, ok := fields["mcp_servers"]; ok {
 		fmt.Printf("  %s %v\n", theme.Dimmed("mcp servers:       "), v)
+		if smap, ok := fields["mcp_server_map"].(map[string]any); ok && len(smap) > 0 {
+			for name, status := range smap {
+				stStr := fmt.Sprintf("%v", status)
+				var colorSt string
+				if stStr == "RUNNING" {
+					colorSt = theme.Green(stStr)
+				} else {
+					colorSt = theme.Yellow(stStr)
+				}
+				if name == "laptop" {
+					fmt.Printf("    • %s: %s %s\n", theme.Cyan(name), colorSt, theme.Dimmed("(Sophia satellite tunnel)"))
+				} else {
+					fmt.Printf("    • %s: %s\n", theme.Cyan(name), colorSt)
+				}
+			}
+		}
 	}
 	return nil
 }

@@ -420,6 +420,12 @@ func buildHandler(
 				}
 			}
 
+			serverStatuses := reg.ServerStatuses()
+			serversSummary := make(map[string]string, len(serverStatuses))
+			for sName, sStat := range serverStatuses {
+				serversSummary[sName] = string(sStat)
+			}
+
 			writeResp(&ipc.Response{
 				Message: "running",
 				Data: map[string]any{
@@ -430,7 +436,8 @@ func buildHandler(
 					"worker_triggers":   workerTriggers,
 					"manual_triggers":   manualTriggers,
 					"tools":             len(reg.Names()),
-					"mcp_servers":       len(reg.ServerStatuses()),
+					"mcp_servers":       len(serverStatuses),
+					"mcp_server_map":    serversSummary,
 				},
 			})
 
