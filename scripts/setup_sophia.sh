@@ -104,6 +104,6 @@ launchctl load "$TUNNEL_PLIST"
 
 echo "✅ Outbound SSH reverse tunnel LaunchAgent started (sophia:4444 -> ${EVE_HOST}:14444)."
 echo "Registering 'laptop' MCP server on eve (${EVE_HOST})..."
-ssh "${USER}@${EVE_HOST}" "/usr/local/bin/clara mcp add laptop --url http://127.0.0.1:14444/mcp --description 'Sophia (MacBook Pro) VPN & Tmux Satellite' --overwrite" || true
+ssh "${USER}@${EVE_HOST}" "/usr/local/bin/clara mcp remove laptop >/dev/null 2>&1 || true; /usr/local/bin/clara mcp add laptop --url http://127.0.0.1:14444/mcp --description 'Sophia (MacBook Pro) VPN & Tmux Satellite'" || true
 
 echo "🎉 Sophia is now connected to Eve! Run 'sync' in Discord #agents to see #sophia-* channels."

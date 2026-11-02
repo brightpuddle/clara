@@ -8,8 +8,8 @@
 2. Evaluates smart **Trigger Rules** (nested boolean AST with `and`, `or`, `not`, dot-notation path extraction, regex, and comparison operators) to route events to external automation scripts.
 3. Coordinates **Schedule Triggers** (cron / intervals) and **Worker Triggers** (supervised long-running background processes with configurable restart policies).
 4. Supervises **External Scripts** (primarily TypeScript via Bun, alongside Python and shell binaries) in a "let it fail" process model, capturing stdout, stderr, execution durations, and exit codes into a local SQLite audit store.
-5. Hosts a full **Model Context Protocol (MCP)** tool server (via HTTP/SSE and internal registry) exposing built-in tools (filesystem, database, shell, search, chrome automation, macOS bridge) and native Go plugins (`hashicorp/go-plugin`), with auto-generated TypeScript definitions (`clara types gen`).
-6. Exposes a fast Unix-socket **CLI** and a modern browser-based **Web Management UI** (`/ui/` with React 19, TanStack Query, Radix UI & shadcn/ui, Tailwind CSS v4).
+5. Hosts a full **Model Context Protocol (MCP)** tool server (via Streamable HTTP, SSE, and internal registry) exposing built-in tools (filesystem, database, shell, search, chrome automation, macOS bridge) and native Go plugins (`hashicorp/go-plugin`), with auto-generated TypeScript definitions (`clara types gen`).
+6. Bridges seamlessly into **Discord** and **Webex** as primary bidirectional control planes, multiplexing tmux development sessions into dedicated Discord channels (`#eve-*`, `#sophia-*`) and supporting satellite node orchestration over SSH reverse tunnels.
 
 > **Exploratory Branch:** Zero backwards compatibility is required. Workflows and logic live in external scripts (e.g. TypeScript / Bun) calling MCP tools, while Clara itself focuses on robust supervision, routing, and tool hosting.
 
@@ -38,13 +38,13 @@ External Signals / Sensors
                             ▼
                ┌────────────────────────┐
                │    External Scripts    │
-               │  (Lua, Python, Shell)  │
+               │  (TypeScript via Bun)  │
                └────────────┬───────────┘
                             │ Calls MCP Tools (HTTP/SSE or IPC)
                             ▼
                ┌────────────────────────┐
                │    MCP Tool Server     │  (internal/server, internal/registry)
-               │ (Native & Plugin Tools)│
+               │ (Native & Satellite)   │
                └────────────────────────┘
 ```
 
@@ -56,12 +56,14 @@ External Signals / Sensors
 | **Rule Engine** | Smart search AST (`and`, `or`, `not`, dot-notation field lookups, ops) | `internal/trigger/rule.go` |
 | **Supervised Runner** | Subprocess execution, timeout management, stdout/stderr capture | `internal/trigger/runner.go` |
 | **Event Bus** | Central transport for CloudEvents fan-out | `internal/supervisor/event_bus.go` |
-| **Tool Registry & MCP** | Exposes native tools and plugins over MCP SSE and CLI | `internal/registry/`, `internal/server/` |
+| **Tool Registry & MCP** | Exposes native tools and satellite tools over MCP HTTP/SSE and CLI | `internal/registry/`, `internal/server/` |
 | **Audit Store** | SQLite database recording all script runs and tool calls | `internal/store/audit.go` |
-| **Web UI** | Browser management interface at `/ui/` | `internal/webui/` |
+| **Chat Router** | Unified Webex 1:1 Bot DM & Discord Multiplexer control plane | `~/.config/clara/scripts/assistant/chat_router.ts` |
+| **Satellite Setup** | Auto-connects MacBook (`sophia`) to Mac mini (`eve`) via reverse SSH | `scripts/setup_sophia.sh` |
 
 ### Removed Components
 
+- **Web UI & Frontend** — deleted (`internal/webui/`, `frontend/` removed in favor of Discord/Webex).
 - **Starlark interpreter** — deleted (`internal/interpreter/` is gone).
 - **YAML state machines & Actuators** — deleted. Workflows are external scripts.
 - **Bubbletea TUI & Chat REPL** — deleted (`internal/tui/`, `clara chat`, `clara dashboard` removed).
@@ -151,8 +153,7 @@ action:
 ## Build / Lint / Test Commands
 
 ```bash
-pnpm install        # install webui frontend dependencies
-make build          # build frontend assets and compile bin/clara
+make build          # compile bin/clara and integration plugins
 go build ./cmd/clara
 
 make test           # go test ./... -timeout 60s
@@ -164,6 +165,7 @@ make fmt            # golines -m 100 --base-formatter goimports -w ./...
 
 go mod tidy         # after adding/removing dependencies
 make install        # install as macOS LaunchAgent
+make install-clara  # fast install of Go binary & plugins only
 ```
 
 All committed code must pass `go vet ./...` and `staticcheck ./...` with no warnings or errors.
@@ -188,11 +190,8 @@ internal/
   trigger/          # Trigger Engine: rules AST, runner, trigger manager
   store/            # SQLite store (runs, tool audits, vec search)
   registry/         # Central tool registry with audit logging
-  server/           # HTTP & MCP SSE server
+  server/           # HTTP, Streamable HTTP & MCP SSE server
   supervisor/       # EventBus and CloudEvent core types
-  webui/            # Web Management UI (/ui/ and embedded SPA dist)
-frontend/           # React 19 SPA (TanStack Query, shadcn/ui, Tailwind CSS v4)
-    dist/           # Compiled Vite assets
   config/           # Config loader (~/.config/clara/config.yaml)
   ipc/              # Unix domain socket IPC protocol
   loghub/           # Central ring-buffer log hub
@@ -247,3 +246,20 @@ log.Info().Str("trigger_id", id).Str("event_type", ev.Type).Msg("trigger fired")
 
 - Use `github.com/sourcegraph/conc` for goroutine pools with panic recovery.
 - All long-running goroutines and processes must be bounded by a `context.Context`.
+
+---
+
+## Multi-Host Topology & Conversational Control Plane
+
+### Two-Computer Model
+- **`eve` (M4 Mac mini 64GB):** Always-on Coordinator Hub. Runs Webex/Discord bot connections, central triggers, audit log SQLite store, and manages local `tmux` sessions (`#eve-*`).
+- **`sophia` (M4 MacBook Pro 24GB):** VPN & Session Satellite. Connects to Cisco AnyConnect VPN. Reaches `eve` via an outbound reverse SSH tunnel (`ssh -NT -R 14444:127.0.0.1:4444 nathan@eve.brightpuddle.com`) managed by `com.brightpuddle.clara.vpn-tunnel.plist`.
+- **`laptop.*` MCP Namespace:** `eve` mounts `sophia` via Streamable HTTP (`http://127.0.0.1:14444/mcp`). All laptop capabilities (`tmux`, `shell`, `chrome_nathan`, `macos`, `zk`) appear under `laptop.*` with local precedence protection.
+
+### Discord Control Channels & Session Multiplexing
+- **`#agents`:** Primary command & orchestration hub (runs `status`, `sync`, `sessions`, `runs`, `triggers`, `spawn`).
+- **`#qa`:** Cisco engineering Q&A, bug scrubs, meeting action items, timesheets, and performance reviews.
+- **`#home`:** Personal notes, reminders, family calendar, and home automation.
+- **`#notify`:** Proactive notifications, mail/triage cards, and health alerts.
+- **`#eve-<name>` / `#sophia-<name>`:** Dedicated channels bound to active `tmux` sessions. Typing in these channels sends keystrokes directly to the terminal; `agy` sessions post turn completion responses via `~/.gemini/config/hooks.json` (`Stop` hook).
+

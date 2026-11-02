@@ -8,11 +8,11 @@ Clara is an efficient, Go-based supervisor and integration bridge. It acts as a 
 
 ## Core Philosophy
 
-- **External Scripting:** Automation logic lives in clean, external scripts (Lua, Python, Bash) rather than internal domain-specific languages. External scripts interact with Clara's tools via standard MCP interfaces or CLI commands.
+- **External Scripting:** Automation logic lives in clean, external scripts (TypeScript via Bun, Python, Bash) rather than internal domain-specific languages. External scripts interact with Clara's tools via standard MCP interfaces or CLI commands.
 - **Smart Rule Triggers:** Event-driven automations use a declarative boolean AST (supporting `and`, `or`, `not`, dot-notation path extraction, regex, and comparison operators) to route incoming CloudEvents to specific scripts.
 - **"Let It Fail" Supervision:** External processes are monitored with configurable timeouts, execution caps, and worker restart policies (`always`, `on_failure`, `never`).
 - **Complete Audit Trail:** Every script execution (stdout, stderr, exit codes, duration) and MCP tool call is recorded to a local SQLite store for instant inspection.
-- **Rich Observability:** Full browser-based Web Management UI (built with React 19, TanStack Query, shadcn/ui, Tailwind CSS v4) and a fast Unix-socket CLI.
+- **Conversational & Terminal Control Plane:** Native bidirectional integration with Discord and Webex replaces bulky web UIs. Multiplexes tmux development sessions into dedicated Discord channels (`#eve-*`, `#sophia-*`) and supports satellite worker nodes over reverse SSH tunnels.
 
 ---
 
@@ -39,13 +39,13 @@ External Signals / Sensors
                             ▼
                ┌────────────────────────┐
                │    External Scripts    │
-               │  (Lua, Python, Shell)  │
+               │  (TypeScript via Bun)  │
                └────────────┬───────────┘
                             │ Calls Tools
                             ▼
                ┌────────────────────────┐
                │    MCP Tool Server     │
-               │ (Native & Remote Tools)│
+               │ (Native & Satellite)   │
                └────────────────────────┘
 ```
 
@@ -58,14 +58,15 @@ External Signals / Sensors
   - **Schedule Triggers:** Standard 5/6-field cron expressions and intervals (e.g., `@every 5m`).
   - **Worker Triggers:** Supervised long-running background processes with automatic restart policies and backoff.
 - **MCP Tool Catalog & Server (`internal/server`, `internal/registry`):**
-  - Built-in MCP server (`/mcp/sse` and `/mcp/messages`) with HTTP bearer authentication.
+  - Built-in MCP server (`/mcp` Streamable HTTP, `/mcp/sse`, and `/mcp/messages`) with HTTP bearer authentication.
   - Native tools for filesystem, SQLite database queries, shell execution, web search, Chrome browser automation, and macOS native integrations.
   - Integration plugin discovery and loading via `hashicorp/go-plugin`.
   - Ambient TypeScript type stub generator (`clara types gen`) providing full autocomplete and compile-time verification for external scripts.
 - **Audit & Persistence (`internal/store`):**
   - SQLite backend recording all script runs, outputs, errors, durations, and tool invocation history.
-- **Web UI (`/ui/`):**
-  - Live dashboards for Triggers, Execution Runs, MCP Tools & Integrations, System Logs, and YAML Configuration.
+- **Multi-Host Topology:**
+  - **Coordinator Hub (`eve`):** M4 Mac mini (64GB) running central event bus, Discord/Webex bots, and trigger evaluations.
+  - **VPN Satellite (`sophia`):** M4 MacBook Pro (24GB) providing Cisco VPN access, mounted dynamically under the `laptop.*` MCP namespace via reverse SSH tunnels.
 - **Unix-Socket IPC CLI:**
   - Fast, responsive CLI interface communicating with the running daemon over domain sockets.
 
@@ -75,21 +76,17 @@ External Signals / Sensors
 
 ### Installation & Build
 
-Prerequisites: Go 1.24+, Node.js/pnpm, Bun (recommended for scripts).
+Prerequisites: Go 1.24+, Bun (for TypeScript scripts).
 
 ```bash
 # Clone the repository
 git clone https://github.com/brightpuddle/clara.git
-cd clara/agent
+cd clara
 
-# Install frontend dependencies and build
-pnpm install
+# Compile the core daemon and integration plugins
 make build
 
-# Generate TypeScript ambient type stubs for Clara MCP tools
-clara types gen
-
-# Optional: Install as a macOS LaunchAgent
+# Install as a macOS LaunchAgent
 make install
 ```
 
@@ -232,22 +229,16 @@ clara event logs -f                      # Stream live events from the bus
 
 ---
 
-## Web Management UI
+## Conversational Control Plane & Multiplexer
 
-When the HTTP server is enabled in `~/.config/clara/config.yaml`:
+Clara uses Discord and Webex as its primary control surfaces instead of a static web browser UI:
 
-```yaml
-server:
-  listen_addr: "127.0.0.1:3333"
-  shared_secret: "your-auth-token"
-```
-
-Access the UI at `http://127.0.0.1:3333/ui/`:
-- **/ui/triggers:** Inspect configured event rules, cron schedules, and worker statuses.
-- **/ui/runs:** Full history of script executions, exit codes, and output logs.
-- **/ui/integrations:** Overview of connected sensors, plugins, and MCP servers.
-- **/ui/logs:** Live streaming daemon log viewer.
-- **/ui/config:** In-browser structured and raw YAML configuration editor.
+- **Discord Guild Setup:**
+  - **`#agents`**: Central orchestration channel for checking `status`, `sync`, `sessions`, `runs`, `triggers`, and running `/code` tasks.
+  - **`#qa`**: Dedicated channel for Cisco engineering research, meeting transcripts, and weekly rituals (`timesheet`, `myperformance`).
+  - **`#home`**: Personal notes, Obsidian sync, reminders, and family life.
+  - **`#notify`**: Stream of automated triage alerts and digest cards.
+  - **`#eve-<name>` / `#sophia-<name>`**: Active `tmux` terminal channels created dynamically via `sync`. Type directly into Discord or dictate voice notes to send keystrokes to terminal agents.
 
 ---
 

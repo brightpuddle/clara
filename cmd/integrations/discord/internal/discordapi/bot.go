@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/rs/zerolog"
@@ -483,6 +484,58 @@ func (b *Bot) DeleteChannel(guildID, channelID, name string) (string, error) {
 		return "", err
 	}
 	return deleted.ID, nil
+}
+
+// React adds an emoji reaction to a message.
+func (b *Bot) React(channelID, messageID, emoji string) error {
+	return b.sess.MessageReactionAdd(channelID, messageID, emoji)
+}
+
+// RemoveReaction removes a specific emoji reaction added by the bot.
+func (b *Bot) RemoveReaction(channelID, messageID, emoji string) error {
+	return b.sess.MessageReactionRemove(channelID, messageID, emoji, "@me")
+}
+
+// Typing sends a typing indicator to a channel.
+func (b *Bot) Typing(channelID string) error {
+	return b.sess.ChannelTyping(channelID)
+}
+
+// MessageSummary is a lightweight representation of a channel message.
+type MessageSummary struct {
+	ID        string `json:"id"`
+	Author    string `json:"author"`
+	IsBot     bool   `json:"is_bot"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+// ListMessages retrieves recent messages from a channel.
+func (b *Bot) ListMessages(channelID string, limit int) ([]MessageSummary, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	msgs, err := b.sess.ChannelMessages(channelID, limit, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	var out []MessageSummary
+	for _, m := range msgs {
+		author := ""
+		isBot := false
+		if m.Author != nil {
+			author = m.Author.Username
+			isBot = m.Author.Bot
+		}
+		out = append(out, MessageSummary{
+			ID:        m.ID,
+			Author:    author,
+			IsBot:     isBot,
+			Content:   m.Content,
+			Timestamp: m.Timestamp.Format(time.RFC3339),
+		})
+	}
+	return out, nil
 }
 
 func nameOrDefault(s, def string) string {

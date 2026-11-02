@@ -136,6 +136,31 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithString("name", mcp.Description("Discord channel name to delete if channel_id is omitted.")),
 			mcp.WithString("guild_id", mcp.Description("Optional Discord server (guild) ID.")),
 		),
+		mcp.NewTool(
+			"message.react",
+			mcp.WithDescription("Add an emoji reaction to a Discord message."),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Target Discord channel ID.")),
+			mcp.WithString("message_id", mcp.Required(), mcp.Description("Target message ID.")),
+			mcp.WithString("emoji", mcp.Required(), mcp.Description("Emoji character or name.")),
+		),
+		mcp.NewTool(
+			"message.remove_reaction",
+			mcp.WithDescription("Remove an emoji reaction previously added by the bot."),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Target Discord channel ID.")),
+			mcp.WithString("message_id", mcp.Required(), mcp.Description("Target message ID.")),
+			mcp.WithString("emoji", mcp.Required(), mcp.Description("Emoji character or name.")),
+		),
+		mcp.NewTool(
+			"channel.typing",
+			mcp.WithDescription("Broadcast typing indicator in a Discord channel."),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Target Discord channel ID.")),
+		),
+		mcp.NewTool(
+			"messages.list",
+			mcp.WithDescription("Retrieve recent messages from a Discord channel."),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Target Discord channel ID.")),
+			mcp.WithNumber("limit", mcp.Description("Number of messages to retrieve (default 20, max 100).")),
+		),
 	}
 	return json.Marshal(tools)
 }
@@ -154,6 +179,14 @@ func (d *Discord) CallTool(name string, args []byte) ([]byte, error) {
 		return d.callChannelCreate(args)
 	case "channel.delete":
 		return d.callChannelDelete(args)
+	case "message.react":
+		return d.callMessageReact(args)
+	case "message.remove_reaction":
+		return d.callMessageRemoveReaction(args)
+	case "channel.typing":
+		return d.callChannelTyping(args)
+	case "messages.list":
+		return d.callMessagesList(args)
 	case "message_created":
 		return json.Marshal(map[string]string{"error": "message_created is an event source, not a callable tool"})
 	default:
@@ -329,6 +362,88 @@ func (d *Discord) callChannelDelete(args []byte) ([]byte, error) {
 		return nil, errors.Wrap(err, "discord channel.delete")
 	}
 	return json.Marshal(map[string]string{"deleted_channel_id": deletedID})
+}
+
+func (d *Discord) callMessageReact(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string `json:"channel_id"`
+		MessageID string `json:"message_id"`
+		Emoji     string `json:"emoji"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord message.react: unmarshal")
+	}
+	if a.ChannelID == "" || a.MessageID == "" || a.Emoji == "" {
+		return nil, errors.New("channel_id, message_id, and emoji are required")
+	}
+	if err := d.bot.React(a.ChannelID, a.MessageID, a.Emoji); err != nil {
+		return nil, errors.Wrap(err, "discord message.react")
+	}
+	return json.Marshal(map[string]bool{"ok": true})
+}
+
+func (d *Discord) callMessageRemoveReaction(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string `json:"channel_id"`
+		MessageID string `json:"message_id"`
+		Emoji     string `json:"emoji"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord message.remove_reaction: unmarshal")
+	}
+	if a.ChannelID == "" || a.MessageID == "" || a.Emoji == "" {
+		return nil, errors.New("channel_id, message_id, and emoji are required")
+	}
+	if err := d.bot.RemoveReaction(a.ChannelID, a.MessageID, a.Emoji); err != nil {
+		return nil, errors.Wrap(err, "discord message.remove_reaction")
+	}
+	return json.Marshal(map[string]bool{"ok": true})
+}
+
+func (d *Discord) callChannelTyping(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string `json:"channel_id"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord channel.typing: unmarshal")
+	}
+	if a.ChannelID == "" {
+		return nil, errors.New("channel_id is required")
+	}
+	if err := d.bot.Typing(a.ChannelID); err != nil {
+		return nil, errors.Wrap(err, "discord channel.typing")
+	}
+	return json.Marshal(map[string]bool{"ok": true})
+}
+
+func (d *Discord) callMessagesList(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string  `json:"channel_id"`
+		Limit     float64 `json:"limit"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord messages.list: unmarshal")
+	}
+	if a.ChannelID == "" {
+		return nil, errors.New("channel_id is required")
+	}
+	msgs, err := d.bot.ListMessages(a.ChannelID, int(a.Limit))
+	if err != nil {
+		return nil, errors.Wrap(err, "discord messages.list")
+	}
+	return json.Marshal(msgs)
 }
 
 func (d *Discord) StreamEvents() (<-chan contract.Event, error) {
