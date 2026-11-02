@@ -218,8 +218,27 @@ func (t *Tmux) CreateSession(name, command string) error {
 	return err
 }
 
+func (t *Tmux) findAgentTarget(name string) string {
+	// Query panes for this session to see if an agent (opencode, agy, python, node) is running in a pane
+	output, err := t.run(context.Background(), "list-panes", "-t", name, "-F", "#{pane_id}:#{pane_current_command}")
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(output), "\n")
+		// First preference: pane running opencode, agy, or antigravity
+		for _, line := range lines {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				cmd := strings.ToLower(parts[1])
+				if strings.Contains(cmd, "opencode") || strings.Contains(cmd, "agy") || strings.Contains(cmd, "antigravity") {
+					return parts[0] // e.g. %3
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("%s:0", name)
+}
+
 func (t *Tmux) CapturePane(name string, limit int) (string, error) {
-	target := fmt.Sprintf("%s:0", name)
+	target := t.findAgentTarget(name)
 	output, err := t.run(context.Background(), "capture-pane", "-p", "-t", target)
 	if err != nil {
 		return "", err
@@ -239,7 +258,7 @@ func (t *Tmux) KillSession(name string) error {
 }
 
 func (t *Tmux) SendKeys(name, text string, pressEnter bool, rawKey string) error {
-	target := fmt.Sprintf("%s:0", name)
+	target := t.findAgentTarget(name)
 	if rawKey != "" {
 		if _, err := t.run(context.Background(), "send-keys", "-t", target, rawKey); err != nil {
 			return err
