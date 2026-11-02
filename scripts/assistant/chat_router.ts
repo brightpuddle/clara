@@ -1276,21 +1276,74 @@ async function main() {
         await new Promise((r) => setTimeout(r, 2500));
       }
 
-      // Filter out old scrollback lines that were already on screen before the prompt
-      const afterLines = lastPane.split("\n");
-      let startIdx = 0;
-      const anchor = beforeLines.filter(Boolean).slice(-2)[0];
-      if (anchor) {
-        const foundIdx = afterLines.findLastIndex((l) => l.trim() === anchor);
-        if (foundIdx !== -1 && foundIdx + 1 < afterLines.length) {
-          startIdx = foundIdx + 1;
+      // Filter and clean the pane output based on whether this is an OpenCode TUI or standard shell
+      const isOpenCodeTUI =
+        lastPane.includes("ctrl+p commands") ||
+        lastPane.includes("GitHub Copilot") ||
+        lastPane.includes("╹▀▀▀") ||
+        lastPane.includes("Build · Claude");
+
+      let cleanedOutput = "";
+
+      if (isOpenCodeTUI) {
+        // In OpenCode TUI, the bottom status line is fixed. Strip the status bar and chrome borders.
+        let lines = lastPane.split("\n");
+        const borderIdx = lines.findLastIndex(
+          (l) =>
+            l.includes("╹▀▀▀") ||
+            l.includes("ctrl+p commands") ||
+            l.includes("Build · Claude")
+        );
+        if (borderIdx !== -1) {
+          lines = lines.slice(0, borderIdx);
         }
+        // Remove terminal scrollbar glyphs and clean lines
+        cleanedOutput = lines
+          .map((l) => l.replace(/[█▄▌▐│┃]/g, "").trimEnd())
+          .filter(Boolean)
+          .slice(-35)
+          .join("\n")
+          .trim();
+      } else {
+        // Standard shell / REPL: filter out lines that existed before the command
+        const afterLines = lastPane.split("\n");
+        let startIdx = 0;
+        const anchor = beforeLines.filter(Boolean).slice(-2)[0];
+        if (anchor) {
+          const foundIdx = afterLines.findLastIndex((l) => l.trim() === anchor);
+          if (foundIdx !== -1 && foundIdx + 1 < afterLines.length) {
+            startIdx = foundIdx + 1;
+          }
+        }
+        cleanedOutput = afterLines.slice(startIdx).join("\n").trim();
       }
-      const deltaOut = afterLines.slice(startIdx).join("\n").trim().slice(-1750);
+
+      // Resolve pending reactions (change ⏳ to ✅)
+      if (platform === "discord" && messageId && !messageId.startsWith("cli-")) {
+        try {
+          await callTool("discord.message.remove_reaction" as any, {
+            channel_id: targetId,
+            message_id: messageId,
+            emoji: "⏳",
+          });
+          await callTool("discord.message.react" as any, {
+            channel_id: targetId,
+            message_id: messageId,
+            emoji: "✅",
+          });
+          stateDb
+            .query(
+              "DELETE FROM pending_reactions WHERE channel_id = ? AND message_id = ?"
+            )
+            .run(targetId, messageId);
+        } catch {}
+      }
+
+      const finalOut = (cleanedOutput || lastPane.slice(-1000) || "(no output)").slice(-1800);
       await sendReply(
         platform,
         targetId,
-        `\`\`\`text\n${deltaOut || lastPane.slice(-1000) || "(no output)"}\n\`\`\``,
+        `\`\`\`text\n${finalOut}\n\`\`\``,
         isDryRun
       );
       return;
