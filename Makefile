@@ -142,7 +142,9 @@ install: build $(BRIDGE_APP_EXE) install-skills install-hooks
 	install -d "$(LAUNCH_AGENT_DIR)"
 	install -m 644 "$(LAUNCH_AGENT_FILE)" "$(LAUNCH_AGENT_PLIST)"
 	"$(INSTALL_BIN)" agent stop >/dev/null 2>&1 || true
-	"$(INSTALL_BIN)" agent start
+	# Restart agent via bootstrap/kickstart if loaded, or reload plist
+	launchctl load "$(LAUNCH_AGENT_PLIST)" >/dev/null 2>&1 || true
+	"$(INSTALL_BIN)" agent start >/dev/null 2>&1 || true
 
 ## install-clara: build and install only the Go clara agent, plugins, skills, schemas, and hooks
 install-clara: build install-skills install-hooks
@@ -160,7 +162,9 @@ install-clara: build install-skills install-hooks
 	install -d "$(LAUNCH_AGENT_DIR)"
 	install -m 644 "$(LAUNCH_AGENT_FILE)" "$(LAUNCH_AGENT_PLIST)"
 	"$(INSTALL_BIN)" agent stop >/dev/null 2>&1 || true
-	"$(INSTALL_BIN)" agent start
+	# Restart agent via bootstrap/kickstart if loaded, or reload plist
+	launchctl load "$(LAUNCH_AGENT_PLIST)" >/dev/null 2>&1 || true
+	"$(INSTALL_BIN)" agent start >/dev/null 2>&1 || true
 
 $(BRIDGE_APP_EXE): build/ClaraBridge.app/Contents/MacOS/ClaraBridge
 	rm -rf "$(BRIDGE_APP_DIR)"
