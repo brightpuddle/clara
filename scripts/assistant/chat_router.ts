@@ -367,8 +367,8 @@ async function syncDiscordSessionChannels(): Promise<string> {
     }
 
     // Backfill history idempotently (only once per channel, checking existing discord messages)
-    if (targetChannelId && info.host === "eve") {
-      await backfillChannelHistoryIfNew(targetChannelId, info.sessionName);
+    if (targetChannelId) {
+      await backfillChannelHistoryIfNew(targetChannelId, info.host, info.sessionName);
     }
   }
 
@@ -400,6 +400,7 @@ async function syncDiscordSessionChannels(): Promise<string> {
 
 async function backfillChannelHistoryIfNew(
   channelId: string,
+  host: "eve" | "sophia",
   sessionName: string
 ): Promise<void> {
   try {
@@ -423,51 +424,24 @@ async function backfillChannelHistoryIfNew(
       }
     } catch {}
 
-    // Find latest transcript.jsonl
-    const brainDir = join(HOME, ".gemini/antigravity-cli/brain");
-    if (!existsSync(brainDir)) return;
-
-    const entries = Bun.spawnSync(["ls", "-1td", `${brainDir}/*`]);
-    const dirs = entries.stdout.toString().trim().split("\n").filter(Boolean);
-    let targetTranscript = "";
-    for (const d of dirs.slice(0, 10)) {
-      const p = join(d, ".system_generated/logs/transcript.jsonl");
-      if (existsSync(p)) {
-        targetTranscript = p;
-        break;
+    // 1. Capture the agent pane output directly (works for both OpenCode and Agy, local or remote)
+    const captureTool = host === "sophia" ? "laptop.tmux.pane.capture" : "tmux.pane.capture";
+    try {
+      const cap = (await callTool(captureTool as any, {
+        name: sessionName,
+        limit: 35,
+      })) as any;
+      const text = String(cap?.content || "").trim();
+      if (text) {
+        const header = `📜 **--- Attached to Active Session (\`${host}:${sessionName}\`) Recent Output ---**\n\n`;
+        const codeBlock = `\`\`\`text\n${text.slice(-1700)}\n\`\`\``;
+        await callTool("discord.message.send" as any, {
+          channel_id: channelId,
+          content: (header + codeBlock).slice(0, 1900),
+        });
       }
-    }
-
-    if (!targetTranscript) return;
-
-    const lines = (await Bun.file(targetTranscript).text())
-      .trim()
-      .split("\n")
-      .filter(Boolean);
-
-    const turns: string[] = [];
-    for (let i = lines.length - 1; i >= 0 && turns.length < 4; i--) {
-      try {
-        const step = JSON.parse(lines[i]);
-        if (step.type === "USER_INPUT" && step.content) {
-          turns.unshift(`👤 **User:** ${String(step.content).trim().slice(0, 400)}`);
-        } else if (
-          step.type === "PLANNER_RESPONSE" &&
-          (!step.tool_calls || step.tool_calls.length === 0) &&
-          step.content
-        ) {
-          turns.unshift(`🤖 **Assistant:** ${String(step.content).trim().slice(0, 800)}`);
-        }
-      } catch {}
-    }
-
-    if (turns.length > 0) {
-      const header = `📜 **--- Attached to Active Session (\`${sessionName}\`) Recent Context ---**\n\n`;
-      const combined = header + turns.join("\n\n");
-      await callTool("discord.message.send" as any, {
-        channel_id: channelId,
-        content: combined.slice(0, 1900),
-      });
+    } catch (err: any) {
+      console.warn(`[chat_router] Could not capture initial pane for ${host}:${sessionName}: ${err.message}`);
     }
 
     stateDb
