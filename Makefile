@@ -1,4 +1,4 @@
-.PHONY: build test vet lint proto fmt bridge clean install install-clara install-skills uninstall sign-cert setup check-deps
+.PHONY: build test vet lint proto fmt bridge clean install install-clara install-skills install-hooks uninstall sign-cert setup check-deps
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
@@ -120,8 +120,12 @@ install-skills:
 		ln -s "$$(pwd)/$$skill" "$(HOME)/.agents/skills/$$name"; \
 	done
 
-## install: install clara, plugins, ClaraBridge, agent skills, schemas, and restart or start the LaunchAgent
-install: build $(BRIDGE_APP_EXE) install-skills
+## install-hooks: install assistant scripts and register Antigravity (agy) hooks
+install-hooks:
+	@./scripts/install_hooks.sh
+
+## install: install clara, plugins, ClaraBridge, agent skills, schemas, hooks, and restart or start the LaunchAgent
+install: build $(BRIDGE_APP_EXE) install-skills install-hooks
 	install -m 755 bin/clara "$(INSTALL_BIN)"
 	@if [ -d "$(HOME)/.go/bin" ]; then install -m 755 bin/clara "$(HOME)/.go/bin/clara"; codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(HOME)/.go/bin/clara"; fi
 	# Re-sign at destination to ensure the embedded Info.plist is valid
@@ -140,8 +144,8 @@ install: build $(BRIDGE_APP_EXE) install-skills
 	"$(INSTALL_BIN)" agent stop >/dev/null 2>&1 || true
 	"$(INSTALL_BIN)" agent start
 
-## install-clara: build and install only the Go clara agent, plugins, skills, and schemas
-install-clara: build install-skills
+## install-clara: build and install only the Go clara agent, plugins, skills, schemas, and hooks
+install-clara: build install-skills install-hooks
 	install -m 755 bin/clara "$(INSTALL_BIN)"
 	@if [ -d "$(HOME)/.go/bin" ]; then install -m 755 bin/clara "$(HOME)/.go/bin/clara"; codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(HOME)/.go/bin/clara"; fi
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" "$(INSTALL_BIN)"
