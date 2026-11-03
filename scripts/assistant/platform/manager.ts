@@ -99,11 +99,15 @@ export async function syncSessionChannels(
   const primaryAdapter = getPlatformAdapter(nextPrimary);
   const otherAdapter = getPlatformAdapter(nextPrimary === "webex" ? "discord" : "webex");
 
-  // If switching platforms, clean up all managed spaces on the inactive platform first
+  // Always clean up any managed spaces/channels lingering on the inactive platform
   let cleanedOther: string[] = [];
-  if (isSwitching) {
-    console.log(`[platform/manager] Switching primary agent platform: ${currentPrimary} -> ${nextPrimary}. Cleaning up ${otherAdapter.platform}...`);
+  try {
     cleanedOther = await otherAdapter.cleanupAllManagedChannels();
+    if (cleanedOther.length > 0) {
+      console.log(`[platform/manager] Cleaned up ${cleanedOther.length} lingering spaces from inactive platform (${otherAdapter.platform}).`);
+    }
+  } catch (err: any) {
+    console.warn(`[platform/manager] Failed to clean up inactive platform (${otherAdapter.platform}): ${err.message}`);
   }
 
   // Discover all running tmux sessions and panes across eve and sophia
