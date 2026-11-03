@@ -628,10 +628,18 @@ func (w *Webex) handleIncomingWebhook(headers map[string]string, body []byte) (i
 		return 200, []byte(""), nil
 	}
 
-	var msgText string
+	var msgText, msgMarkdown, msgHTML string
 	if w.user != nil {
 		if msg, err := w.user.GetMessage(payload.Data.ID); err == nil {
-			msgText = msg.Text
+			msgMarkdown = msg.Markdown
+			msgHTML = msg.Html
+			msgText = msg.Markdown
+			if msgText == "" && msg.Html != "" {
+				msgText = webexapi.HTMLToMarkdown(msg.Html)
+			}
+			if msgText == "" {
+				msgText = msg.Text
+			}
 		}
 	}
 
@@ -642,6 +650,8 @@ func (w *Webex) handleIncomingWebhook(headers map[string]string, body []byte) (i
 		"person_email": payload.Data.PersonEmail,
 		"person_id":    payload.Data.PersonID,
 		"text":         msgText,
+		"markdown":     msgMarkdown,
+		"html":         msgHTML,
 		"created":      payload.Data.Created,
 	})
 	w.router.Publish(webexapi.Event{Type: "message_created", Data: evData})

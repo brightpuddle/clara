@@ -276,13 +276,23 @@ func (im *IngestManager) handleRawWSMessage(msg []byte) {
 				return
 			}
 
+			text := msgDetails.Markdown
+			if text == "" && msgDetails.Html != "" {
+				text = HTMLToMarkdown(msgDetails.Html)
+			}
+			if text == "" {
+				text = msgDetails.Text
+			}
+
 			evData, _ := json.Marshal(map[string]string{
 				"message_id":   msgDetails.ID,
 				"room_id":      msgDetails.RoomID,
 				"room_type":    msgDetails.RoomType,
 				"person_email": msgDetails.PersonEmail,
 				"person_id":    msgDetails.PersonID,
-				"text":         msgDetails.Text,
+				"text":         text,
+				"markdown":     msgDetails.Markdown,
+				"html":         msgDetails.Html,
 				"created":      msgDetails.Created,
 			})
 			im.router.Publish(Event{Type: "message_created", Data: evData})
@@ -354,13 +364,23 @@ func (im *IngestManager) pollOnce(seedOnly bool) {
 				continue
 			}
 
+			text := msg.Markdown
+			if text == "" && msg.Html != "" {
+				text = HTMLToMarkdown(msg.Html)
+			}
+			if text == "" {
+				text = msg.Text
+			}
+
 			evData, _ := json.Marshal(map[string]string{
 				"message_id":   msg.ID,
 				"room_id":      msg.RoomID,
 				"room_type":    msg.RoomType,
 				"person_email": msg.PersonEmail,
 				"person_id":    msg.PersonID,
-				"text":         msg.Text,
+				"text":         text,
+				"markdown":     msg.Markdown,
+				"html":         msg.Html,
 				"created":      msg.Created,
 			})
 			im.router.Publish(Event{Type: "message_created", Data: evData})

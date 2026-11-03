@@ -1110,13 +1110,29 @@ async function main() {
       let isAgySession = false;
       if (host === "eve") {
         try {
+          const [sName, pIdx] = sessionName.split(":");
+          const target = `${sName}:`;
           const proc = Bun.spawn(
-            ["/opt/homebrew/bin/tmux", "list-panes", "-t", sessionName, "-F", "#{pane_current_command}"],
+            [
+              "/opt/homebrew/bin/tmux",
+              "list-panes",
+              "-s",
+              "-t",
+              target,
+              "-F",
+              "#{pane_index}|#{pane_current_command}",
+            ],
             { stdout: "pipe", stderr: "pipe" }
           );
-          const cmds = (await new Response(proc.stdout).text()).toLowerCase();
-          if (cmds.includes("agy") || cmds.includes("antigravity")) {
-            isAgySession = true;
+          const out = (await new Response(proc.stdout).text()).trim();
+          for (const line of out.split("\n")) {
+            const [idx, cmd] = line.split("|");
+            if (pIdx !== undefined && idx !== pIdx) continue;
+            const c = (cmd || "").toLowerCase();
+            if (c.includes("agy") || c.includes("antigravity")) {
+              isAgySession = true;
+              break;
+            }
           }
         } catch {}
       }

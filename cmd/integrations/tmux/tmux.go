@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/brightpuddle/clara/pkg/contract"
 	"github.com/cockroachdb/errors"
@@ -219,22 +220,59 @@ func (t *Tmux) CreateSession(name, command string) error {
 }
 
 func (t *Tmux) findAgentTarget(name string) string {
-	// Query panes for this session to see if an agent (opencode, agy, python, node) is running in a pane
-	output, err := t.run(context.Background(), "list-panes", "-t", name, "-F", "#{pane_id}:#{pane_current_command}")
+	targetSession := name
+	targetPaneIdx := ""
+	if strings.Contains(name, ":") {
+		parts := strings.SplitN(name, ":", 2)
+		targetSession = parts[0]
+		targetPaneIdx = parts[1]
+	}
+
+	// Always append colon to session name so tmux resolves it as exact session name,
+	// preventing purely numeric session names like "0" from matching active session window 0.
+	tmuxTarget := targetSession
+	if !strings.HasSuffix(tmuxTarget, ":") {
+		tmuxTarget += ":"
+	}
+
+	// Query panes across all windows of this session: pane_id, pane_index, pane_current_command
+	output, err := t.run(
+		context.Background(),
+		"list-panes",
+		"-s",
+		"-t",
+		tmuxTarget,
+		"-F",
+		"#{pane_id}:#{pane_index}:#{pane_current_command}",
+	)
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(output), "\n")
-		// First preference: pane running opencode, agy, or antigravity
+		// If a specific pane index was requested (e.g. "clara:0" -> targetPaneIdx="0")
+		if targetPaneIdx != "" {
+			for _, line := range lines {
+				parts := strings.SplitN(line, ":", 3)
+				if len(parts) >= 2 && parts[1] == targetPaneIdx {
+					return parts[0] // Return direct pane ID (%44)
+				}
+			}
+		}
+
+		// First preference: pane running an agent CLI
 		for _, line := range lines {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				cmd := strings.ToLower(parts[1])
-				if strings.Contains(cmd, "opencode") || strings.Contains(cmd, "agy") || strings.Contains(cmd, "antigravity") {
+			parts := strings.SplitN(line, ":", 3)
+			if len(parts) == 3 {
+				cmd := strings.ToLower(parts[2])
+				if strings.Contains(cmd, "opencode") || strings.Contains(cmd, "agy") ||
+					strings.Contains(cmd, "antigravity") {
 					return parts[0] // e.g. %3
 				}
 			}
 		}
 	}
-	return fmt.Sprintf("%s:0", name)
+	if targetPaneIdx != "" {
+		return fmt.Sprintf("%s:%s", targetSession, targetPaneIdx)
+	}
+	return fmt.Sprintf("%s:0", targetSession)
 }
 
 func (t *Tmux) CapturePane(name string, limit int) (string, error) {
@@ -265,8 +303,21 @@ func (t *Tmux) SendKeys(name, text string, pressEnter bool, rawKey string) error
 		}
 	}
 	if text != "" {
-		if _, err := t.run(context.Background(), "send-keys", "-t", target, "-l", text); err != nil {
-			return err
+		if strings.Contains(text, "\n") {
+			// Multiline text: use bracketed paste via a temporary buffer so lines,
+			// list numbering, and whitespace are preserved intact rather than being
+			// interpreted as consecutive premature Enter keystrokes by interactive CLIs.
+			bufName := fmt.Sprintf("clara_paste_%d", time.Now().UnixNano())
+			if _, err := t.run(context.Background(), "set-buffer", "-b", bufName, "--", text); err != nil {
+				return err
+			}
+			if _, err := t.run(context.Background(), "paste-buffer", "-b", bufName, "-t", target, "-p", "-d"); err != nil {
+				return err
+			}
+		} else {
+			if _, err := t.run(context.Background(), "send-keys", "-t", target, "-l", text); err != nil {
+				return err
+			}
 		}
 		if pressEnter {
 			if _, err := t.run(context.Background(), "send-keys", "-t", target, "Enter"); err != nil {

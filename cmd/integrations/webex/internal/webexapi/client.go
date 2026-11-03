@@ -27,6 +27,8 @@ type Message struct {
 	RoomID      string `json:"roomId"`
 	RoomType    string `json:"roomType"`
 	Text        string `json:"text"`
+	Markdown    string `json:"markdown"`
+	Html        string `json:"html"`
 	PersonEmail string `json:"personEmail"`
 	PersonID    string `json:"personId"`
 	Created     string `json:"created"`

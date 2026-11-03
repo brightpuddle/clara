@@ -48,14 +48,48 @@ async function main() {
     const transcriptPath = String(payload.transcriptPath || "");
     const conversationId = String(payload.conversationId || "unknown");
 
-    // Detect current tmux session name if running inside tmux
+    // Detect current tmux session name and pane index if running inside tmux
     let tmuxSession = "";
     if (process.env.TMUX) {
-      const proc = Bun.spawn(["/opt/homebrew/bin/tmux", "display-message", "-p", "#S"], {
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      tmuxSession = (await new Response(proc.stdout).text()).trim();
+      try {
+        const proc = Bun.spawn(
+          ["/opt/homebrew/bin/tmux", "display-message", "-p", "#{session_name}|#{pane_index}"],
+          { stdout: "pipe", stderr: "pipe" }
+        );
+        const out = (await new Response(proc.stdout).text()).trim();
+        const [sName, pIdx] = out.split("|");
+
+        if (sName) {
+          // Check if session has multiple agent panes running
+          const procList = Bun.spawn(
+            [
+              "/opt/homebrew/bin/tmux",
+              "list-panes",
+              "-s",
+              "-t",
+              `${sName}:`,
+              "-F",
+              "#{pane_id}|#{pane_index}|#{pane_current_command}",
+            ],
+            { stdout: "pipe", stderr: "pipe" }
+          );
+          const listText = (await new Response(procList.stdout).text()).trim();
+          const agentPanes: string[] = [];
+          for (const line of listText.split("\n")) {
+            if (!line.trim()) continue;
+            const [_pid, idx, cmd] = line.split("|");
+            const c = (cmd || "").toLowerCase();
+            if (c.includes("agy") || c.includes("antigravity") || c.includes("opencode")) {
+              agentPanes.push(idx);
+            }
+          }
+          if (agentPanes.length > 1 && pIdx !== undefined) {
+            tmuxSession = `${sName}:${pIdx}`;
+          } else {
+            tmuxSession = sName;
+          }
+        }
+      } catch {}
     }
 
     if (!tmuxSession) {
