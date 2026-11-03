@@ -167,6 +167,11 @@ func (w *Webex) Tools() ([]byte, error) {
 			mcp.WithString("title", mcp.Description("Webex room title to delete if room_id is omitted.")),
 		),
 		mcp.NewTool(
+			"message.delete",
+			mcp.WithDescription("Delete a message in a Webex space by ID."),
+			mcp.WithString("message_id", mcp.Required(), mcp.Description("Webex message ID to delete.")),
+		),
+		mcp.NewTool(
 			"membership.create",
 			mcp.WithDescription("Add a person or bot to a Webex space."),
 			mcp.WithString("room_id", mcp.Required(), mcp.Description("Target Webex room ID.")),
@@ -187,6 +192,8 @@ func (w *Webex) CallTool(name string, args []byte) ([]byte, error) {
 		return w.callRoomDelete(args)
 	case "membership.create":
 		return w.callMembershipCreate(args)
+	case "message.delete":
+		return w.callMessageDelete(args)
 	case "messages.list":
 		return w.callMessagesList(args)
 	case "message.get":
@@ -295,6 +302,31 @@ func (w *Webex) callRoomDelete(args []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(map[string]any{"deleted": true, "room_id": targetID})
+}
+
+func (w *Webex) callMessageDelete(args []byte) ([]byte, error) {
+	var a struct {
+		MessageID string `json:"message_id"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "unmarshal args")
+	}
+	if a.MessageID == "" {
+		return nil, errors.New("message_id required")
+	}
+
+	// Try bot first, fallback to user
+	var err error
+	if w.bot != nil {
+		err = w.bot.DeleteMessage(a.MessageID)
+	}
+	if err != nil && w.user != nil {
+		err = w.user.DeleteMessage(a.MessageID)
+	}
+	if err != nil {
+		return nil, errors.Wrap(err, "delete message")
+	}
+	return json.Marshal(map[string]bool{"ok": true})
 }
 
 func (w *Webex) callMembershipCreate(args []byte) ([]byte, error) {

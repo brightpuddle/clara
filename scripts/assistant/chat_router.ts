@@ -1085,13 +1085,16 @@ async function main() {
       // Add instant visibility: reaction + typing indicator
       if (messageId && !messageId.startsWith("cli-")) {
         try {
-          await adapter.addReaction(targetId, messageId, "⏳");
+          const indicatorId = await adapter.addReaction(targetId, messageId, "⏳");
           await adapter.sendTyping(targetId);
+          // For Discord, indicatorId is undefined so we track messageId.
+          // For Webex, indicatorId is the temporary "Thinking..." message ID to delete.
+          const trackingId = (typeof indicatorId === "string" && indicatorId) ? indicatorId : messageId;
           stateDb
             .query(
               "INSERT OR REPLACE INTO pending_reactions (channel_id, message_id, session_name, created_at) VALUES (?, ?, ?, ?)"
             )
-            .run(targetId, messageId, sessionName, Date.now());
+            .run(targetId, trackingId, sessionName, Date.now());
         } catch {}
       }
 

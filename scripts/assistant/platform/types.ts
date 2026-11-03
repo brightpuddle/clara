@@ -55,8 +55,9 @@ export interface ChatPlatformAdapter {
 
   /**
    * Add a pending or status reaction/indicator.
+   * Returns an optional tracking ID (e.g. for platforms where the indicator is a temporary message).
    */
-  addReaction(channelId: string, messageId: string, emoji: string): Promise<void>;
+  addReaction(channelId: string, messageId: string, emoji: string): Promise<string | void>;
 
   /**
    * Remove a reaction/indicator.

@@ -117,16 +117,30 @@ export class WebexAdapter implements ChatPlatformAdapter {
     return lastMsgId;
   }
 
-  async addReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
-    // Webex Reactions on bot messages aren't always surfaced cleanly via API,
-    // but no-op gracefully without throwing.
+  async addReaction(channelId: string, messageId: string, emoji: string): Promise<string | void> {
+    // Webex doesn't support bot reactions, so post an immediate waiting indicator message
+    try {
+      const res = (await callTool("webex.notification.send" as any, {
+        room_id: channelId,
+        text: `${emoji} Thinking...`,
+        markdown: `${emoji} *Thinking...*`,
+      })) as any;
+      if (res?.message_id) {
+        return String(res.message_id);
+      }
+    } catch {}
   }
 
   async removeReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
-    // No-op for Webex
+    // Delete the temporary waiting indicator message
+    try {
+      await callTool("webex.message.delete" as any, {
+        message_id: messageId,
+      });
+    } catch {}
   }
 
   async sendTyping(channelId: string): Promise<void> {
-    // No-op for Webex
+    // Webex Messaging API has no typing indicator endpoint
   }
 }
