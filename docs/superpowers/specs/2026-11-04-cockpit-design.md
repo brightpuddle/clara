@@ -120,8 +120,7 @@ badges on the others.
 `spawn`, `send`, `interrupt`, `status`, `events`. Per agent:
 
 - **opencode:** HTTP client of the v2 background service (see spike doc).
-  prompts). Desktop access to the TUI via `opencode attach`. To be verified in
-  the spike.
+  Sessions already live in the service; the TUI is just another client.
 - **agy:** hooks plus JSONL transcripts for output; tmux `send-keys` for input.
   Turn-based events; mid-turn streaming and question detection are unknown.
 
