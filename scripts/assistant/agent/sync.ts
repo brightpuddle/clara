@@ -42,6 +42,7 @@ export function planSync(sessions: SessionInfo[], channels: AgentChannel[]): Syn
 
 /** A readable, mostly-unique channel name for a session. */
 export function sessionLabel(s: SessionInfo): string {
-  const base = (s.title?.trim() || basename(s.dir) || s.agent).slice(0, 40).trim();
-  return `${base}-${s.id.slice(-4).toLowerCase()}`;
+  const title = s.title?.trim().slice(0, 40).trim();
+  if (title) return title;
+  return `${basename(s.dir) || s.agent}-${s.id.slice(-4).toLowerCase()}`;
 }

@@ -62,6 +62,7 @@ type SessionCreate struct {
 	Model  string      `json:"model,omitempty"`
 	Kind   SessionKind `json:"kind"`
 	Prompt string      `json:"prompt,omitempty"`
+	Title  string      `json:"title,omitempty"`
 }
 
 type SessionClose struct {

@@ -523,6 +523,7 @@ async function listAgentSessions(): Promise<SessionInfo[]> {
 
 async function syncAgentSessions(): Promise<string> {
   const primary = getPrimaryAdapter();
+  const other = getPlatformAdapter(primary.platform === "webex" ? "discord" : "webex");
   const sessions = await listAgentSessions();
   const plan = planSync(sessions, await primary.listAgentChannels());
   const lines: string[] = [];
@@ -538,6 +539,17 @@ async function syncAgentSessions(): Promise<string> {
       lines.push(`- Failed to remove **${ch.name}**: ${err.message}`);
     }
   }
+  // Agent channels left on the inactive platform move to the primary one.
+  try {
+    for (const ch of await other.listAgentChannels()) {
+      try {
+        await other.deleteChannel(ch.id);
+        lines.push(`- Removed **${ch.name}** from ${other.platform} (inactive platform)`);
+      } catch (err: any) {
+        lines.push(`- Failed to remove **${ch.name}** from ${other.platform}: ${err.message}`);
+      }
+    }
+  } catch {}
   return [
     `### Managed agent sessions`,
     `${plan.keep.length + plan.create.length} live, ${plan.create.length} created, ${plan.remove.length} removed.`,
@@ -1438,7 +1450,13 @@ async function main() {
           isDryRun
         );
         const out = await syncSessionChannels(targetPlat as PlatformType, backfillChannelHistoryIfNew);
-        await sendReply(platform, targetId, out, isDryRun);
+        let agentOut = "";
+        try {
+          agentOut = await syncAgentSessions();
+        } catch (err: any) {
+          agentOut = `⚠️ Agent session sync failed: ${err.message}`;
+        }
+        await sendReply(platform, targetId, `${agentOut}\n\n${out}`, isDryRun);
         return;
       }
       const cur = getPrimaryPlatform();
@@ -1510,7 +1528,7 @@ async function main() {
         const opts = parts.slice(2);
         const model = opts.find((o) => o.startsWith("model="))?.slice(6);
         const dir = opts.find((o) => !o.startsWith("model=")) || join(HOME, ".config/clara");
-        const created = (await callTool("agent.session.create" as any, { agent, dir, model })) as any;
+        const created = (await callTool("agent.session.create" as any, { agent, dir, model, title: rawName })) as any;
         const sessionId = String(created?.session || "");
         const primary = getPrimaryAdapter();
         const ch = await primary.ensureAgentChannel(

@@ -12,6 +12,6 @@ test("creates missing, removes closed and unknown, keeps live", () => {
 });
 
 test("label uses title or dir plus id suffix", () => {
-  expect(sessionLabel({ ...s("01ABCDWXYZ"), title: "Fix bug" })).toBe("Fix bug-wxyz");
+  expect(sessionLabel({ ...s("01ABCDWXYZ"), title: "Fix bug" })).toBe("Fix bug");
   expect(sessionLabel(s("01ABCDWXYZ"))).toBe("proj-wxyz");
 });

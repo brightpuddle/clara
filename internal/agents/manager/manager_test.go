@@ -164,3 +164,27 @@ func TestDiscover(t *testing.T) {
 		t.Fatalf("discover = %+v %v", got, err)
 	}
 }
+
+func TestCreateKeepsTitleAndDefaultModel(t *testing.T) {
+	db, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	fa := &fakeAdapter{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m, err := manager.New(ctx, "eve", db.DB(), map[string]adapter.Adapter{"fake": fa}, zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.SetDefaultModels(map[string]string{"fake": "m-default"})
+	id, err := m.Create(ctx, agents.SessionCreate{Agent: "fake", Dir: "/tmp", Title: "test-session"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, _ := m.Get(id)
+	if s.Title != "test-session" || s.Model != "m-default" {
+		t.Fatalf("title=%q model=%q", s.Title, s.Model)
+	}
+}

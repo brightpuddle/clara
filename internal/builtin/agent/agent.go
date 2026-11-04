@@ -90,6 +90,7 @@ func Register(
 		mcp.WithString("model", str("Model override.")...),
 		mcp.WithString("kind", str("longlived (default) or task.")...),
 		mcp.WithString("prompt", str("Optional first prompt.")...),
+		mcp.WithString("title", str("Display name; the agent may replace it later.")...),
 	)
 	add("agent.session.list", "List sessions with their state.", s.list)
 	add("agent.session.get", "Get one session with its queued prompts.", s.get,
@@ -174,6 +175,7 @@ func (s *service) create(ctx context.Context, args map[string]any) (any, error) 
 	id, err := s.mgr.Create(ctx, agents.SessionCreate{
 		Host: s.mgr.Host(), Agent: agent, Dir: dir, Model: argStr(args, "model"),
 		Kind: agents.SessionKind(argStr(args, "kind")), Prompt: argStr(args, "prompt"),
+		Title: argStr(args, "title"),
 	})
 	if err != nil {
 		return nil, err

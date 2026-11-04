@@ -143,7 +143,7 @@ func (m *Manager) Create(ctx context.Context, req agents.SessionCreate) (string,
 		model = m.defaults[req.Agent]
 		m.mu.Unlock()
 	}
-	return m.open(ctx, ad, adapter.OpenSpec{Dir: req.Dir, Model: model}, kind, req.Prompt)
+	return m.open(ctx, ad, adapter.OpenSpec{Dir: req.Dir, Model: model}, kind, req.Prompt, req.Title)
 }
 
 // Resume adopts an existing native conversation as a managed session.
@@ -160,13 +160,15 @@ func (m *Manager) Resume(ctx context.Context, req agents.SessionResume) (string,
 			}
 		}
 	}
-	return m.open(ctx, ad, spec, agents.KindLongLived, "")
+	return m.open(ctx, ad, spec, agents.KindLongLived, "", "")
 }
 
 func (m *Manager) open(
-	ctx context.Context, ad adapter.Adapter, spec adapter.OpenSpec, kind agents.SessionKind, prompt string,
+	ctx context.Context, ad adapter.Adapter, spec adapter.OpenSpec, kind agents.SessionKind, prompt, title string,
 ) (string, error) {
-	cfg := runner.Config{Agent: ad, Spec: spec, Kind: kind, Options: m.opts, Log: m.log}
+	cfg := runner.Config{
+		Agent: ad, Spec: spec, Kind: kind, Title: title, Options: m.opts, Log: m.log,
+	}
 	r, err := runner.Start(m.ctx, m.j, cfg)
 	if err != nil {
 		return "", err
