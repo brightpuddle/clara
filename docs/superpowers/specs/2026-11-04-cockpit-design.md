@@ -1,7 +1,25 @@
 # Clara Cockpit Design
 
-Status: draft (exploratory, pre-spike). Terms are defined in `docs/GLOSSARY.md`.
-Decisions are recorded in `docs/adr/`.
+Status: draft, spikes complete. Terms are defined in `docs/GLOSSARY.md`.
+Decisions are recorded in `docs/adr/`. The phased plan is
+`docs/superpowers/plans/2026-11-04-agent-core-and-cockpit.md`.
+
+## 0. Staging: core first
+
+The work splits into a **core** and **clients**, delivered in this order:
+
+1. **Agent core** (Stage 1): ACP adapters, session runner, prompt queue, event
+   log, `agent.*` MCP tools and CloudEvents, and a `clara agent` CLI. This is a
+   standalone Clara capability. It replaces the tmux scraping behind the current
+   Discord/Webex path and is merged to `main` on its own, so it gets validated in
+   daily use before any new client exists.
+2. **Federation** (Stage 2): Eve aggregates Sophia's log.
+3. **Client API and push** (Stage 3), **iOS app** (Stage 4), **macOS app and
+   Discord retirement** (Stage 5).
+
+Everything below describes the full target. Stage 1 must not depend on anything
+past it, and must not make later stages harder (schema and event envelope are
+designed for the hub from the start).
 
 ## 1. Vision
 
@@ -134,7 +152,7 @@ turn), `done`, `failed`, `blocked` (quota/limits). Notifications carry the quest
 ### 3.5 Clients
 
 Native SwiftUI, shared package, iOS target first, then macOS. Located in
-`swift/Cockpit/` in this repo. Requires Apple Developer Program ($99/yr) for
+`swift/Cockpit/` in this repo (Stage 4). Requires Apple Developer Program ($99/yr) for
 APNs, time-sensitive notifications and TestFlight. Dictation via system
 keyboard first, then `SpeechAnalyzer`; Live Activities and App Intents later.
 
@@ -154,11 +172,8 @@ keyboard first, then `SpeechAnalyzer`; Live Activities and App Intents later.
 
 ## 5. Sequence
 
-1. Spike: opencode server API and agy hook behaviour (throwaway scripts).
-2. Go cockpit service: schema, SQLite log, sync API, replay/tail CLI, opencode
-   adapter, agy hook ingestion.
-3. Host federation (Sophia to Eve).
-4. iOS app: inbox, thread view with markdown, composer with dictation, APNs.
-5. macOS target.
-6. Run alongside Discord, then retire Discord for agent sessions.
-7. Extras: Live Activities, hands-free voice, App Intents, terminal fallback.
+See the plan file for tasks. In short: spikes (done), Stage 1 agent core merged
+to main with Discord/Webex as the first client, Stage 2 federation, Stage 3
+client API and APNs, Stage 4 iOS, Stage 5 macOS and Discord retirement,
+Stage 6 extras (Live Activities, voice, native opencode adapter, observed
+sessions, terminal fallback).

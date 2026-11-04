@@ -71,3 +71,8 @@ Observed: a hand-started terminal agent seen only through hooks.
 **Quirk** — A small per-agent behaviour override in the ACP adapter (model
 selection, quota detection, early prompt responses).
 
+**Agent core** — The `internal/agents` package and `agent` builtin: adapters,
+session runner, prompt queue, host log, MCP tools and CloudEvents. A standalone
+Clara capability; Stage 1 of the Cockpit work, merged to `main` before any
+client exists.
+

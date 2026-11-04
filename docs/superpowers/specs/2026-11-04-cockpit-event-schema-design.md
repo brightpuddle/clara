@@ -4,6 +4,32 @@ Status: draft. Builds on `2026-11-04-cockpit-design.md` and the evidence in
 `2026-11-04-opencode-v2-spike.md`. Terms are in `docs/GLOSSARY.md`; decisions
 are ADRs 0001 to 0005.
 
+## 0. Layering and Clara integration
+
+Two layers, delivered in this order:
+
+- **Agent core** (Stage 1, package `internal/agents`): adapters, `SessionRunner`,
+  host log, and the Clara-facing surface. This is host mode only and has no
+  client API.
+- **Hub and client API** (Stages 2 and 3): aggregation across hosts, `/v1`
+  endpoints, devices, APNs.
+
+The core plugs into Clara the way existing capabilities do:
+
+- A builtin `internal/builtin/agent` registers MCP tools in an `agent` namespace
+  (`agent.session.create/list/get/close/resume/discover`, `agent.prompt.send`,
+  `agent.prompt.cancel`, `agent.turn.interrupt`, `agent.events.read`).
+- Logged events are also published to the event bus as CloudEvents
+  (`agent.session.created`, `agent.message`, `agent.turn.started`,
+  `agent.turn.ended`, `agent.attention.requested`, `agent.session.status`,
+  and so on; data = the event payload plus `host`, `session`, `host_seq`).
+- The bus is volatile fan-out. The log is the durable record. Consumers (the TS
+  chat router, later the hub) catch up with `agent.events.read(after=host_seq)`.
+- On a satellite the same tools appear as `laptop.agent.*` through the existing
+  remote MCP mechanism, so the Stage 2 puller needs no new transport.
+- A `clara agent` CLI (list, new, send, tail, cancel) drives the core without
+  any chat client, for development and validation.
+
 ## 1. Shape of the system
 
 Every host that runs agents runs the same Cockpit core in **host mode**:
@@ -132,12 +158,13 @@ remembers results for a retention window) and a device id.
   including `message.delta`.
 - `POST /v1/commands` takes a command envelope, returns the result.
 
-Host-mode endpoints (pulled by the hub over the tunnel) mirror this with
-`host_seq`.
+Host mode is pulled by the hub through the `agent.events.read` tool over the
+existing tunnel (Stage 2), with `host_seq` as cursor. A dedicated host HTTP
+endpoint is optional later.
 
 ## 7. Adapter interface
 
-Go sketch, in `internal/cockpit/adapter`:
+Go sketch, in `internal/agents/adapter`:
 
 ```go
 // Adapter creates and discovers agent sessions for one agent type on one host.
@@ -212,8 +239,11 @@ initially (single user); blobs pruned by age.
 
 ## 9. Open items
 
-- Federation auth between hub and host agent (shared secret as in `server.shared_secret`).
-- Whether Sophia reaches Eve for anything besides being pulled (probably no).
+- Federation auth: reuses the existing MCP shared secret.
+- How the TS router maps a chat channel to a managed session (channel topic
+  `agent:<host>:<session>`), and per-channel opt-in to the new path during
+  cutover.
+- Coexistence with hand-started tmux agents (observed sessions) during cutover.
 - Quick-reply parsing rules; start with `[n]` and `n.` lists.
 - opencode native adapter (forms, durable log) as a later optimisation (ADR 0005).
 - agy background-command behaviour (spike doc) and the `terminal` client capability.

@@ -263,3 +263,36 @@ log.Info().Str("trigger_id", id).Str("event_type", ev.Type).Msg("trigger fired")
 - **`#notify`:** Proactive notifications, mail/triage cards, and health alerts.
 - **`#eve-<name>` / `#sophia-<name>`:** Dedicated channels bound to active `tmux` sessions. Typing in these channels sends keystrokes directly to the terminal; `agy` sessions post turn completion responses via `~/.gemini/config/hooks.json` (`Stop` hook).
 
+
+---
+
+## Agent Management Core (in development)
+
+Clara is gaining a first-class agent management core (`internal/agents`, builtin
+`agent` tools, `agent.*` CloudEvents) that drives agents such as `agy` and
+`opencode` over ACP, replacing tmux scraping. It is the foundation for a future
+iPhone/Mac client. Read these before touching it:
+
+- Design: `docs/superpowers/specs/2026-11-04-cockpit-design.md`
+- Schema and adapter interface: `docs/superpowers/specs/2026-11-04-cockpit-event-schema-design.md`
+- Evidence from spikes: `docs/superpowers/specs/2026-11-04-opencode-v2-spike.md`
+- Plan and task status: `docs/superpowers/plans/2026-11-04-agent-core-and-cockpit.md`
+- Decisions: `docs/adr/`; vocabulary: `docs/GLOSSARY.md`
+
+---
+
+## Development Process (any agent or human)
+
+1. Read this file, `docs/GLOSSARY.md`, and the relevant plan before starting.
+2. The plan file is the source of truth for task status. Mark a task `[~]` when
+   you start and `[x]` with the short commit SHA when done.
+3. Write tests first (red, green, refactor). Prefer fixture-driven tests for
+   protocol code; recordings live in `testdata/`. Tests that need a real agent
+   or network are opt-in (build tag `integration`) and must use cheap models.
+4. Run `make test` (and lint) before each commit; use `CI=true` for watch-mode
+   tools.
+5. Commit small, with conventional messages (`feat(agents): ...`).
+6. Record significant decisions as a new ADR in `docs/adr/` before implementing
+   a deviation. Update the design specs when reality differs from them.
+7. Never rewrite or delete the user's uncommitted work in other worktrees. Work
+   in this worktree/branch only.
