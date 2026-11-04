@@ -20,7 +20,7 @@ Webex as the first clients, replacing tmux scraping for new sessions.
       `internal/agents/testdata/` (scrub paths and secrets)
 - [x] 6bcb6640 Wire schema: Go types for events, payloads, commands (hand-written first,
       generated later)
-- [ ] `internal/agents/log`: host log in `clara.db` (append, read after
+- [x] 149f6a9f `internal/agents/log`: host log in `clara.db` (append, read after
       `host_seq`, tests)
 - [ ] Projections rebuilt from events: sessions, attentions, prompt queue
 
