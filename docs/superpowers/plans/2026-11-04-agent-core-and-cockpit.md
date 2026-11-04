@@ -33,12 +33,12 @@ Webex as the first clients, replacing tmux scraping for new sessions.
 - [x] 2ede036c Fixture-driven tests from recordings (cancel, busy, quota, tool calls)
 
 1.3 Session runner
-- [ ] Prompt queue (one in flight), turn tracking, "idle = latest prompt
+- [x] de1f3e83 Prompt queue (one in flight), turn tracking, "idle = latest prompt
       answered", cancel and interrupt
-- [ ] State machine and attention (`turn_ended`, `blocked`, `failed`)
-- [ ] Process supervision: per-session process, backoff, mark open turn
+- [x] de1f3e83 State machine and attention (`turn_ended`, `blocked`, `failed`)
+- [x] de1f3e83 Process supervision: per-session process, backoff, mark open turn
       `interrupted`, resume with `session/load`
-- [ ] Concurrency and shutdown tests (context-bound goroutines, no leaks)
+- [x] de1f3e83 Concurrency and shutdown tests (context-bound goroutines, no leaks)
 
 1.4 Clara integration
 - [ ] `internal/builtin/agent`: MCP tools (`agent.session.create/list/get/close/
