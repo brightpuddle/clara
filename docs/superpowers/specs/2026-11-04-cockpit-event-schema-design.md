@@ -83,8 +83,8 @@ Rules:
 | Type | Payload (key fields) | Notes |
 |---|---|---|
 | `host.status` | `online`, `last_seen` | hub-generated |
-| `session.created` | `agent`, `dir`, `title`, `kind: longlived/task`, `model`, `origin: managed/observed` | |
-| `session.updated` | `title?`, `model?`, `kind?` | |
+| `session.created` | `agent`, `dir`, `title`, `kind: longlived/task`, `model`, `origin: managed/observed`, `native_id?` | |
+| `session.updated` | `title?`, `model?`, `kind?`, `native_id?` | `native_id` is the agent's own id, needed to resume |
 | `session.status` | `state`, `reason?`, `blocked?{kind, resets_at}` | see 4 |
 | `message.user` | `message_id`, `text`, `attachments[]`, `origin: device/terminal/discord`, `prompt_id?` | |
 | `message.assistant` | `message_id`, `turn_id`, `text` | final text only |
@@ -221,6 +221,17 @@ when the response to the **most recent** prompt arrives. Replayed history from
   attention,
 - on adapter `Exited`, marks any open turn `interrupted` (never re-sends),
   sets state `failed`, and lets the supervisor restart and `Open` with `ResumeID`.
+
+**Runner behaviour (`internal/agents/runner`):** one goroutine per session owns
+all state; commands go through it. Prompts are queued and sent one at a time. An
+interrupt cancels the running turn and leaves the queue; the next prompt runs.
+`blocked` holds the queue (no automatic retry); a new user prompt retries from the
+head. Cancelled and interrupted turns raise no attention; `end_turn` with an
+empty queue raises `turn_ended`; a prompt error raises `turn_ended` titled
+"Turn failed: ...". The restart count resets after the agent stays up for
+`StableAfter`; after `MaxRestarts` consecutive failures the session stays
+`failed` and keeps queueing. The queue is in memory; rebuilding it from the
+projection after a core restart is part of 1.4.
 
 **Process supervision (v1):** one `agy acp` / `opencode acp` process per managed
 session, started by the host core. Restarts use exponential backoff with a cap.

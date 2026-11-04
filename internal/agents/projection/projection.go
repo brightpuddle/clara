@@ -20,6 +20,7 @@ type Session struct {
 	Dir            string
 	Title          string
 	Model          string
+	NativeID       string
 	Kind           agents.SessionKind
 	Origin         agents.Origin
 	State          agents.SessionState
@@ -108,7 +109,8 @@ func (p *Projection) Apply(e agents.Event) error {
 	if c, ok := payload.(agents.SessionCreated); ok {
 		p.sessions[e.Session] = &Session{
 			ID: e.Session, Host: e.Host, Agent: c.Agent, Dir: c.Dir, Title: c.Title,
-			Model: c.Model, Kind: c.Kind, Origin: c.Origin, State: agents.StateStarting,
+			Model: c.Model, NativeID: c.NativeID, Kind: c.Kind, Origin: c.Origin,
+			State:   agents.StateStarting,
 			LastSeq: e.HostSeq,
 		}
 		return nil
@@ -131,6 +133,9 @@ func (p *Projection) Apply(e agents.Event) error {
 		}
 		if v.Kind != "" {
 			s.Kind = v.Kind
+		}
+		if v.NativeID != "" {
+			s.NativeID = v.NativeID
 		}
 	case agents.SessionStatus:
 		s.State, s.Reason, s.Blocked = v.State, v.Reason, v.Blocked

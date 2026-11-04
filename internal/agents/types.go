@@ -184,12 +184,15 @@ type SessionCreated struct {
 	Kind   SessionKind `json:"kind"`
 	Model  string      `json:"model,omitempty"`
 	Origin Origin      `json:"origin"`
+	// NativeID is the agent's own session id, needed to resume after a restart.
+	NativeID string `json:"native_id,omitempty"`
 }
 
 type SessionUpdated struct {
-	Title string      `json:"title,omitempty"`
-	Model string      `json:"model,omitempty"`
-	Kind  SessionKind `json:"kind,omitempty"`
+	Title    string      `json:"title,omitempty"`
+	Model    string      `json:"model,omitempty"`
+	Kind     SessionKind `json:"kind,omitempty"`
+	NativeID string      `json:"native_id,omitempty"`
 }
 
 type SessionStatus struct {
