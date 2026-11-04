@@ -14,44 +14,44 @@ import (
 )
 
 type Session struct {
-	ID             string
-	Host           string
-	Agent          string
-	Dir            string
-	Title          string
-	Model          string
-	NativeID       string
-	Kind           agents.SessionKind
-	Origin         agents.Origin
-	State          agents.SessionState
-	Reason         string
-	Blocked        *agents.Blocked
-	ActiveTurn     string
-	LastStopReason agents.StopReason
-	QueueLen       int
-	LastSeq        int64
+	ID             string              `json:"id"`
+	Host           string              `json:"host"`
+	Agent          string              `json:"agent"`
+	Dir            string              `json:"dir"`
+	Title          string              `json:"title"`
+	Model          string              `json:"model"`
+	NativeID       string              `json:"native_id"`
+	Kind           agents.SessionKind  `json:"kind"`
+	Origin         agents.Origin       `json:"origin"`
+	State          agents.SessionState `json:"state"`
+	Reason         string              `json:"reason"`
+	Blocked        *agents.Blocked     `json:"blocked"`
+	ActiveTurn     string              `json:"active_turn"`
+	LastStopReason agents.StopReason   `json:"last_stop_reason"`
+	QueueLen       int                 `json:"queue_len"`
+	LastSeq        int64               `json:"last_seq"`
 }
 
 type Prompt struct {
-	ID       string
-	Session  string
-	Text     string
-	Origin   string
-	QueuedAt int64
+	ID       string `json:"id"`
+	Session  string `json:"session"`
+	Text     string `json:"text"`
+	Origin   string `json:"origin"`
+	QueuedAt int64  `json:"queued_at"`
 }
 
 type Attention struct {
-	ID         string
-	Session    string
-	Kind       agents.AttentionKind
-	Title      string
-	Options    []agents.Option
-	AllowText  bool
-	Native     *agents.NativeRef
-	Open       bool
-	Seq        int64
-	ResolvedBy string
-	Answer     string
+	ID         string               `json:"id"`
+	Session    string               `json:"session"`
+	Kind       agents.AttentionKind `json:"kind"`
+	Title      string               `json:"title"`
+	Options    []agents.Option      `json:"options"`
+	AllowText  bool                 `json:"allow_text"`
+	Native     *agents.NativeRef    `json:"native"`
+	Open       bool                 `json:"open"`
+	Seq        int64                `json:"seq"`
+	ResolvedBy string               `json:"resolved_by"`
+	Answer     string               `json:"answer"`
 }
 
 // Projection is not safe for concurrent use; callers serialize access.

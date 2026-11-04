@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	agentmanager "github.com/brightpuddle/clara/internal/agents/manager"
+	agentbuiltin "github.com/brightpuddle/clara/internal/builtin/agent"
 	clarabuiltin "github.com/brightpuddle/clara/internal/builtin/clara"
 	dbbuiltin "github.com/brightpuddle/clara/internal/builtin/db"
 	fsbuiltin "github.com/brightpuddle/clara/internal/builtin/fs"
@@ -125,6 +127,26 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Error().Err(err).Msg("failed to register notify builtin")
 	}
 
+	// Register the agent core (managed agy/opencode sessions) when enabled.
+	var agentMgr *agentmanager.Manager
+	if cfg.Agents.Enabled {
+		agentMgr, err = agentmanager.New(
+			daemonCtx,
+			cfg.Agents.HostName(),
+			db.DB(),
+			agentbuiltin.BuildAdapters(cfg.Agents, logger),
+			logger,
+		)
+		if err != nil {
+			return errors.Wrap(err, "start agent core")
+		}
+		defer agentMgr.Wait()
+		defer shutdown()
+	}
+	if err := agentbuiltin.Register(daemonCtx, agentMgr, reg, logger); err != nil {
+		logger.Error().Err(err).Msg("failed to register agent builtin")
+	}
+
 	// Register configured MCP servers.
 	for _, srv := range cfg.MCPServers {
 		mcpSrv := buildMCPServer(srv, logger)
@@ -206,6 +228,10 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		builder,
 		cfg.DataDir+"/bin",
 	)
+
+	if agentMgr != nil {
+		agentbuiltin.PublishToBus(agentMgr, sup.EventBus())
+	}
 
 	triggerRunner := trigger.NewRunner(60 * time.Second)
 	triggerMgr := trigger.NewManager(triggerRunner, sup.EventBus(), db)

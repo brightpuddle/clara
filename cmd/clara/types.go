@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	agentbuiltin "github.com/brightpuddle/clara/internal/builtin/agent"
 	clarabuiltin "github.com/brightpuddle/clara/internal/builtin/clara"
 	dbbuiltin "github.com/brightpuddle/clara/internal/builtin/db"
 	fsbuiltin "github.com/brightpuddle/clara/internal/builtin/fs"
@@ -81,6 +82,7 @@ func runTypesGen(cmd *cobra.Command, args []string) error {
 		_ = shellbuiltin.Register(ctx, nil, reg, zerolog.Nop())
 		_ = fsbuiltin.Register(ctx, nil, reg, zerolog.Nop())
 		_ = dbbuiltin.Register(ctx, nil, reg, zerolog.Nop())
+		_ = agentbuiltin.Register(ctx, nil, reg, zerolog.Nop())
 		_ = notifybuiltin.Register(ctx, cfg.Notify, reg, zerolog.Nop())
 		_ = clarabuiltin.Register(ctx, cfg, nil, nil, reg, zerolog.Nop())
 

@@ -15,6 +15,10 @@ import (
 // ErrStopped is returned by commands sent to a runner that has finished.
 var ErrStopped = errors.New("session runner stopped")
 
+// ReasonShutdown marks a session closed only because the core stopped; such a
+// session is re-attached on the next start.
+const ReasonShutdown = "shutdown"
+
 // ErrNotQueued is returned when cancelling a prompt that is not in the queue.
 var ErrNotQueued = errors.New("prompt is not queued")
 
@@ -105,6 +109,7 @@ type Runner struct {
 	blocked   *agents.Blocked
 	attention string // open turn_ended attention id
 	closing   bool
+	shutdown  bool // closing because ctx was cancelled, not because of Close
 	nativeID  string
 }
 
@@ -250,6 +255,9 @@ func (r *Runner) loop(ctx context.Context) {
 		select {
 		case <-ctxDone:
 			ctxDone = nil
+			if !r.closing {
+				r.shutdown = true
+			}
 			r.beginClose()
 		case fn := <-r.cmds:
 			fn()
@@ -343,7 +351,11 @@ func (r *Runner) finish() {
 		r.endTurn(agents.StopInterrupted, nil)
 	}
 	r.resolveAttention("auto")
-	r.setState(agents.StateClosed, "", nil)
+	reason := ""
+	if r.shutdown {
+		reason = ReasonShutdown
+	}
+	r.setState(agents.StateClosed, reason, nil)
 }
 
 func (r *Runner) onEvent(ev adapter.AgentEvent) {

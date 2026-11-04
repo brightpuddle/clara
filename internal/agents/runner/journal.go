@@ -77,3 +77,28 @@ func (j *Journal) OpenAttentions() []projection.Attention {
 	defer j.mu.Unlock()
 	return j.proj.OpenAttentions()
 }
+
+// Sessions returns every projected session ordered by ID.
+func (j *Journal) Sessions() []projection.Session {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.proj.Sessions()
+}
+
+// Queue returns the queued prompts of a session.
+func (j *Journal) Queue(session string) []projection.Prompt {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.proj.Queue(session)
+}
+
+// ReadEvents reads logged events of a session (or all sessions when session is
+// empty) after the given host_seq.
+func (j *Journal) ReadEvents(
+	ctx context.Context, session string, after int64, limit int,
+) ([]agents.Event, error) {
+	if session == "" {
+		return j.log.Read(ctx, after, limit)
+	}
+	return j.log.ReadSession(ctx, session, after, limit)
+}

@@ -104,6 +104,9 @@ type Config struct {
 	// Notify configures the notification backend.
 	Notify NotifyConfig `yaml:"notify"`
 
+	// Agents configures the managed agent core (agy, opencode over ACP).
+	Agents AgentsConfig `yaml:"agents"`
+
 	// Server configures the Clara HTTP server for remote MCP and webhooks.
 	Server ServerConfig `yaml:"server"`
 
@@ -113,6 +116,48 @@ type Config struct {
 
 	// Testing overrides
 	ControlSocketPathOverride string `yaml:"-"`
+}
+
+// AgentsConfig configures the agent management core.
+type AgentsConfig struct {
+	// Enabled turns the agent core and the agent.* tools on.
+	Enabled bool `yaml:"enabled"`
+
+	// Host names this machine in the event log. Defaults to the OS hostname.
+	Host string `yaml:"host"`
+
+	// Adapters maps an agent name (agy, opencode) to its settings. When empty,
+	// both agy and opencode are enabled with binaries resolved from PATH.
+	Adapters map[string]AgentAdapterConfig `yaml:"adapters"`
+}
+
+// AgentAdapterConfig configures one ACP agent.
+type AgentAdapterConfig struct {
+	// Bin is the executable to run; defaults to the agent name.
+	Bin string `yaml:"bin"`
+}
+
+// HostName returns the configured agent host name, falling back to the OS hostname.
+func (a AgentsConfig) HostName() string {
+	if a.Host != "" {
+		return a.Host
+	}
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "local"
+}
+
+// AdapterConfigs returns the adapter settings with defaults applied.
+func (a AgentsConfig) AdapterConfigs() map[string]AgentAdapterConfig {
+	if len(a.Adapters) == 0 {
+		return map[string]AgentAdapterConfig{"agy": {}, "opencode": {}}
+	}
+	out := make(map[string]AgentAdapterConfig, len(a.Adapters))
+	for name, c := range a.Adapters {
+		out[name] = c
+	}
+	return out
 }
 
 // ServerConfig configures the Clara HTTP server for remote MCP and webhooks.
