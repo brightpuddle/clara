@@ -38,6 +38,11 @@ per-session sequence, shared live state with TUIs).
   supervision and resume.
 - Observed sessions (hand-started terminal agents) stay on the hooks-plus-tmux
   path and are optional.
-- Facts to verify before relying on them: whether `opencode acp` shares live
-  state with the background service, ACP cancellation and mid-turn prompts, and
-  ACP support for the other agents the user may adopt.
+- Verified: cancel (`session/cancel`) works the same on both agents. A second
+  prompt while busy is rejected by opencode and queued with a misleading early
+  response by agy. The adapter therefore keeps its own per-session prompt queue
+  and treats a session as idle only when the latest prompt has been answered.
+- agy may background long commands and end the turn with no later update (open
+  item). See the spike doc.
+- Still to verify: whether `opencode acp` shares live state with the
+  background service, and ACP support for other agents the user may adopt.

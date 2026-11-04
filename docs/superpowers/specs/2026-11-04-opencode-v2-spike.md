@@ -230,3 +230,64 @@ hooks for managed sessions to avoid double posting.
 - agy `remote-control` / `--remote-agent` are tied to Google's cloud with no
   API (per the user). Out of scope.
 - Decision recorded in ADR 0005.
+
+## ACP cancel and busy-session behaviour (spike/acp_cancel_busy.py)
+
+Run against `agy acp` (gemini-3.8-flash-low) and `opencode acp`
+(github-copilot/gemini-3.8-flash). Raw logs: `spike/out/acp_*.jsonl`.
+
+### Cancel: works identically on both
+Send the `session/cancel` **notification** (`{sessionId}`, no id) while a prompt
+is running. The in-flight `session/prompt` request returns
+`{stopReason: "cancelled", usage}` within about a second. The running tool call
+gets a `tool_call_update` with `status: failed`. The session stays usable: a
+follow-up prompt succeeded on both agents.
+
+### Busy session: the two agents differ
+- **opencode** rejects a second `session/prompt` immediately with JSON-RPC
+  error `-32603 "Session already has an active ACP prompt: <id>"`. The first
+  turn is unaffected and completes normally.
+- **agy** accepts it and queues it, but with a misleading response: the first
+  prompt's request returned `{stopReason: "end_turn"}` (with no `usage`) the
+  moment the second was sent, while the first turn's output kept streaming for
+  about six more seconds. The second prompt's user message and reply then
+  followed, and its response (with usage covering both) came last. So for agy
+  the response to an earlier prompt does not mean its turn finished.
+
+### Idle detection
+For both agents, a session is idle only when the response to the **most recent**
+prompt has arrived and no cancel is pending. Never use the first prompt's
+response when another was sent after it.
+
+### agy runs long commands in the background and ends the turn
+Asked to run `sleep 20; echo finished-bg` and report the output, agy replied
+"I have started the command ... as a background task. I will wait..." and ended
+the turn after about 6 seconds. For the next 45 seconds, long after the command
+had finished, it sent **no** further updates (no tool completion, no message).
+Its promise to wait is not backed by anything: the user has to prompt again.
+Possible causes: no `terminal` client capability was advertised in
+`initialize`, or agy's ACP mode always backgrounds shell commands. Open item.
+For attention, this means an agy `end_turn` can mean "done", "asking you", or
+"left work running"; the UI should show recent tool calls with the turn so the
+difference is visible.
+
+### Other notes
+- opencode over ACP does not support `session/set_model`
+  (`-32601`). Model selection is in `configOptions` (`model`, `thought_level`,
+  `mode`), presumably via `session/set_config_option`.
+- agy exposes models via `session/new` `models`, and accepts
+  `session/set_model`.
+
+## Adapter rules that follow
+
+1. **Client-side prompt queue per session.** The adapter sends one prompt at a
+   time and sends the next only when the previous response arrives. This avoids
+   opencode's error and agy's early-return quirk, and gives the UI a visible,
+   editable, cancellable queue of pending messages.
+2. **Cancel is a first-class command** (`session/cancel`), clearing nothing
+   from the queue unless asked.
+3. **Idle = latest prompt answered.** Track prompt ids; ignore early responses
+   for superseded prompts.
+4. **Attach tool-call summaries to every turn end**, so "left running"
+   shows up.
+5. **Per-agent model selection** goes through a small quirk table.
