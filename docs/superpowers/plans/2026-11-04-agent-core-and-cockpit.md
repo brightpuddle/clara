@@ -10,7 +10,7 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
 - [x] opencode v2 API, ACP, cancel and busy-session spikes
 - [x] Cleanup of stale `conductor/`; process moved into `AGENTS.md`
 
-## Stage 1: Agent core, single host (merge to main)
+## Stage 1: Agent core, single host (merged to main 2026-11-04; dogfooding on Eve)
 
 Goal: managed agy and opencode sessions through one ACP adapter, with Discord and
 Webex as the first clients, replacing tmux scraping for new sessions.
@@ -63,7 +63,8 @@ Webex as the first clients, replacing tmux scraping for new sessions.
       /kill. Not yet tested: Webex, router/daemon restart mid-turn.
       Migration pass: `.sync` and `.sessions` cover managed sessions, `.model` and
       `model=` on spawn, per-agent default model. Awaiting user validation, then merge.
-- [ ] Dogfood on Eve for a defined period; fix; then merge to `main`
+- [~] Dogfood on Eve for a defined period and fix. Merged to `main` on 2026-11-04 at
+      the user's request; development continues directly on `main`.
 
 Exit criteria: all new agent sessions on Eve run managed, with no tmux scraping
 and no lost or duplicated messages across router and daemon restarts.

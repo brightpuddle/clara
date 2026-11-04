@@ -294,5 +294,5 @@ iPhone/Mac client. Read these before touching it:
 5. Commit small, with conventional messages (`feat(agents): ...`).
 6. Record significant decisions as a new ADR in `docs/adr/` before implementing
    a deviation. Update the design specs when reality differs from them.
-7. Never rewrite or delete the user's uncommitted work in other worktrees. Work
-   in this worktree/branch only.
+7. Development happens directly on `main`. Never rewrite or delete the user's
+   uncommitted work (the tree may hold unrelated files); stage only your own paths.
