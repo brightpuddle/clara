@@ -178,7 +178,8 @@ export class DiscordAdapter implements ChatPlatformAdapter {
         channel_id: channelId,
         content: chunk,
       })) as any;
-      if (res?.id) lastMsgId = String(res.id);
+      const mid = res?.message_id ?? res?.id;
+      if (mid) lastMsgId = String(mid);
     }
     return lastMsgId;
   }
