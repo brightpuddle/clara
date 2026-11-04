@@ -58,8 +58,9 @@ Webex as the first clients, replacing tmux scraping for new sessions.
 - [~] Catch-up on router restart via `agent.events.read`
 - [~] Per-channel fallback flag to the old tmux path; observed sessions untouched
 - [~] Disable the agy Discord hooks for managed sessions (no double posts)
-      Code in repo, tests green; not yet installed on Eve (needs `make install-hooks`,
-      `agent-relay` worker trigger from `examples/triggers/agent_relay.yaml`).
+      Installed on Eve 2026-11-04 (config `agents.enabled`, `agent-relay` worker).
+      Smoke-tested live with opencode: spawn, prompt, reply, reactions, queue, /stop,
+      /kill. Not yet tested: Webex, agy, router/daemon restart mid-turn.
 - [ ] Dogfood on Eve for a defined period; fix; then merge to `main`
 
 Exit criteria: all new agent sessions on Eve run managed, with no tmux scraping
