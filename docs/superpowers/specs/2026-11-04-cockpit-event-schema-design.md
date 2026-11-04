@@ -200,11 +200,15 @@ type AgentEvent interface{ agentEvent() }
 
 ```go
 type Quirks struct {
-    SetModel       func(c *acpConn, session, model string) error // agy: session/set_model; opencode: config option
-    DetectBlocked  func(text string) *Blocked                    // agy quota text
-    EarlyPromptResponse bool                                     // agy: earlier prompt may return before its turn ends
+    SetModel      func(ctx context.Context, c RPC, session, model string) error // agy: session/set_model; opencode: session/set_config_option
+    DetectBlocked func(text string) *agents.Blocked                              // agy quota text
 }
 ```
+
+There is no early-prompt-response quirk: `Prompt` returns `ErrBusy` while a prompt
+is unanswered, so a second prompt is never sent and agy's early response cannot
+occur. `Open`'s ctx bounds the session lifetime. Agent requests
+(`session/request_permission`) are auto-approved; unknown methods get -32601.
 
 Turn tracking inside the adapter uses the rule from the spike: a turn is over only
 when the response to the **most recent** prompt arrives. Replayed history from
