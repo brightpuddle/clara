@@ -1,7 +1,7 @@
 # 0004: Structured agent events are the source of truth; tmux is runtime
 
 Date: 2026-11-04. Status: accepted. opencode confirmed viable by spike; see
-`docs/superpowers/specs/2026-11-04-opencode-v2-spike.md`. agy still open.
+`docs/superpowers/specs/2026-11-04-opencode-v2-spike.md`. agy confirmed via ACP.
 
 ## Context
 
@@ -12,14 +12,25 @@ questions.
 
 ## Decision
 
-Adapters produce structured Events. opencode v2 is already client-server, so
-its adapter is an HTTP client of the background service (sessions already live
-there; the TUI is just another client). agy keeps hooks plus transcripts. tmux remains the
-runtime for agy and a manual-access fallback; it is never parsed for content
-except as a documented last resort.
+Adapters produce structured Events from each agent's own protocol:
+
+- **opencode:** HTTP client of the v2 background service. Sessions already
+  live there; the TUI is just another client. Uses the global event stream
+  plus the durable per-session log for lossless catch-up.
+- **agy:** driven over ACP (`agy acp`, JSON-RPC over stdio) as a
+  Clara-supervised process. Hooks and tmux are only for sessions started by
+  hand in a terminal ("observed" sessions), which are optional.
+
+tmux remains a runtime for hand-started agents and a manual-access fallback.
+It is never parsed for content except as a documented last resort.
 
 ## Consequences
 
 - Removes the largest source of fragility in the current chat path.
-- Existing TUI sessions in tmux need switching to server-managed sessions.
-- agy question detection is an open risk (see design spec section 4).
+- opencode sessions need no migration; agy sessions move from tmux TUI to
+  Clara-managed ACP processes.
+- Attention differs by agent: opencode forms are structured questions; agy has
+  only end of turn. The schema supports both.
+- agy has no event sequence numbers or replay, and reports quota exhaustion as
+  ordinary text. The adapter must handle both.
+- Details and evidence: `docs/superpowers/specs/2026-11-04-opencode-v2-spike.md`.

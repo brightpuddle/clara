@@ -121,13 +121,15 @@ badges on the others.
 
 - **opencode:** HTTP client of the v2 background service (see spike doc).
   Sessions already live in the service; the TUI is just another client.
-- **agy:** hooks plus JSONL transcripts for output; tmux `send-keys` for input.
-  Turn-based events; mid-turn streaming and question detection are unknown.
+- **agy:** managed `agy acp` process (Agent Client Protocol over stdio) owned
+  by Clara. Streams message chunks and tool calls. No sequence numbers, no
+  structured questions: end of turn is the attention signal. Quota exhaustion
+  arrives as ordinary text and must be detected. See spike doc.
 
 ### 3.4 Attention model
 
-Small by design. Notify only on: `needs_you` (agent asked a question), `done`,
-`failed`. Notifications carry the question's options as actions.
+Small by design. Notify only on: `needs_you` (opencode form, or agy end of
+turn), `done`, `failed`, `blocked` (quota/limits). Notifications carry the question's options as actions.
 
 ### 3.5 Clients
 
@@ -138,10 +140,11 @@ keyboard first, then `SpeechAnalyzer`; Live Activities and App Intents later.
 
 ## 4. Open questions / risks
 
-1. **agy questions.** How does agy surface "I need guidance" to hooks? If not
-   detectable, fall back to turn-end heuristics or a tmux-aware path.
-2. **opencode API fidelity.** Does it expose question/permission events usable
-   for `needs_you`? Spike to confirm against the installed version.
+1. **agy process supervision.** ACP is a child process; Clara restarts kill
+   in-flight turns. Needs supervision and resume policy.
+2. **Experimental opencode log endpoint** may change between releases. Keep
+   the adapter thin. Go cannot use the TS client; decide on a Bun sidecar vs a
+   Go port of endpoint discovery and auth.
 3. **Migration of `chat_router.ts` behaviour** (reactions, `? question`,
    `/kill`, backfill) onto the event log. Do it feature by feature.
 4. **Sophia offline UX** and event replay when it reconnects.

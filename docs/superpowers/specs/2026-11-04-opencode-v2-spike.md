@@ -1,4 +1,4 @@
-# opencode v2 API Spike
+# Agent API Spike: opencode v2 and agy (Antigravity CLI)
 
 Date: 2026-11-04. Installed: opencode v2.2.5 on eve. Source: live service
 (`opencode service status`, `opencode api ...`) and
@@ -141,8 +141,77 @@ Experimental, but it is exactly the per-session cursor the adapter needs.
 - Stability of `/api/experimental/session/{id}/log` across opencode releases.
 - Do forms that remain unanswered survive a service restart?
 
-## agy (not started)
+## agy 1.5.0 findings (spike/agy_acp_probe.py, spike/agy_acp_resume.py)
 
-Still to do: confirm hook payloads for `agy` 1.5.0 on a long-lived session,
-whether a question to the user produces any hook or transcript signal, and
-whether anything similar to opencode's service API exists (`agy --help`).
+**agy has a real structured interface: ACP.** `agy acp` is an Agent Client
+Protocol stdio server (JSON-RPC 2.0, NDJSON). The hooks-plus-tmux path Clara
+uses today is the weak option. Also present: `--print --output-format
+stream-json` (one-shot/turn mode), `agy remote-control` (daemon), `agy
+mic-serve` (remote microphone), `--remote-agent`. The last three are unexplored.
+
+**ACP flow verified:** `initialize` -> `session/new {cwd, mcpServers}` ->
+`session/set_model` (optional) -> `session/prompt` -> streamed
+`session/update` notifications -> `{stopReason: "end_turn", usage}`.
+Resume path: `session/list` (244 conversations incl. ones started in the TUI,
+with `title`, `cwd`, `updatedAt`) and `session/load` (resumes and replays
+history as updates).
+
+**Update vocabulary seen:** `user_message_chunk`, `agent_message_chunk`,
+`tool_call` / `tool_call_update` (`toolCallId`, `name`, `args`, `status`,
+`kind` e.g. `edit`, `title`, `locations[]`, `rawInput`),
+`available_commands_update`, `config_option_update`, `session_info_update`.
+Final result carries token `usage`. `--dangerously-skip-permissions` means no
+permission requests arrived (none handled beyond a stub).
+
+**Gaps relative to opencode:**
+1. **No structured question.** Asked to ask a question, agy emitted plain text
+   (`Do you prefer red or blue?\n- [1] (Recommended) Red\n- [2] Blue`) and
+   ended the turn with `end_turn`. A question and a "done" are the same
+   protocol event.
+2. **No event sequence numbers and no replay.** `session/load` replays the
+   whole history without ids. The Clara log must be the only record, and the
+   adapter must not re-ingest replayed history after a reload.
+3. **Failures look like success.** On the default model the account's quota
+   was exhausted, and agy reported it as an `agent_message_chunk` ("Individual
+   quota reached... Resets in 22h38m") followed by `end_turn`. Quota appears
+   to be per model; `gemini-3.8-flash-low` worked. The adapter must detect
+   this by text and surface a `failed`/`blocked` state.
+4. **Process ownership.** ACP is a child process of the client, not a shared
+   background service like opencode. If Clara restarts mid-turn the agent
+   process dies. Needs supervision and a resume-on-start policy.
+5. **Two processes on one conversation is unsafe.** A managed (ACP) session
+   and a TUI attached with `agy --conversation <id>` must not run at once.
+
+**Hooks still fire** for ACP sessions: Clara's global Stop hook recorded rows in
+`agy_hook_dedup` for the probe conversations. Disable or bind the Discord
+hooks for managed sessions to avoid double posting.
+
+## Decisions that follow
+
+- **agy adapter: ACP, managed by Clara.** A `session` is an ACP session owned
+  by a Clara-supervised `agy acp` process. This replaces tmux `send-keys` and
+  hook scraping for Cockpit sessions.
+- **Two modes.** *Managed* (ACP, full fidelity, Cockpit can send input) and
+  *observed* (an agy TUI started by hand in tmux, visible only via
+  existing hooks, input via tmux). Build managed first; observed is optional.
+- **Attention for agy = end of turn.** Every `end_turn` on a managed session
+  means the ball is in the user's court. Do not try to distinguish "question"
+  from "done" at the protocol level. Optionally parse `[n] option` lists into
+  quick-reply chips (best effort, never required).
+- **Quota/limit state is first class.** Detect quota text, emit
+  `status_change: blocked(quota, resets_at)`, and show it in the inbox. Worth
+  doing for opencode providers too.
+- **Per-agent differences are the adapter's job** (opencode: forms, durable
+  seq; agy: end-of-turn, no seq). The Cockpit event schema must accommodate
+  both, so `attention.kind` is `question` (structured, with options) or
+  `turn_ended` (free reply).
+
+## Still open (agy)
+
+- Permission request shape without `--dangerously-skip-permissions` (not
+  needed today; skip unless policy changes).
+- Cancellation (`session/cancel`) and interrupting a running turn.
+- Behaviour of `session/prompt` while a turn is running (queueing?).
+- `agy remote-control` and `mic-serve`: what they actually do, and whether
+  they overlap with the Cockpit or help with voice.
+- Plan mode / `--mode`, and `--agent` selection through ACP.
