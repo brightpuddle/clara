@@ -215,3 +215,18 @@ hooks for managed sessions to avoid double posting.
 - `agy remote-control` and `mic-serve`: what they actually do, and whether
   they overlap with the Cockpit or help with voice.
 - Plan mode / `--mode`, and `--agent` selection through ACP.
+
+## Follow-up: ACP as universal adapter (2026-11-04)
+
+- `opencode acp` exists on v2.2.5. It reports `OpenCode 2.2.5`, supports
+  `list/resume/close/delete/fork`, and `session/list` returned 18 sessions
+  that match the service, including this conversation. Unverified: whether it
+  shares *live* state (running turns) with the background service.
+- agy conversation storage: one SQLite DB per conversation under
+  `~/.gemini/antigravity-cli/conversations/<id>.db` (WAL). `steps` is keyed by
+  integer `idx` (a usable cursor) but payloads are protobuf blobs with no
+  documented schema. Not a content source; at best a cheap "did I miss steps"
+  check. Do not depend on it.
+- agy `remote-control` / `--remote-agent` are tied to Google's cloud with no
+  API (per the user). Out of scope.
+- Decision recorded in ADR 0005.
