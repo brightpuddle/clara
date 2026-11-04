@@ -41,6 +41,7 @@ export interface ChannelRef {
 
 export interface Chat {
   channelFor(host: string, session: string): Promise<ChannelRef | null>;
+  ensureChannel?(host: string, session: string, payload: any): Promise<ChannelRef | null>;
   post(ch: ChannelRef, text: string): Promise<void>;
   /** Replaces the status emoji prev with next; returns a new indicator id if the platform has one. */
   setStatus(
@@ -67,6 +68,12 @@ export class Relay {
   async handle(ev: HostEvent): Promise<void> {
     const p = ev.payload || {};
     switch (ev.type) {
+      case "session.created": {
+        if (this.chat.ensureChannel) {
+          await this.chat.ensureChannel(ev.host, ev.session, p);
+        }
+        return;
+      }
       case "prompt.queued": {
         const origin = parseOrigin(p.origin);
         const rec: PromptRecord = { session: ev.session, origin };

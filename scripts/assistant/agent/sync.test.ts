@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { planSync, sessionLabel } from "./sync.ts";
+import { planSync, repoFromDir, sessionLabel } from "./sync.ts";
 
-const s = (id: string, state = "idle") => ({ id, host: "eve", agent: "agy", dir: "/a/proj", state });
+const s = (id: string, state = "idle", dir = "/a/proj") => ({ id, host: "eve", agent: "agy", dir, state });
 const c = (session: string) => ({ id: "c" + session, name: "n", host: "eve", session });
 
 test("creates missing, removes closed and unknown, keeps live", () => {
@@ -11,7 +11,15 @@ test("creates missing, removes closed and unknown, keeps live", () => {
   expect(plan.keep.map((x) => x.session)).toEqual(["B"]);
 });
 
-test("label uses title or dir plus id suffix", () => {
+test("label uses title or git repo name", () => {
   expect(sessionLabel({ ...s("01ABCDWXYZ"), title: "Fix bug" })).toBe("Fix bug");
-  expect(sessionLabel(s("01ABCDWXYZ"))).toBe("proj-wxyz");
+  expect(sessionLabel(s("01ABCDWXYZ", "idle", "/Users/nathan/src/clara/main"))).toBe("clara");
+  expect(sessionLabel(s("01ABCDWXYZ", "idle", "/a/proj"))).toBe("proj");
+});
+
+test("repoFromDir resolves git repo and bare worktree paths", () => {
+  expect(repoFromDir("/Users/nathan/src/clara/main")).toBe("clara");
+  expect(repoFromDir("/Users/nathan/src/lucia/main")).toBe("lucia");
+  expect(repoFromDir("/Users/nathan/src/clara/.bare")).toBe("clara");
+  expect(repoFromDir("/Users/nathan/src/some-repo/worktrees/feat-x")).toBe("some-repo");
 });

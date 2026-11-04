@@ -19,16 +19,21 @@ function memStore(): Store {
 function fakeChat(bound = true) {
   const posts: string[] = [];
   const statuses: Array<string | null> = [];
+  const ensured: Array<{ host: string; session: string; payload: any }> = [];
   const chat: Chat = {
     channelFor: async (): Promise<ChannelRef | null> =>
       bound ? { platform: "discord", channelId: "C1" } : null,
+    ensureChannel: async (host, session, payload): Promise<ChannelRef | null> => {
+      ensured.push({ host, session, payload });
+      return { platform: "discord", channelId: "C1" };
+    },
     post: async (_c, text) => void posts.push(text),
     setStatus: async (_o, _prev, next) => {
       statuses.push(next);
       return undefined;
     },
   };
-  return { chat, posts, statuses };
+  return { chat, posts, statuses, ensured };
 }
 
 let seq = 0;
@@ -98,4 +103,11 @@ test("failed and blocked sessions and questions are announced", async () => {
   await r.handle(ev("attention.requested", { kind: "question", title: "Pick", options: [{ label: "a" }] }));
   await r.handle(ev("attention.requested", { kind: "turn_ended" }));
   expect(posts).toEqual(["❌ Session failed: boom", "⏸️ Session blocked: quota", "❓ Pick\n1. a"]);
+});
+
+test("session.created triggers ensureChannel on chat", async () => {
+  const { chat, ensured } = fakeChat();
+  const r = new Relay(memStore(), chat);
+  await r.handle(ev("session.created", { agent: "agy", dir: "/path" }, "S123"));
+  expect(ensured).toEqual([{ host: "eve", session: "S123", payload: { agent: "agy", dir: "/path" } }]);
 });

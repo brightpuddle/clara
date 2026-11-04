@@ -16,9 +16,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { callTool } from "../clara.ts";
-import { getPlatformAdapter } from "./platform/manager.ts";
+import { getPlatformAdapter, getPrimaryAdapter } from "./platform/manager.ts";
 import type { PlatformType } from "./platform/types.ts";
 import type { Origin } from "./agent/binding.ts";
+import { sessionLabel } from "./agent/sync.ts";
 import {
   Relay,
   type ChannelRef,
@@ -86,6 +87,10 @@ class ChannelCache {
     return hit ?? null;
   }
 
+  set(host: string, session: string, ref: ChannelRef) {
+    this.map.set(`${host}:${session}`, ref);
+  }
+
   private async refresh() {
     this.refreshedAt = Date.now();
     for (const platform of ["discord", "webex"] as PlatformType[]) {
@@ -104,6 +109,28 @@ const channels = new ChannelCache();
 
 const chat: Chat = {
   channelFor: (host, session) => channels.find(host, session),
+  async ensureChannel(host, session, payload) {
+    const existing = await channels.find(host, session);
+    if (existing) return existing;
+    try {
+      const primary = getPrimaryAdapter();
+      const label = sessionLabel({
+        id: session,
+        host,
+        agent: payload?.agent || "agent",
+        dir: payload?.dir || "",
+        title: payload?.title,
+        state: "starting",
+      });
+      const ch = await primary.ensureAgentChannel(host, session, label);
+      const ref: ChannelRef = { platform: primary.platform, channelId: ch.id };
+      channels.set(host, session, ref);
+      return ref;
+    } catch (err: any) {
+      console.warn(`[agent_relay] ensureChannel failed for ${host}:${session}: ${err.message}`);
+      return null;
+    }
+  },
   async post(ch, text) {
     await getPlatformAdapter(ch.platform).sendMessage(ch.channelId, text);
   },
