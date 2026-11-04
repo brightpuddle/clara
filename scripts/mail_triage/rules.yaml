@@ -1,0 +1,126 @@
+# yaml-language-server: $schema=../../schemas/mail_rules.schema.json
+# scripts/mail_triage/rules.yaml
+# Clara Email Triage Deterministic Heuristics.
+
+rules:
+  # ===========================================================================
+  # 1. Ephemeral Noise & Calendar RSVPs -> Deleted Items
+  # ===========================================================================
+  - id: calendar-rsvp
+    name: Calendar RSVP Notifications
+    description: Automatically purges calendar response confirmations
+    enabled: true
+    action: deleted
+    target_folder: "Deleted Items"
+    confidence: 1.0
+    match:
+      field: subject
+      op: regex
+      value: "^(Accepted|Declined|Tentative):\\s+"
+
+  - id: out-of-office-replies
+    name: Automated Out of Office Notices
+    description: Purges auto-generated vacation and out of office bounces
+    enabled: true
+    action: deleted
+    target_folder: "Deleted Items"
+    confidence: 0.95
+    match:
+      or:
+        - field: subject
+          op: regex
+          value: "^(Automatic reply|Out of Office):"
+        - field: headers.Auto-Submitted
+          op: equals
+          value: "auto-replied"
+
+  # ===========================================================================
+  # 2. Automated Alerts, Newsletters & Marketing -> @Review (Low Demand)
+  # ===========================================================================
+  - id: automated-noreply-senders
+    name: Automated No-Reply System Senders
+    description: Routes automated system alerts and broadcasts to Review
+    enabled: true
+    action: review
+    target_folder: "@Review"
+    confidence: 0.90
+    match:
+      field: sender
+      op: regex
+      value: "(noreply|no-reply|notifications?|donotreply|system|newsletter|marketing|promo|updates?|alerts?|status)[@.]"
+
+  - id: marketing-promotions-discounts
+    name: Marketing & Promotional Offers
+    description: Routes sales, discounts, and promotional offers to Review
+    enabled: true
+    action: review
+    target_folder: "@Review"
+    confidence: 0.90
+    match:
+      field: subject
+      op: regex
+      value: "(\\d+%.*off|special\\s*offer|save\\s*\\d+%|ending\\s*soon|exclusive\\s*deal|free\\s*shipping|sale\\s*starts?|your\\s*inner\\s*world)"
+
+  - id: ci-and-monitoring-alerts
+    name: CI / Monitoring / Datadog / GitHub Alerts
+    description: Routes build status and monitoring reports to Review
+    enabled: true
+    action: review
+    target_folder: "@Review"
+    confidence: 0.95
+    match:
+      or:
+        - field: sender
+          op: contains
+          value: "@datadoghq.com"
+        - field: sender
+          op: contains
+          value: "notifications@github.com"
+        - field: sender
+          op: contains
+          value: "@statuspage.io"
+
+  - id: bulk-newsletters-unsub
+    name: Marketing Newsletters (with List-Unsubscribe header)
+    description: Routes broadcast marketing emails to Review
+    enabled: true
+    action: review
+    target_folder: "@Review"
+    confidence: 0.90
+    match:
+      field: headers.List-Unsubscribe
+      op: exists
+
+  # ===========================================================================
+  # 3. High-Value Reference & Financial -> Archive
+  # ===========================================================================
+  - id: receipts-and-invoices
+    name: Purchase Receipts & Invoices
+    description: Preserves order confirmations and receipts directly into Archive
+    enabled: true
+    action: archive
+    target_folder: "Archive"
+    confidence: 1.0
+    match:
+      field: subject
+      op: regex
+      value: "(license\\s*key|serial\\s*number|order\\s*confirm|invoice\\s*#?|your\\s*receipt|tax\\s*form|statement\\s*period)"
+
+  - id: vendor-billing-senders
+    name: Apple / Stripe / AWS Billing Confirmations
+    description: Archives vendor invoices and billing receipts
+    enabled: true
+    action: archive
+    target_folder: "Archive"
+    confidence: 0.95
+    match:
+      or:
+        - field: sender
+          op: contains
+          value: "no_reply@email.apple.com"
+        - field: sender
+          op: contains
+          value: "invoicing@stripe.com"
+        - field: sender
+          op: contains
+          value: "aws-receivables-support@amazon.com"

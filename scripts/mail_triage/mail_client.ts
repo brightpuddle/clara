@@ -173,42 +173,44 @@ tell application "Mail"
   `}
   if targetInbox is missing value then return ""
   
+  set msgList to {}
   if ${unreadOnly} then
     set theMessages to (messages of targetInbox whose read status is false)
     set msgCount to count of theMessages
     set fetchCount to msgCount
     if fetchCount > ${limit} then set fetchCount to ${limit}
-    set outList to ""
     if fetchCount > 0 then
       repeat with i from 1 to fetchCount
         set m to item i of theMessages
-        set mId to id of m
+        set mId to id of m as string
         set mSub to subject of m
         set mSender to sender of m
         set mDate to date received of m as string
-        set mRead to read status of m
-        set outList to outList & mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "---MSG---"
+        set mRead to read status of m as string
+        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead
       end repeat
     end if
-    return outList
   else
     set msgCount to count of messages of targetInbox
     set startIndex to msgCount - ${limit - 1}
     if startIndex < 1 then set startIndex to 1
-    set outList to ""
     if msgCount > 0 then
       repeat with i from msgCount to startIndex by -1
         set m to item i of (messages of targetInbox)
-        set mId to id of m
+        set mId to id of m as string
         set mSub to subject of m
         set mSender to sender of m
         set mDate to date received of m as string
-        set mRead to read status of m
-        set outList to outList & mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "---MSG---"
+        set mRead to read status of m as string
+        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead
       end repeat
     end if
-    return outList
   end if
+  
+  set AppleScript's text item delimiters to "---MSG---"
+  set rawOut to msgList as string
+  set AppleScript's text item delimiters to ""
+  return rawOut
 end tell`;
 
     try {
@@ -264,15 +266,15 @@ tell application "Mail"
   end if
   if theMsg is missing value then error "Message ${messageId} not found"
   
-  set mId to id of theMsg
-  set mSub to subject of theMsg
-  set mSender to sender of theMsg
-  set mContent to content of theMsg
-  set mDate to date received of m as string
-  set mRead to read status of theMsg
+  set mId to (id of theMsg) as string
+  set mSub to (subject of theMsg) as string
+  set mSender to (sender of theMsg) as string
+  set mContent to (content of theMsg) as string
+  set mDate to (date received of theMsg) as string
+  set mRead to (read status of theMsg) as string
   set mHeaders to ""
   try
-    set mHeaders to all headers of theMsg
+    set mHeaders to (all headers of theMsg) as string
   end try
   return mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "|||" & mHeaders & "|||" & mContent
 end tell`;
@@ -325,36 +327,88 @@ end tell`;
 
   private async execAppleScriptMove(messageId: string, targetMailbox: string, accountName: string): Promise<boolean> {
     const script = `
+on resolveMailbox(theAcc, folderName)
+  tell application "Mail"
+    try
+      return mailbox folderName of theAcc
+    end try
+    try
+      return (first mailbox of theAcc whose name is folderName)
+    end try
+    if folderName is "Archive" or folderName is "All Mail" then
+      try
+        return (first mailbox of theAcc whose name is "Archive" or name is "All Mail" or name is "Archived")
+      end try
+    else if folderName is "@Review" or folderName is "Review" then
+      try
+        return (first mailbox of theAcc whose name is "@Review" or name is "Review")
+      on error
+        try
+          return (make new mailbox at theAcc with properties {name:"@Review"})
+        end try
+      end try
+    else if folderName is "Deleted Items" or folderName is "Trash" or folderName is "Bin" then
+      try
+        return (first mailbox of theAcc whose name is "Deleted Items" or name is "Trash" or name is "Bin" or name is "Deleted Messages")
+      end try
+    end if
+    return missing value
+  end tell
+end resolveMailbox
+
 tell application "Mail"
-  set targetMB to missing value
+  set theMsg to missing value
   ${accountName ? `
     try
       set theAcc to account "${accountName}"
-      set targetMB to mailbox "${targetMailbox}" of theAcc
-    on error
       try
-        set targetMB to (first mailbox of theAcc whose name is "${targetMailbox}")
+        set theMsg to (first message of (mailbox "INBOX" of theAcc) whose id is ${messageId})
+      on error
+        try
+          set theMsg to (first message of (mailbox "Inbox" of theAcc) whose id is ${messageId})
+        end try
       end try
     end try
   ` : `
     try
-      set targetMB to mailbox "${targetMailbox}"
+      set theMsg to (first message of inbox whose id is ${messageId})
     end try
   `}
-  if targetMB is missing value then error "Target mailbox ${targetMailbox} not found"
 
-  repeat with acc in accounts
-    repeat with mb in (every mailbox of acc)
-      try
-        set theMsg to (first message of mb whose id is ${messageId})
-        if theMsg is not missing value then
-          move theMsg to targetMB
-          return "OK"
-        end if
-      end try
+  if theMsg is missing value then
+    try
+      set theMsg to (first message of inbox whose id is ${messageId})
+    end try
+  end if
+
+  if theMsg is missing value then
+    repeat with acc in accounts
+      repeat with mb in (every mailbox of acc)
+        try
+          set theMsg to (first message of mb whose id is ${messageId})
+          if theMsg is not missing value then exit repeat
+        end try
+      end repeat
+      if theMsg is not missing value then exit repeat
     end repeat
-  end repeat
-  error "Message ${messageId} not found"
+  end if
+
+  if theMsg is missing value then error "Message ${messageId} not found"
+
+  ${accountName ? `
+    set theAcc to account "${accountName}"
+  ` : `
+    set theAcc to account of mailbox of theMsg
+  `}
+  
+  set targetMB to my resolveMailbox(theAcc, "${targetMailbox}")
+  if targetMB is missing value then error "Target mailbox ${targetMailbox} not found on account"
+
+  move theMsg to targetMB
+  try
+    set read status of theMsg to true
+  end try
+  return "OK"
 end tell`;
     try {
       await this.execAppleScript(script);
@@ -367,18 +421,26 @@ end tell`;
   private async execAppleScriptDelete(messageId: string): Promise<boolean> {
     const script = `
 tell application "Mail"
-  repeat with acc in accounts
-    repeat with mb in (every mailbox of acc)
-      try
-        set theMsg to (first message of mb whose id is ${messageId})
-        if theMsg is not missing value then
-          delete theMsg
-          return "OK"
-        end if
-      end try
+  set theMsg to missing value
+  try
+    set theMsg to (first message of inbox whose id is ${messageId})
+  end try
+
+  if theMsg is missing value then
+    repeat with acc in accounts
+      repeat with mb in (every mailbox of acc)
+        try
+          set theMsg to (first message of mb whose id is ${messageId})
+          if theMsg is not missing value then exit repeat
+        end try
+      end repeat
+      if theMsg is not missing value then exit repeat
     end repeat
-  end repeat
-  error "Message ${messageId} not found"
+  end if
+
+  if theMsg is missing value then error "Message ${messageId} not found"
+  delete theMsg
+  return "OK"
 end tell`;
     try {
       await this.execAppleScript(script);
@@ -456,42 +518,44 @@ tell application "Mail"
   `)}
   if targetMB is missing value then return ""
   
+  set msgList to {}
   if ${unreadOnly} then
     set theMessages to (messages of targetMB whose read status is false)
     set msgCount to count of theMessages
     set fetchCount to msgCount
     if fetchCount > ${limit} then set fetchCount to ${limit}
-    set outList to ""
     if fetchCount > 0 then
       repeat with i from 1 to fetchCount
         set m to item i of theMessages
-        set mId to id of m
+        set mId to id of m as string
         set mSub to subject of m
         set mSender to sender of m
         set mDate to date received of m as string
-        set mRead to read status of m
-        set outList to outList & mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "---MSG---"
+        set mRead to read status of m as string
+        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead
       end repeat
     end if
-    return outList
   else
     set msgCount to count of messages of targetMB
     set startIndex to msgCount - ${limit - 1}
     if startIndex < 1 then set startIndex to 1
-    set outList to ""
     if msgCount > 0 then
       repeat with i from msgCount to startIndex by -1
         set m to item i of (messages of targetMB)
-        set mId to id of m
+        set mId to id of m as string
         set mSub to subject of m
         set mSender to sender of m
         set mDate to date received of m as string
-        set mRead to read status of m
-        set outList to outList & mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "---MSG---"
+        set mRead to read status of m as string
+        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead
       end repeat
     end if
-    return outList
   end if
+  
+  set AppleScript's text item delimiters to "---MSG---"
+  set rawOut to msgList as string
+  set AppleScript's text item delimiters to ""
+  return rawOut
 end tell`;
 
     try {
@@ -522,39 +586,91 @@ end tell`;
   ): Promise<{ moved: number; failed: number }> {
     const idListStr = messageIds.map(id => `"${id}"`).join(", ");
     const script = `
-tell application "Mail"
-  set targetMB to missing value
-  ${accountName ? `
+on resolveMailbox(theAcc, folderName)
+  tell application "Mail"
     try
-      set targetMB to mailbox "${targetMailbox}" of account "${accountName}"
-    on error
+      return mailbox folderName of theAcc
+    end try
+    try
+      return (first mailbox of theAcc whose name is folderName)
+    end try
+    if folderName is "Archive" or folderName is "All Mail" then
       try
-        set targetMB to (first mailbox of account "${accountName}" whose name is "${targetMailbox}")
+        return (first mailbox of theAcc whose name is "Archive" or name is "All Mail" or name is "Archived")
       end try
-    end try
-  ` : `
-    try
-      set targetMB to mailbox "${targetMailbox}"
-    end try
-  `}
-  if targetMB is missing value then return "0|${messageIds.length}"
+    else if folderName is "@Review" or folderName is "Review" then
+      try
+        return (first mailbox of theAcc whose name is "@Review" or name is "Review")
+      on error
+        try
+          return (make new mailbox at theAcc with properties {name:"@Review"})
+        end try
+      end try
+    else if folderName is "Deleted Items" or folderName is "Trash" or folderName is "Bin" then
+      try
+        return (first mailbox of theAcc whose name is "Deleted Items" or name is "Trash" or name is "Bin" or name is "Deleted Messages")
+      end try
+    end if
+    return missing value
+  end tell
+end resolveMailbox
+
+tell application "Mail"
   set idList to {${idListStr}}
   set movedCount to 0
   set failCount to 0
+  
+  set singleTargetMB to missing value
+  ${accountName ? `
+    try
+      set specifiedAcc to account "${accountName}"
+      set singleTargetMB to my resolveMailbox(specifiedAcc, "${targetMailbox}")
+    end try
+  ` : ""}
+
   repeat with msgId in idList
     try
-      repeat with acc in accounts
-        repeat with mb in (every mailbox of acc)
-          try
-            set theMsg to (first message of mb whose id is (msgId as integer))
-            if theMsg is not missing value then
-              move theMsg to targetMB
-              set movedCount to movedCount + 1
-              exit repeat
-            end if
-          end try
+      set theMsg to missing value
+      
+      -- 1. Fast lookup in inbox
+      try
+        set theMsg to (first message of inbox whose id is (msgId as integer))
+      end try
+      
+      -- 2. Fallback to accounts if not in inbox
+      if theMsg is missing value then
+        repeat with acc in accounts
+          repeat with mb in (every mailbox of acc)
+            try
+              set theMsg to (first message of mb whose id is (msgId as integer))
+              if theMsg is not missing value then exit repeat
+            end try
+          end repeat
+          if theMsg is not missing value then exit repeat
         end repeat
-      end repeat
+      end if
+      
+      if theMsg is not missing value then
+        set destMB to singleTargetMB
+        if destMB is missing value then
+          try
+            set msgAcc to account of mailbox of theMsg
+            set destMB to my resolveMailbox(msgAcc, "${targetMailbox}")
+          end try
+        end if
+        
+        if destMB is not missing value then
+          move theMsg to destMB
+          try
+            set read status of theMsg to true
+          end try
+          set movedCount to movedCount + 1
+        else
+          set failCount to failCount + 1
+        end if
+      else
+        set failCount to failCount + 1
+      end if
     on error
       set failCount to failCount + 1
     end try
@@ -582,18 +698,31 @@ tell application "Mail"
   set failCount to 0
   repeat with msgId in idList
     try
-      repeat with acc in accounts
-        repeat with mb in (every mailbox of acc)
-          try
-            set theMsg to (first message of mb whose id is (msgId as integer))
-            if theMsg is not missing value then
-              delete theMsg
-              set delCount to delCount + 1
-              exit repeat
-            end if
-          end try
+      set theMsg to missing value
+      
+      -- Fast lookup in inbox
+      try
+        set theMsg to (first message of inbox whose id is (msgId as integer))
+      end try
+      
+      if theMsg is missing value then
+        repeat with acc in accounts
+          repeat with mb in (every mailbox of acc)
+            try
+              set theMsg to (first message of mb whose id is (msgId as integer))
+              if theMsg is not missing value then exit repeat
+            end try
+          end repeat
+          if theMsg is not missing value then exit repeat
         end repeat
-      end repeat
+      end if
+      
+      if theMsg is not missing value then
+        delete theMsg
+        set delCount to delCount + 1
+      else
+        set failCount to failCount + 1
+      end if
     on error
       set failCount to failCount + 1
     end try

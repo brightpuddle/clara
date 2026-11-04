@@ -1,0 +1,17 @@
+{
+  "name": "@clara/mail-triage",
+  "version": "1.0.0",
+  "description": "Self-learning Apple Mail Triage Engine for Clara",
+  "type": "module",
+  "scripts": {
+    "probe": "bun run probe.ts",
+    "shadow": "bun run triage.ts --shadow",
+    "execute": "bun run triage.ts --execute",
+    "sweep": "bun run sweep.ts",
+    "stats": "bun run triage.ts --stats",
+    "rules": "bun run triage.ts --rules"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  }
+}
