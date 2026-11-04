@@ -25,12 +25,12 @@ Webex as the first clients, replacing tmux scraping for new sessions.
 - [x] 394e4257 Projections rebuilt from events: sessions, attentions, prompt queue
 
 1.2 ACP adapter
-- [ ] ACP JSON-RPC client over stdio (initialize, session/new, load, list,
+- [x] 2ede036c ACP JSON-RPC client over stdio (initialize, session/new, load, list,
       prompt, cancel; requests from agent answered; unknown methods rejected)
-- [ ] Normalise updates to `AgentEvent`; drop replayed history after `load`
-- [ ] Quirks table: agy (`set_model`, quota detection, early prompt response),
+- [x] 2ede036c Normalise updates to `AgentEvent`; drop replayed history after `load`
+- [x] 2ede036c Quirks table: agy (`set_model`, quota detection, early prompt response),
       opencode (config-option model selection, busy rejection)
-- [ ] Fixture-driven tests from recordings (cancel, busy, quota, tool calls)
+- [x] 2ede036c Fixture-driven tests from recordings (cancel, busy, quota, tool calls)
 
 1.3 Session runner
 - [ ] Prompt queue (one in flight), turn tracking, "idle = latest prompt
