@@ -47,6 +47,7 @@ import type { BoundSessionInfo, PlatformType } from "./platform/types.ts";
 import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./platform/discord.ts";
 
 import { formatOrigin } from "./agent/binding.ts";
+import { parseDotCommand } from "./agent/commands.ts";
 import { planSync, sessionLabel, type SessionInfo } from "./agent/sync.ts";
 
 // Set CLARA_AGENT_MANAGED=false to make `.spawn` create tmux sessions again.
@@ -587,6 +588,18 @@ async function handleSessionsCommand(): Promise<string> {
   }
 }
 
+function getAgentChannelHelp(): string {
+  return [
+    `**Agent channel commands** (anything starting with \`.\` is handled by Clara):`,
+    `- \`.model [id]\` — show or change the model (only while idle)`,
+    `- \`.stop\` — interrupt the running turn (queued prompts continue)`,
+    `- \`.kill\` — close the session and delete this channel`,
+    `- \`.help\` — this message`,
+    `- \`./<command>\` — send \`/<command>\` to the agent (e.g. \`./clear\`)`,
+    `- Anything else is queued as a prompt for the agent. Global commands (\`.status\`, \`.sync\`, \`.sessions\`, \`.spawn\`) run in #agents.`,
+  ].join("\n");
+}
+
 function getHelpMarkdown(): string {
   const currentPlat = getPrimaryPlatform().toUpperCase();
   return [
@@ -1075,39 +1088,55 @@ async function main() {
       const { session } = boundAgent;
       const adapter = getPlatformAdapter(platform);
 
-      if (lower === "/kill" || lower === "kill" || lower === ".kill") {
-        await callTool("agent.session.close" as any, { session });
-        await sendReply(platform, targetId, `🛑 Closed agent session \`${session}\`. Deleting channel...`, isDryRun);
-        await adapter.deleteChannel(targetId);
-        return;
-      }
+      // Anything starting with `.` is Clara's and never reaches the agent. The
+      // Discord-style `/kill`, `/stop`, `/model` forms are kept as aliases.
+      const slashAlias = lower.match(/^\/(kill|stop|interrupt|model)(?:\s+([\s\S]*))?$/);
+      const cmd = parseDotCommand(normalized) ||
+        (slashAlias ? { name: slashAlias[1], args: (slashAlias[2] || "").trim() } : null);
 
-      if (["/stop", "stop", ".stop", "/interrupt", ".interrupt"].includes(lower)) {
-        await callTool("agent.turn.interrupt" as any, { session });
-        await sendReply(platform, targetId, "⏹️ Interrupt requested.", isDryRun);
-        return;
-      }
-
-      const modelCmd = normalized.match(/^[./]{1,2}model(?:\s+(\S+))?\s*$/i);
-      if (modelCmd) {
-        if (modelCmd[1]) {
-          try {
-            await callTool("agent.session.model" as any, { session, model: modelCmd[1] });
-            await sendReply(platform, targetId, `🧠 Model set to \`${modelCmd[1]}\`.`, isDryRun);
-          } catch (err: any) {
-            await sendReply(platform, targetId, `⚠️ Could not change model: ${err.message}`, isDryRun);
-          }
-        } else {
-          const info = (await callTool("agent.session.get" as any, { session })) as any;
-          const cur = info?.session?.model || "(agent default)";
-          await sendReply(
-            platform,
-            targetId,
-            `🧠 Model: \`${cur}\`. Change with \`.model <id>\` (only while idle). A model with no id set uses the agent's own default.`,
-            isDryRun
-          );
+      if (cmd) {
+        switch (cmd.name) {
+          case "kill":
+            await callTool("agent.session.close" as any, { session });
+            await sendReply(platform, targetId, `🛑 Closed agent session \`${session}\`. Deleting channel...`, isDryRun);
+            await adapter.deleteChannel(targetId);
+            return;
+          case "stop":
+          case "interrupt":
+            await callTool("agent.turn.interrupt" as any, { session });
+            await sendReply(platform, targetId, "⏹️ Interrupt requested.", isDryRun);
+            return;
+          case "model":
+            if (cmd.args) {
+              try {
+                await callTool("agent.session.model" as any, { session, model: cmd.args.split(/\s+/)[0] });
+                await sendReply(platform, targetId, `🧠 Model set to \`${cmd.args.split(/\s+/)[0]}\`.`, isDryRun);
+              } catch (err: any) {
+                await sendReply(platform, targetId, `⚠️ Could not change model: ${err.message}`, isDryRun);
+              }
+            } else {
+              const info = (await callTool("agent.session.get" as any, { session })) as any;
+              const cur = info?.session?.model || "(agent default)";
+              await sendReply(
+                platform,
+                targetId,
+                `🧠 Model: \`${cur}\`. Change with \`.model <id>\` (only while idle). With no model set, the agent's own default applies.`,
+                isDryRun
+              );
+            }
+            return;
+          case "help":
+            await sendReply(platform, targetId, getAgentChannelHelp(), isDryRun);
+            return;
+          default:
+            await sendReply(
+              platform,
+              targetId,
+              `❓ Unknown command \`.${cmd.name}\`. Commands starting with \`.\` are handled by Clara and not sent to the agent.\n\n${getAgentChannelHelp()}`,
+              isDryRun
+            );
+            return;
         }
-        return;
       }
 
       // `./clear` reaches the agent as `/clear`
@@ -1154,6 +1183,19 @@ async function main() {
           platform,
           targetId,
           `\`\`\`text\n${String(cap?.content || "").trim().slice(-1850)}\n\`\`\``,
+          isDryRun
+        );
+        return;
+      }
+
+      const tmuxDot = parseDotCommand(normalized);
+      if (tmuxDot) {
+        await sendReply(
+          platform,
+          targetId,
+          tmuxDot.name === "help"
+            ? "**tmux session channel:** \`.kill\` ends the session, \`.capture\` shows the pane, \`? <question>\` asks the AI about it, \`./<cmd>\` sends \`/<cmd>\`. Everything else is typed into the terminal."
+            : `❓ Unknown command \`.${tmuxDot.name}\`. Commands starting with \`.\` are handled by Clara and not typed into the terminal. Try \`.help\`.`,
           isDryRun
         );
         return;
