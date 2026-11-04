@@ -14,6 +14,7 @@ import { callTool } from "../../clara.ts";
 import type { BoundSessionInfo, ChatPlatformAdapter, ManagedChannel, PlatformType } from "./types.ts";
 import { DiscordAdapter, resolveDiscordBoundTmuxSession, sanitizeChannelSuffix } from "./discord.ts";
 import { WebexAdapter, resolveWebexBoundTmuxSession } from "./webex.ts";
+import { parseAgentTopic, parseAgentWebexTitle, type AgentBinding } from "../agent/binding.ts";
 
 const CONFIG_PATH = join(homedir(), ".config/clara/config.yaml");
 
@@ -78,6 +79,17 @@ export function resolveAnyBoundTmuxSession(
   } else {
     return resolveWebexBoundTmuxSession(nameOrTitle);
   }
+}
+
+/**
+ * Detect a managed-agent binding from Discord topic or Webex space title.
+ */
+export function resolveAnyBoundAgentSession(
+  platform: PlatformType,
+  nameOrTitle: string,
+  topic: string = ""
+): AgentBinding | null {
+  return platform === "discord" ? parseAgentTopic(topic) : parseAgentWebexTitle(nameOrTitle);
 }
 
 /**

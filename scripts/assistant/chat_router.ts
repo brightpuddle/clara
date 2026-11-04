@@ -38,12 +38,20 @@ import {
   getPlatformAdapter,
   getPrimaryAdapter,
   getPrimaryPlatform,
+  resolveAnyBoundAgentSession,
   resolveAnyBoundTmuxSession,
   setPrimaryPlatform,
   syncSessionChannels,
 } from "./platform/manager.ts";
 import type { BoundSessionInfo, PlatformType } from "./platform/types.ts";
 import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./platform/discord.ts";
+
+import { formatOrigin } from "./agent/binding.ts";
+
+// Set CLARA_AGENT_MANAGED=false to make `.spawn` create tmux sessions again.
+// Existing channels fall back individually by switching their topic to `tmux:...`.
+const AGENT_MANAGED_DEFAULT = process.env.CLARA_AGENT_MANAGED !== "false";
+const MANAGED_AGENTS = new Set(["agy", "opencode"]);
 
 const HOME = homedir();
 const STATE_DIR = join(HOME, ".local/share/clara");
@@ -542,7 +550,8 @@ function getHelpMarkdown(): string {
     `- \`.sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated channels/spaces on **${currentPlat}**`,
     `- \`.platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
     `- \`.sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
-    `- \`.spawn <name> [cmd]\` — Launch a \`tmux\` session on \`eve\` + create its space/channel on **${currentPlat}**`,
+    `- \`.spawn <name> [agy|opencode] [dir]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
+    `- \`.spawn <name> <shell cmd>\` / \`.spawn sophia:<name>\` — Legacy \`tmux\` session`,
     `- \`.send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
     `- \`.capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
     `- \`.runs\` / \`.triggers\` / \`.run <id>\` — Inspect or trigger Clara workflows`,
@@ -1012,6 +1021,38 @@ async function main() {
 
   try {
     // ========================================================
+    // 0. Managed agent session channel (agent:<host>:<session> topic/title)
+    // ========================================================
+    const boundAgent = resolveAnyBoundAgentSession(platform, channelName, channelTopic);
+    if (boundAgent) {
+      const { session } = boundAgent;
+      const adapter = getPlatformAdapter(platform);
+
+      if (lower === "/kill" || lower === "kill" || lower === ".kill") {
+        await callTool("agent.session.close" as any, { session });
+        await sendReply(platform, targetId, `🛑 Closed agent session \`${session}\`. Deleting channel...`, isDryRun);
+        await adapter.deleteChannel(targetId);
+        return;
+      }
+
+      if (["/stop", "stop", ".stop", "/interrupt", ".interrupt"].includes(lower)) {
+        await callTool("agent.turn.interrupt" as any, { session });
+        await sendReply(platform, targetId, "⏹️ Interrupt requested.", isDryRun);
+        return;
+      }
+
+      // `./clear` reaches the agent as `/clear`
+      const promptText = normalized.startsWith("./") ? normalized.slice(1) : normalized;
+      // The reply, reactions and queue feedback come back through agent_relay.ts.
+      await callTool("agent.prompt.send" as any, {
+        session,
+        text: promptText,
+        origin: formatOrigin({ platform, channelId: targetId, messageId }),
+      });
+      return;
+    }
+
+    // ========================================================
     // 1. Check if this is a Bound Per-Session Channel/Space!
     // ========================================================
     const boundSession = resolveAnyBoundTmuxSession(platform, channelName, channelTopic);
@@ -1340,6 +1381,32 @@ async function main() {
     if (strippedLower.startsWith("spawn ")) {
       const parts = normalized.replace(/^[./]?spawn\s+/i, "").trim().split(/\s+/);
       let rawName = parts[0];
+      const second = (parts[1] || "").toLowerCase();
+      const hostGiven = /^(sophia|laptop|eve):/i.test(rawName);
+      // Managed ACP session: eve only, no custom shell command, agent agy|opencode.
+      const wantsManaged =
+        !/^(sophia|laptop):/i.test(rawName) &&
+        (MANAGED_AGENTS.has(second) || (parts.length === 1 && AGENT_MANAGED_DEFAULT));
+      if (wantsManaged) {
+        if (hostGiven) rawName = rawName.split(":")[1] || "dev";
+        const agent = MANAGED_AGENTS.has(second) ? second : "opencode";
+        const dir = (MANAGED_AGENTS.has(second) ? parts[2] : undefined) || join(HOME, ".config/clara");
+        const created = (await callTool("agent.session.create" as any, { agent, dir })) as any;
+        const sessionId = String(created?.session || "");
+        const primary = getPrimaryAdapter();
+        const ch = await primary.ensureAgentChannel(
+          (await callTool("agent.session.get" as any, { session: sessionId }) as any)?.session?.host || LOCAL_HOST_PREFIX,
+          sessionId,
+          rawName
+        );
+        await sendReply(
+          platform,
+          targetId,
+          `Started managed **${agent}** session \`${sessionId}\` in \`${dir}\`. Channel: **\`${ch.name}\`**.`,
+          isDryRun
+        );
+        return;
+      }
       let targetHost: "eve" | "sophia" = "eve";
       if (rawName.toLowerCase().startsWith("sophia:") || rawName.toLowerCase().startsWith("laptop:")) {
         targetHost = "sophia";

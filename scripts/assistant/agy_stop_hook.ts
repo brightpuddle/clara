@@ -37,6 +37,11 @@ stateDb.exec(`
 `);
 
 async function main() {
+  // Managed (ACP) sessions are relayed by agent_relay.ts; never double post.
+  if (process.env.CLARA_MANAGED_AGENT) {
+    console.log("{}");
+    return;
+  }
   let rawInput = "";
   try {
     rawInput = await Bun.stdin.text();

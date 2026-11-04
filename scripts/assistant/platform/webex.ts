@@ -6,13 +6,21 @@
  */
 
 import { callTool } from "../../clara.ts";
-import type { BoundSessionInfo, ChatPlatformAdapter, ManagedChannel, PlatformType } from "./types.ts";
+import type {
+  BoundSessionInfo,
+  ChatPlatformAdapter,
+  ManagedAgentChannel,
+  ManagedChannel,
+  PlatformType,
+} from "./types.ts";
+import { parseAgentWebexTitle, webexAgentTitle } from "../agent/binding.ts";
 
 export const WEBEX_SPACE_PREFIX_EVE = "[Clara:eve]";
 export const WEBEX_SPACE_PREFIX_SOPHIA = "[Clara:sophia]";
 
 export function resolveWebexBoundTmuxSession(title: string): BoundSessionInfo | null {
   const trimmed = String(title || "").trim();
+  if (parseAgentWebexTitle(trimmed)) return null;
   const eveMatch = trimmed.match(/^\[Clara:eve\]\s*(.+)$/i);
   if (eveMatch?.[1]) {
     return { host: "eve", sessionName: eveMatch[1].trim() };
@@ -78,6 +86,34 @@ export class WebexAdapter implements ChatPlatformAdapter {
       name: title,
       boundSession: { host, sessionName },
     };
+  }
+
+  async listAgentChannels(): Promise<ManagedAgentChannel[]> {
+    const rooms = ((await callTool("webex.rooms.list" as any, { max: 100 })) || []) as any[];
+    const out: ManagedAgentChannel[] = [];
+    for (const r of rooms) {
+      if (r.type !== "group") continue;
+      const b = parseAgentWebexTitle(r.title);
+      if (b) out.push({ id: String(r.id), name: String(r.title), ...b });
+    }
+    return out;
+  }
+
+  async ensureAgentChannel(
+    host: string,
+    session: string,
+    name: string
+  ): Promise<ManagedAgentChannel> {
+    const existing = (await this.listAgentChannels()).find(
+      (c) => c.host === host && c.session === session
+    );
+    if (existing) return existing;
+    const title = webexAgentTitle(host, name, session);
+    const created = (await callTool("webex.room.create" as any, {
+      title,
+      invite_bot: true,
+    })) as any;
+    return { id: String(created.id), name: title, host, session };
   }
 
   async deleteChannel(channelId: string): Promise<void> {

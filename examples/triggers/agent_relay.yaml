@@ -1,0 +1,13 @@
+# Mirrors managed-agent events into Discord/Webex (see scripts/assistant/agent_relay.ts).
+triggers:
+  - id: "agent-relay"
+    name: "Managed Agent Chat Relay"
+    description: "Posts agent replies and status reactions to the channel bound to each managed session"
+    enabled: true
+    type: "worker"
+    action:
+      exec: "bun"
+      args: ["run", "scripts/assistant/agent_relay.ts"]
+      dir: "${HOME}/.config/clara"
+      restart: "always"
+      restart_delay: "5s"

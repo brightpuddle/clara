@@ -483,6 +483,7 @@ func ExecDialer(bin string, args []string, log zerolog.Logger) Dialer {
 	return func(_ context.Context, dir string) (io.ReadWriteCloser, error) {
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
+		cmd.Env = managedEnv(os.Environ())
 		cmd.Stderr = stderrLog{log.With().Str("agent", bin).Logger()}
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
@@ -507,6 +508,19 @@ func ExecDialer(bin string, args []string, log zerolog.Logger) Dialer {
 		}()
 		return p, nil
 	}
+}
+
+// managedEnv hides tmux from a managed agent and marks it as managed, so
+// the legacy tmux-based agy chat hooks never mirror its turns a second time.
+func managedEnv(env []string) []string {
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "TMUX=") || strings.HasPrefix(kv, "TMUX_PANE=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, "CLARA_MANAGED_AGENT=1")
 }
 
 type stderrLog struct{ l zerolog.Logger }

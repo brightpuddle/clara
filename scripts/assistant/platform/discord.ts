@@ -6,7 +6,14 @@
  */
 
 import { callTool } from "../../clara.ts";
-import type { BoundSessionInfo, ChatPlatformAdapter, ManagedChannel, PlatformType } from "./types.ts";
+import type {
+  BoundSessionInfo,
+  ChatPlatformAdapter,
+  ManagedAgentChannel,
+  ManagedChannel,
+  PlatformType,
+} from "./types.ts";
+import { agentTopic, parseAgentTopic } from "../agent/binding.ts";
 
 export const LOCAL_HOST_PREFIX = "eve";
 export const LAPTOP_HOST_PREFIX = "sophia";
@@ -24,6 +31,7 @@ export function resolveDiscordBoundTmuxSession(
   channelName: string,
   channelTopic: string
 ): BoundSessionInfo | null {
+  if (parseAgentTopic(channelTopic)) return null;
   const topicHostMatch = String(channelTopic || "").match(/^tmux:(eve|sophia):([^\s—-]+)/i);
   if (topicHostMatch?.[1] && topicHostMatch?.[2]) {
     return {
@@ -108,6 +116,35 @@ export class DiscordAdapter implements ChatPlatformAdapter {
       topic,
       boundSession: { host, sessionName },
     };
+  }
+
+  async listAgentChannels(): Promise<ManagedAgentChannel[]> {
+    const raw = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
+    const out: ManagedAgentChannel[] = [];
+    for (const c of raw) {
+      if (c.type !== "text") continue;
+      const b = parseAgentTopic(c.topic || "");
+      if (b) out.push({ id: String(c.id), name: String(c.name), ...b });
+    }
+    return out;
+  }
+
+  async ensureAgentChannel(
+    host: string,
+    session: string,
+    name: string
+  ): Promise<ManagedAgentChannel> {
+    const existing = (await this.listAgentChannels()).find(
+      (c) => c.host === host && c.session === session
+    );
+    if (existing) return existing;
+    const chName = `${host}-${sanitizeChannelSuffix(name)}`;
+    const created = (await callTool("discord.channel.create" as any, {
+      name: chName,
+      topic: agentTopic(host, session),
+      category: DISCORD_CATEGORY,
+    })) as any;
+    return { id: String(created.id), name: chName, host, session };
   }
 
   async deleteChannel(channelId: string): Promise<void> {

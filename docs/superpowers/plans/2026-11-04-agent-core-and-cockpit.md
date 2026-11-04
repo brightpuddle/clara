@@ -51,13 +51,15 @@ Webex as the first clients, replacing tmux scraping for new sessions.
       `opencode acp` with cheap models
 
 1.5 Discord and Webex cutover (TS router)
-- [ ] Channel to session mapping (topic `agent:<host>:<session>`); spawn creates
+- [~] Channel to session mapping (topic `agent:<host>:<session>`); spawn creates
       managed sessions
-- [ ] Reactions and replies from `agent.turn.started/ended` and
+- [~] Reactions and replies from `agent.turn.started/ended` and
       `agent.message`; queued-prompt feedback; `/kill` and interrupt
-- [ ] Catch-up on router restart via `agent.events.read`
-- [ ] Per-channel fallback flag to the old tmux path; observed sessions untouched
-- [ ] Disable the agy Discord hooks for managed sessions (no double posts)
+- [~] Catch-up on router restart via `agent.events.read`
+- [~] Per-channel fallback flag to the old tmux path; observed sessions untouched
+- [~] Disable the agy Discord hooks for managed sessions (no double posts)
+      Code in repo, tests green; not yet installed on Eve (needs `make install-hooks`,
+      `agent-relay` worker trigger from `examples/triggers/agent_relay.yaml`).
 - [ ] Dogfood on Eve for a defined period; fix; then merge to `main`
 
 Exit criteria: all new agent sessions on Eve run managed, with no tmux scraping

@@ -19,6 +19,13 @@ export interface ManagedChannel {
   boundSession?: BoundSessionInfo;
 }
 
+export interface ManagedAgentChannel {
+  id: string;
+  name: string;
+  host: string;
+  session: string;
+}
+
 export interface ChatPlatformAdapter {
   readonly platform: PlatformType;
 
@@ -36,6 +43,16 @@ export interface ChatPlatformAdapter {
    * Create or ensure a managed channel exists for a given host + tmux session.
    */
   ensureSessionChannel(host: "eve" | "sophia", sessionName: string): Promise<ManagedChannel>;
+
+  /**
+   * List channels/spaces bound to managed agent sessions (not tmux sessions).
+   */
+  listAgentChannels(): Promise<ManagedAgentChannel[]>;
+
+  /**
+   * Create a channel/space for a managed agent session (idempotent per session id).
+   */
+  ensureAgentChannel(host: string, session: string, name: string): Promise<ManagedAgentChannel>;
 
   /**
    * Delete a managed channel by its ID.
