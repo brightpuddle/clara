@@ -29,9 +29,10 @@ type Manager struct {
 	opts     runner.Options
 	log      zerolog.Logger
 
-	mu      sync.Mutex
-	runners map[string]*runner.Runner
-	wg      sync.WaitGroup
+	mu       sync.Mutex
+	defaults map[string]string
+	runners  map[string]*runner.Runner
+	wg       sync.WaitGroup
 }
 
 // New opens the host log in db, rebuilds the projection and re-attaches every
@@ -136,7 +137,13 @@ func (m *Manager) Create(ctx context.Context, req agents.SessionCreate) (string,
 	if kind == "" {
 		kind = agents.KindLongLived
 	}
-	return m.open(ctx, ad, adapter.OpenSpec{Dir: req.Dir, Model: req.Model}, kind, req.Prompt)
+	model := req.Model
+	if model == "" {
+		m.mu.Lock()
+		model = m.defaults[req.Agent]
+		m.mu.Unlock()
+	}
+	return m.open(ctx, ad, adapter.OpenSpec{Dir: req.Dir, Model: model}, kind, req.Prompt)
 }
 
 // Resume adopts an existing native conversation as a managed session.
@@ -245,6 +252,22 @@ func (m *Manager) Interrupt(ctx context.Context, session string) error {
 		return err
 	}
 	return r.Interrupt(ctx)
+}
+
+// SetModel switches the model of a running session.
+func (m *Manager) SetModel(ctx context.Context, session, model string) error {
+	r, err := m.runner(session)
+	if err != nil {
+		return err
+	}
+	return r.SetModel(ctx, model)
+}
+
+// SetDefaultModels sets the model used per agent type when Create gets none.
+func (m *Manager) SetDefaultModels(models map[string]string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.defaults = models
 }
 
 func (m *Manager) Close(ctx context.Context, session string) error {

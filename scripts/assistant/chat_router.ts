@@ -550,7 +550,7 @@ function getHelpMarkdown(): string {
     `- \`.sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated channels/spaces on **${currentPlat}**`,
     `- \`.platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
     `- \`.sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
-    `- \`.spawn <name> [agy|opencode] [dir]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
+    `- \`.spawn <name> [agy|opencode] [dir] [model=<id>]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
     `- \`.spawn <name> <shell cmd>\` / \`.spawn sophia:<name>\` — Legacy \`tmux\` session`,
     `- \`.send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
     `- \`.capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
@@ -562,6 +562,7 @@ function getHelpMarkdown(): string {
     `- Type or record a **Voice Message** to send input directly to that \`tmux\` session`,
     `- Send \`./<command>\` (e.g. \`./clear\`, \`./plan\`) to pass a slash command cleanly to the agent`,
     `- Prefix with \`? <question>\` to ask AI about that session's terminal output`,
+    `- In a managed agent channel: \`.model [id]\` shows/changes the model, \`.stop\` interrupts`,
     `- Type \`.kill\` or \`/kill\` to terminate the session and delete the space/channel`,
   ].join("\n");
 }
@@ -1041,6 +1042,28 @@ async function main() {
         return;
       }
 
+      const modelCmd = normalized.match(/^[./]{1,2}model(?:\s+(\S+))?\s*$/i);
+      if (modelCmd) {
+        if (modelCmd[1]) {
+          try {
+            await callTool("agent.session.model" as any, { session, model: modelCmd[1] });
+            await sendReply(platform, targetId, `🧠 Model set to \`${modelCmd[1]}\`.`, isDryRun);
+          } catch (err: any) {
+            await sendReply(platform, targetId, `⚠️ Could not change model: ${err.message}`, isDryRun);
+          }
+        } else {
+          const info = (await callTool("agent.session.get" as any, { session })) as any;
+          const cur = info?.session?.model || "(agent default)";
+          await sendReply(
+            platform,
+            targetId,
+            `🧠 Model: \`${cur}\`. Change with \`.model <id>\` (only while idle). A model with no id set uses the agent's own default.`,
+            isDryRun
+          );
+        }
+        return;
+      }
+
       // `./clear` reaches the agent as `/clear`
       const promptText = normalized.startsWith("./") ? normalized.slice(1) : normalized;
       // The reply, reactions and queue feedback come back through agent_relay.ts.
@@ -1390,8 +1413,10 @@ async function main() {
       if (wantsManaged) {
         if (hostGiven) rawName = rawName.split(":")[1] || "dev";
         const agent = MANAGED_AGENTS.has(second) ? second : "opencode";
-        const dir = (MANAGED_AGENTS.has(second) ? parts[2] : undefined) || join(HOME, ".config/clara");
-        const created = (await callTool("agent.session.create" as any, { agent, dir })) as any;
+        const opts = parts.slice(2);
+        const model = opts.find((o) => o.startsWith("model="))?.slice(6);
+        const dir = opts.find((o) => !o.startsWith("model=")) || join(HOME, ".config/clara");
+        const created = (await callTool("agent.session.create" as any, { agent, dir, model })) as any;
         const sessionId = String(created?.session || "");
         const primary = getPrimaryAdapter();
         const ch = await primary.ensureAgentChannel(

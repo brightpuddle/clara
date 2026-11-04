@@ -215,6 +215,14 @@ func (s *acpSession) start(ctx context.Context, spec OpenSpec) error {
 	return nil
 }
 
+// SetModel switches the model of the open session.
+func (s *acpSession) SetModel(ctx context.Context, model string) error {
+	if s.a.quirks.SetModel == nil {
+		return errors.Newf("%s: model selection is not supported", s.a.name)
+	}
+	return s.a.quirks.SetModel(ctx, s.conn, s.NativeID(), model)
+}
+
 func (s *acpSession) Prompt(_ context.Context, p Prompt) error {
 	s.mu.Lock()
 	if s.inflight != "" {

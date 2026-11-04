@@ -221,6 +221,34 @@ func (r *Runner) Interrupt(ctx context.Context) error {
 }
 
 // Close stops the agent and the runner, then waits for it to finish or ctx to end.
+// ErrTurnActive is returned when a model change is attempted mid-turn.
+var ErrTurnActive = errors.New("a turn is running; interrupt it or wait before changing model")
+
+// SetModel switches the session's model. It only applies while no turn runs and
+// is remembered so restarts re-open the session with the new model.
+func (r *Runner) SetModel(ctx context.Context, model string) error {
+	var err error
+	if derr := r.do(func() {
+		ms, ok := r.sess.(adapter.ModelSetter)
+		switch {
+		case r.sess == nil:
+			err = errors.New("session is not open")
+		case r.active != nil:
+			err = ErrTurnActive
+		case !ok:
+			err = errors.New("this agent cannot change model")
+		default:
+			if err = ms.SetModel(ctx, model); err == nil {
+				r.cfg.Spec.Model = model
+				r.record(agents.TypeSessionUpdated, agents.SessionUpdated{Model: model})
+			}
+		}
+	}); derr != nil {
+		return derr
+	}
+	return err
+}
+
 func (r *Runner) Close(ctx context.Context) error {
 	_ = r.do(func() { r.beginClose() })
 	select {

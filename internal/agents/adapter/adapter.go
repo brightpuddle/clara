@@ -59,6 +59,11 @@ type AgentSession interface {
 	Close(ctx context.Context) error
 }
 
+// ModelSetter is implemented by sessions that can switch model while open.
+type ModelSetter interface {
+	SetModel(ctx context.Context, model string) error
+}
+
 // AgentEvent is a normalised event from an agent session.
 type AgentEvent interface{ agentEvent() }
 

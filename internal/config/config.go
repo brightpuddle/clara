@@ -135,6 +135,20 @@ type AgentsConfig struct {
 type AgentAdapterConfig struct {
 	// Bin is the executable to run; defaults to the agent name.
 	Bin string `yaml:"bin"`
+
+	// Model is the default model for new sessions of this agent (agent-specific id).
+	Model string `yaml:"model"`
+}
+
+// DefaultModels returns the configured default model per agent.
+func (a AgentsConfig) DefaultModels() map[string]string {
+	out := map[string]string{}
+	for name, c := range a.Adapters {
+		if c.Model != "" {
+			out[name] = c.Model
+		}
+	}
+	return out
 }
 
 // HostName returns the configured agent host name, falling back to the OS hostname.

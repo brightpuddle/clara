@@ -32,6 +32,7 @@ type fakeSession struct {
 	mu     sync.Mutex
 	busy   bool
 	closed bool
+	model  string
 }
 
 func (f *fakeSession) NativeID() string { return f.id }
@@ -44,6 +45,13 @@ func (f *fakeSession) Prompt(_ context.Context, p adapter.Prompt) error {
 	}
 	f.busy = true
 	f.prompts <- p
+	return nil
+}
+
+func (f *fakeSession) SetModel(_ context.Context, m string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.model = m
 	return nil
 }
 
@@ -675,4 +683,26 @@ func TestConcurrentCommandsUnderRace(t *testing.T) {
 		return sess.QueueLen == 0 && sess.State == agents.StateIdle
 	})
 	close(stop)
+}
+
+func TestSetModelOnlyWhenIdleAndIsRemembered(t *testing.T) {
+	h, r, s := startIdle(t)
+	if err := r.SetModel(context.Background(), "m2"); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	got := s.model
+	s.mu.Unlock()
+	if got != "m2" {
+		t.Fatalf("agent model = %q", got)
+	}
+	if sess, _ := h.j.Session(r.SessionID()); sess.Model != "m2" {
+		t.Fatalf("projection model = %q", sess.Model)
+	}
+	p, _ := r.Send("work", "")
+	s.nextPrompt(t)
+	if err := r.SetModel(context.Background(), "m3"); !errors.Is(err, runner.ErrTurnActive) {
+		t.Fatalf("want ErrTurnActive, got %v", err)
+	}
+	s.end(p, agents.StopEndTurn)
 }

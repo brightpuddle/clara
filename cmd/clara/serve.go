@@ -140,6 +140,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		if err != nil {
 			return errors.Wrap(err, "start agent core")
 		}
+		agentMgr.SetDefaultModels(cfg.Agents.DefaultModels())
 		defer agentMgr.Wait()
 		defer shutdown()
 	}

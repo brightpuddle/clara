@@ -101,6 +101,10 @@ func Register(
 		mcp.WithString("native_id", req("Native session id from agent.session.discover.")...))
 	add("agent.session.discover", "List resumable native sessions.", s.discover,
 		mcp.WithString("agent", str("Agent type; all agents if omitted.")...))
+	add("agent.session.model", "Switch the model of an idle session (agent-specific model id).",
+		s.setModel,
+		mcp.WithString("session", req("Session id.")...),
+		mcp.WithString("model", req("Model id, e.g. gemini-3.8-flash-high.")...))
 	add("agent.prompt.send", "Queue a prompt; it runs when the session is idle.", s.send,
 		mcp.WithString("session", req("Session id.")...),
 		mcp.WithString("text", req("Prompt text.")...),
@@ -243,6 +247,24 @@ func (s *service) discover(ctx context.Context, args map[string]any) (any, error
 		return nil, err
 	}
 	return map[string]any{"sessions": list}, nil
+}
+
+func (s *service) setModel(ctx context.Context, args map[string]any) (any, error) {
+	if err := s.check(); err != nil {
+		return nil, err
+	}
+	id, err := requireStr(args, "agent.session.model", "session")
+	if err != nil {
+		return nil, err
+	}
+	model, err := requireStr(args, "agent.session.model", "model")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.mgr.SetModel(ctx, id, model); err != nil {
+		return nil, err
+	}
+	return map[string]any{"session": id, "model": model}, nil
 }
 
 func (s *service) send(_ context.Context, args map[string]any) (any, error) {
