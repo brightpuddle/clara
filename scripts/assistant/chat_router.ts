@@ -48,6 +48,7 @@ import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./
 
 import { formatOrigin } from "./agent/binding.ts";
 import { parseDotCommand } from "./agent/commands.ts";
+import { formatHistory } from "./agent/history.ts";
 import { planSync, sessionLabel, type SessionInfo } from "./agent/sync.ts";
 
 // Set CLARA_AGENT_MANAGED=false to make `.spawn` create tmux sessions again.
@@ -521,6 +522,27 @@ async function listAgentSessions(): Promise<SessionInfo[]> {
   }
 }
 
+async function readSessionEvents(session: string): Promise<any[]> {
+  const all: any[] = [];
+  let after = 0;
+  for (;;) {
+    const res = (await callTool("agent.events.read" as any, { session, after, limit: 1000 })) as any;
+    const evs = (res?.events || []) as any[];
+    if (evs.length === 0) return all;
+    all.push(...evs.filter((e) => e.type === "message.user" || e.type === "message.assistant"));
+    after = Number(res.next);
+  }
+}
+
+async function backfillAgentHistory(channelId: string, session: string) {
+  try {
+    const text = formatHistory(await readSessionEvents(session));
+    if (text) await getPrimaryAdapter().sendMessage(channelId, text);
+  } catch (err: any) {
+    console.warn(`[chat_router] history backfill failed for ${session}: ${err.message}`);
+  }
+}
+
 async function syncAgentSessions(): Promise<string> {
   const primary = getPrimaryAdapter();
   const other = getPlatformAdapter(primary.platform === "webex" ? "discord" : "webex");
@@ -529,7 +551,8 @@ async function syncAgentSessions(): Promise<string> {
   const lines: string[] = [];
   for (const sess of plan.create) {
     const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess));
-    lines.push(`- Created **${ch.name}** for ${sess.agent} \`${sess.id}\``);
+    await backfillAgentHistory(ch.id, sess.id);
+    lines.push(`- Created **${ch.name}** for ${sess.agent} \`${sess.id}\` (history restored)`);
   }
   for (const ch of plan.remove) {
     try {
