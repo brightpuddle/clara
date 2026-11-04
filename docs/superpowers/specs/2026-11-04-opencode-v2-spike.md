@@ -66,18 +66,80 @@ opencode adapter becomes an HTTP client of that service, with no tmux scraping.
    opencode and agy across hosts with one attention model, and Clara's own
    notification and log ownership. Keep the adapter thin so it can change.
 
-## Not yet verified (do next)
+## Verified by probe (spike/opencode_probe.py, spike/record_events.ts)
 
-- Event types and payloads on `/api/event`. A 10 second sample while idle
-  returned nothing. Re-sample during an active turn and while a form is pending
-  and record the real event names. The OpenAPI event union did not parse with
-  a quick script; read `V2EventEncoded` by hand or use `@opencode/client`.
-- That the agent's question tool creates a Form and that `reply` unblocks it.
-  Trigger one deliberately and observe `/api/form`.
-- Authentication when listening beyond localhost, and how `serve` differs from
-  the background service (stable port, auth, `--cors`).
-- Whether a prompt sent via API shows up live in a running TUI (it should, as
-  both are clients of one service).
+Run against the live service with `gemini-3.8-flash`. Fixture:
+`spike/out/probe_session_events.jsonl`.
+
+**Full loop works.** `POST /api/session` -> `POST .../prompt` -> agent calls its
+question tool -> a Form appears -> `POST .../form/{id}/reply` -> agent finishes
+("You prefer red.") -> session goes idle with `outcome: succeeded`.
+
+**Questions are Forms.** `form.created` carries
+`metadata.kind: "question"`, `metadata.tool.{messageID,id}`, and `fields[]`
+(`key`, `title`, `description`, `type`, `options[{value,label,description}]`,
+`custom: true` meaning free text allowed). Reply body is
+`{"answer": {"<key>": "<value>"}}`. `form.replied` echoes the answer. This
+maps one-to-one onto the Cockpit Attention (`options[]`, `allow_text`).
+
+**Event vocabulary** (global stream, `GET /api/event`, typed client
+`client.event.subscribe()`): `server.connected` (resync marker),
+`session.created`, `session.inbox.enqueued/delivered`,
+`session.execution.started/succeeded` (failure variant not yet observed),
+`session.step.started/streamed/ended`, `session.reasoning.started/delta/ended`,
+`session.text.started/delta/ended`, `session.tool.input.started/ended`,
+`session.tool.called/progress/success`, `session.usage.updated` (cost, tokens),
+`form.created`, `form.replied`, plus housekeeping (`project.updated`,
+`provider.updated`, `mcp.status.changed`, `shell.created/exited`, ...).
+Events carry `location.directory`. The stream is global across all sessions
+and locations, including the session you are in.
+
+**Durable per-session sequence.** Session-scoped events carry
+`durable: {aggregateID: <sessionID>, seq, version}`. For the probe session
+the sequence was gap-free, 0 to 20, from `session.created` to
+`session.execution.succeeded`. Non-durable events (`form.*`,
+`session.usage.updated`, `*.updated`) have no seq.
+
+**Lossless catch-up exists.** `GET /api/experimental/session/{id}/log?after=<seq>&follow=true`
+reads durable events after an exclusive sequence number and continues live.
+Experimental, but it is exactly the per-session cursor the adapter needs.
+
+**Transport notes.**
+- Direct HTTP needs auth (401 without it). Use `Service.ensure()` and
+  `Service.headers(endpoint)` from `@opencode/client/service` (Node/Bun), or
+  `opencode api` for ad hoc calls.
+- `opencode api` buffers; it does not stream SSE. Use the typed client.
+- The TypeScript client is Bun-friendly. A Go adapter has to discover the
+  endpoint and auth itself (see open items), or Clara can use a small Bun
+  sidecar for opencode. Decide in the plan.
+
+## Adapter design that follows
+
+1. Subscribe to the global stream for liveness and discovery (`session.created`,
+   `form.created`, `session.execution.*`).
+2. For each tracked session keep `last_seq`. On start and on every reconnect
+   (`server.connected`), read `/session/{id}/log?after=last_seq&follow=true`
+   to fill gaps losslessly. Write each durable event into the Clara log with
+   its `(host, sessionID, seq)` as an idempotency key.
+3. Non-durable events (forms, usage) are reconciled on reconnect from
+   `GET /api/session/{id}/form` and `session.get`.
+4. Map to Cockpit events: `session.text.*` to `assistant_*`,
+   `session.tool.*` to `tool_call/tool_result`, `form.created` to
+   `attention_requested`, `form.replied` to `attention_resolved`,
+   `session.execution.*` to `status_change`.
+
+## Still open
+
+- Failure and interrupt events (`session.execution.failed`?). Trigger one.
+- A prompt sent via API appearing live in an attached TUI (expected, both are
+  clients of one service).
+- How to discover the endpoint and auth from Go: the registration file
+  location, header format, and whether it rotates. Read the `Service` source in
+  `@opencode/client` or the troubleshooting docs.
+- Remote access: `opencode serve --hostname --port` auth, vs Tailscale-only
+  binding. Also whether `/api/pair` is useful to us.
+- Stability of `/api/experimental/session/{id}/log` across opencode releases.
+- Do forms that remain unanswered survive a service restart?
 
 ## agy (not started)
 
