@@ -22,7 +22,7 @@ Webex as the first clients, replacing tmux scraping for new sessions.
       generated later)
 - [x] 149f6a9f `internal/agents/log`: host log in `clara.db` (append, read after
       `host_seq`, tests)
-- [ ] Projections rebuilt from events: sessions, attentions, prompt queue
+- [x] 394e4257 Projections rebuilt from events: sessions, attentions, prompt queue
 
 1.2 ACP adapter
 - [ ] ACP JSON-RPC client over stdio (initialize, session/new, load, list,
