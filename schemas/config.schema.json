@@ -117,6 +117,10 @@
       "$ref": "#/definitions/notify",
       "description": "Notification backend configuration"
     },
+    "agents": {
+      "$ref": "#/definitions/agents",
+      "description": "Managed agent core (agy, opencode over ACP)"
+    },
     "server": {
       "$ref": "#/definitions/server",
       "description": "HTTP and remote MCP server configuration"
@@ -186,6 +190,59 @@
         }
       },
       "required": ["name"],
+      "additionalProperties": false
+    },
+    "agents": {
+      "type": "object",
+      "description": "Managed agent core (agy, opencode over ACP)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn the agent core and the agent.* tools on",
+          "default": false
+        },
+        "host": {
+          "type": "string",
+          "description": "Name of this machine in the event log (defaults to the OS hostname)"
+        },
+        "adapters": {
+          "type": "object",
+          "description": "Per-agent settings keyed by agent name (agy, opencode). Defaults to both enabled.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "bin": {
+                "type": "string",
+                "description": "Executable to run (defaults to the agent name)"
+              },
+              "model": {
+                "type": "string",
+                "description": "Default model id for new sessions of this agent"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "remote_hosts": {
+          "type": "array",
+          "description": "Other agent hosts whose logs this hub pulls through mounted MCP tools",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Must equal the remote's own agents.host value"
+              },
+              "tool_prefix": {
+                "type": "string",
+                "description": "Namespace prefix of the remote's mounted tools, e.g. 'laptop.'"
+              }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          }
+        }
+      },
       "additionalProperties": false
     },
     "notify": {
