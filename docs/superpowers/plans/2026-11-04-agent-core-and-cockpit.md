@@ -72,9 +72,9 @@ and no lost or duplicated messages across router and daemon restarts.
 ## Stage 2: Federation
 - [ ] Same core on Sophia (`laptop.agent.*` via existing tunnel)
 - [~] Eve puller aggregating Sophia's log by `host_seq`; hub `seq` assignment and
-      dedupe on `(host, host_seq)`. Done: `internal/agents/hub` (Hub, Puller, tested
-      with a fake Source). Todo: tool-backed Source over `laptop.agent.events.read`,
-      daemon wiring and poll loop.
+      dedupe on `(host, host_seq)`. Done: `internal/agents/hub` (Hub, Puller, ToolSource),
+      wired in `cmd/clara/agent_hub.go` (local + `agents.remote_hosts`, 2s poll).
+      Todo: live test against Sophia over the tunnel.
 - [ ] `host.status` online/offline; command routing to the right host
 - [ ] Sleep/wake test: no lost or duplicated events
 - [ ] Router uses the hub view for both hosts

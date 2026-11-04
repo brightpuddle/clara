@@ -230,6 +230,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	if agentMgr != nil {
 		agentbuiltin.PublishToBus(agentMgr, sup.EventBus())
+		startAgentHub(daemonCtx, agentMgr, reg, sup.EventBus(), db, logger)
 	}
 
 	triggerRunner := trigger.NewRunner(60 * time.Second)

@@ -50,6 +50,12 @@ func (p *Puller) Pull(ctx context.Context) (int, error) {
 		if len(evs) == 0 {
 			return total, nil
 		}
+		for _, e := range evs {
+			if e.Host != p.host {
+				return total, errors.Newf(
+					"host %q returned event for host %q: set agents.host to match", p.host, e.Host)
+			}
+		}
 		stored, err := p.hub.Ingest(ctx, evs)
 		if err != nil {
 			return total, err

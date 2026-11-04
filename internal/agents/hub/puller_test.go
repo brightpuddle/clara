@@ -62,3 +62,32 @@ func TestPullErrorLeavesCursor(t *testing.T) {
 		t.Fatalf("cursor = %d", c)
 	}
 }
+
+func TestPullRejectsForeignHost(t *testing.T) {
+	h, ctx := newHub(t), context.Background()
+	src := &fakeSource{events: []agents.Event{hostEv("eve", 1, "a")}}
+	p := hub.NewPuller(h, "sophia", src, 10, nil)
+	if _, err := p.Pull(ctx); err == nil {
+		t.Fatal("want host mismatch error")
+	}
+}
+
+func TestToolSourceDecodesEventsRead(t *testing.T) {
+	var gotName string
+	var gotArgs map[string]any
+	call := func(_ context.Context, name string, args map[string]any) (any, error) {
+		gotName, gotArgs = name, args
+		return map[string]any{"events": []any{map[string]any{
+			"id": "a", "host": "sophia", "host_seq": 7, "type": "turn.started",
+			"ts": "1970-01-01T00:00:01Z", "payload": map[string]any{"turn_id": "t"},
+		}}}, nil
+	}
+	src := hub.NewToolSource(call, "laptop.")
+	evs, err := src.ReadEvents(context.Background(), 3, 50)
+	if err != nil || len(evs) != 1 || evs[0].HostSeq != 7 || evs[0].Host != "sophia" {
+		t.Fatalf("evs=%+v err=%v", evs, err)
+	}
+	if gotName != "laptop.agent.events.read" || gotArgs["after"] != int64(3) || gotArgs["limit"] != 50 {
+		t.Fatalf("call %q %v", gotName, gotArgs)
+	}
+}

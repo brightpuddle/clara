@@ -129,6 +129,19 @@ type AgentsConfig struct {
 	// Adapters maps an agent name (agy, opencode) to its settings. When empty,
 	// both agy and opencode are enabled with binaries resolved from PATH.
 	Adapters map[string]AgentAdapterConfig `yaml:"adapters"`
+
+	// RemoteHosts are other machines running the agent core whose logs this
+	// hub pulls through their mounted MCP tools (for example sophia).
+	RemoteHosts []AgentRemoteHost `yaml:"remote_hosts"`
+}
+
+// AgentRemoteHost names a remote agent host reachable as an MCP namespace.
+type AgentRemoteHost struct {
+	// Name must equal the remote's own agents.host value.
+	Name string `yaml:"name"`
+
+	// ToolPrefix is the namespace prefix of its mounted tools, e.g. "laptop.".
+	ToolPrefix string `yaml:"tool_prefix"`
 }
 
 // AgentAdapterConfig configures one ACP agent.
