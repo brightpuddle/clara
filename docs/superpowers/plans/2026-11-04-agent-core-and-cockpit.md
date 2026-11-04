@@ -18,7 +18,7 @@ Webex as the first clients, replacing tmux scraping for new sessions.
 1.1 Foundations
 - [x] a8fa2969 Move spike scripts to `docs/spikes/`; copy needed recordings to
       `internal/agents/testdata/` (scrub paths and secrets)
-- [ ] Wire schema: Go types for events, payloads, commands (hand-written first,
+- [x] 6bcb6640 Wire schema: Go types for events, payloads, commands (hand-written first,
       generated later)
 - [ ] `internal/agents/log`: host log in `clara.db` (append, read after
       `host_seq`, tests)
