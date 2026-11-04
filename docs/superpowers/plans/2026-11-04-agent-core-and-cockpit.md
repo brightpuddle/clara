@@ -60,7 +60,9 @@ Webex as the first clients, replacing tmux scraping for new sessions.
 - [~] Disable the agy Discord hooks for managed sessions (no double posts)
       Installed on Eve 2026-11-04 (config `agents.enabled`, `agent-relay` worker).
       Smoke-tested live with opencode: spawn, prompt, reply, reactions, queue, /stop,
-      /kill. Not yet tested: Webex, agy, router/daemon restart mid-turn.
+      /kill. Not yet tested: Webex, router/daemon restart mid-turn.
+      Migration pass: `.sync` and `.sessions` cover managed sessions, `.model` and
+      `model=` on spawn, per-agent default model. Awaiting user validation, then merge.
 - [ ] Dogfood on Eve for a defined period; fix; then merge to `main`
 
 Exit criteria: all new agent sessions on Eve run managed, with no tmux scraping

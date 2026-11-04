@@ -47,6 +47,7 @@ import type { BoundSessionInfo, PlatformType } from "./platform/types.ts";
 import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./platform/discord.ts";
 
 import { formatOrigin } from "./agent/binding.ts";
+import { planSync, sessionLabel, type SessionInfo } from "./agent/sync.ts";
 
 // Set CLARA_AGENT_MANAGED=false to make `.spawn` create tmux sessions again.
 // Existing channels fall back individually by switching their topic to `tmux:...`.
@@ -508,6 +509,51 @@ async function handleTriggersCommand(): Promise<string> {
   } catch (err: any) {
     return `Failed to list triggers: ${err.message}`;
   }
+}
+
+async function listAgentSessions(): Promise<SessionInfo[]> {
+  try {
+    const res = (await callTool("agent.session.list" as any, {})) as any;
+    return (res?.sessions || []) as SessionInfo[];
+  } catch {
+    return [];
+  }
+}
+
+async function syncAgentSessions(): Promise<string> {
+  const primary = getPrimaryAdapter();
+  const sessions = await listAgentSessions();
+  const plan = planSync(sessions, await primary.listAgentChannels());
+  const lines: string[] = [];
+  for (const sess of plan.create) {
+    const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess));
+    lines.push(`- Created **${ch.name}** for ${sess.agent} \`${sess.id}\``);
+  }
+  for (const ch of plan.remove) {
+    try {
+      await primary.deleteChannel(ch.id);
+      lines.push(`- Removed **${ch.name}** (session closed)`);
+    } catch (err: any) {
+      lines.push(`- Failed to remove **${ch.name}**: ${err.message}`);
+    }
+  }
+  return [
+    `### Managed agent sessions`,
+    `${plan.keep.length + plan.create.length} live, ${plan.create.length} created, ${plan.remove.length} removed.`,
+    ...lines,
+  ].join("\n");
+}
+
+async function handleAgentSessionsCommand(): Promise<string> {
+  const open = (await listAgentSessions()).filter((x) => x.state !== "closed");
+  if (open.length === 0) {
+    return "No managed agent sessions. Use `.spawn <name> [agy|opencode] [dir] [model=<id>]`.";
+  }
+  const rows = open.map(
+    (x: any) =>
+      `- **${sessionLabel(x)}** — ${x.agent}${x.model ? ` \`${x.model}\`` : ""}, ${x.state}, \`${x.dir}\``
+  );
+  return [`### Managed agent sessions (${open.length})`, ...rows].join("\n");
 }
 
 async function handleSessionsCommand(): Promise<string> {
@@ -1330,7 +1376,13 @@ async function main() {
 
     if (strippedLower === "sync") {
       const out = await syncSessionChannels(undefined, backfillChannelHistoryIfNew);
-      await sendReply(platform, targetId, out, isDryRun);
+      let agentOut = "";
+      try {
+        agentOut = await syncAgentSessions();
+      } catch (err: any) {
+        agentOut = `⚠️ Agent session sync failed: ${err.message}`;
+      }
+      await sendReply(platform, targetId, `${agentOut}\n\n${out}`, isDryRun);
       return;
     }
 
@@ -1370,7 +1422,7 @@ async function main() {
     }
 
     if (strippedLower === "sessions") {
-      const out = await handleSessionsCommand();
+      const out = `${await handleAgentSessionsCommand()}\n\n${await handleSessionsCommand()}`;
       await sendReply(platform, targetId, out, isDryRun);
       return;
     }
