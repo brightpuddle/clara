@@ -66,10 +66,10 @@ opencode adapter becomes an HTTP client of that service, with no tmux scraping.
    opencode and agy across hosts with one attention model, and Clara's own
    notification and log ownership. Keep the adapter thin so it can change.
 
-## Verified by probe (spike/opencode_probe.py, spike/record_events.ts)
+## Verified by probe (docs/spikes/opencode_probe.py, docs/spikes/record_events.ts)
 
 Run against the live service with `gemini-3.8-flash`. Fixture:
-`spike/out/probe_session_events.jsonl`.
+`internal/agents/testdata/opencode/session_events.jsonl`.
 
 **Full loop works.** `POST /api/session` -> `POST .../prompt` -> agent calls its
 question tool -> a Form appears -> `POST .../form/{id}/reply` -> agent finishes
@@ -141,7 +141,7 @@ Experimental, but it is exactly the per-session cursor the adapter needs.
 - Stability of `/api/experimental/session/{id}/log` across opencode releases.
 - Do forms that remain unanswered survive a service restart?
 
-## agy 1.5.0 findings (spike/agy_acp_probe.py, spike/agy_acp_resume.py)
+## agy 1.5.0 findings (docs/spikes/agy_acp_probe.py, docs/spikes/agy_acp_resume.py)
 
 **agy has a real structured interface: ACP.** `agy acp` is an Agent Client
 Protocol stdio server (JSON-RPC 2.0, NDJSON). The hooks-plus-tmux path Clara
@@ -231,10 +231,10 @@ hooks for managed sessions to avoid double posting.
   API (per the user). Out of scope.
 - Decision recorded in ADR 0005.
 
-## ACP cancel and busy-session behaviour (spike/acp_cancel_busy.py)
+## ACP cancel and busy-session behaviour (docs/spikes/acp_cancel_busy.py)
 
 Run against `agy acp` (gemini-3.8-flash-low) and `opencode acp`
-(github-copilot/gemini-3.8-flash). Raw logs: `spike/out/acp_*.jsonl`.
+(github-copilot/gemini-3.8-flash). Raw logs: `internal/agents/testdata/acp/*.jsonl`.
 
 ### Cancel: works identically on both
 Send the `session/cancel` **notification** (`{sessionId}`, no id) while a prompt

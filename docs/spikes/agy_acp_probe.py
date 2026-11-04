@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Throwaway spike: drive `agy acp` over stdio and log every JSON-RPC message.
 
-Run: python3 spike/agy_acp_probe.py [prompt]
-Artifacts: spike/out/agy_acp.jsonl
+Run: python3 docs/spikes/agy_acp_probe.py [prompt]
+Artifacts: docs/spikes/out/agy_acp.jsonl (recording: internal/agents/testdata/acp/)
 """
 import json, os, subprocess, sys, tempfile, threading, time
 

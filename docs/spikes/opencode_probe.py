@@ -2,7 +2,7 @@
 """Throwaway spike: observe opencode v2 events, forms and prompt flow.
 
 Writes raw artifacts to ./out/. Uses `opencode api` for transport/auth.
-Run: python3 spike/opencode_probe.py
+Run: python3 docs/spikes/opencode_probe.py
 """
 import json, os, subprocess, sys, threading, time, tempfile
 
