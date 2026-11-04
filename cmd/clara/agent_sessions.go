@@ -23,6 +23,7 @@ var (
 	agentSendFrom  string
 	agentTailAfter int64
 	agentTailFlw   bool
+	agentListAll   bool
 )
 
 var agentListCmd = &cobra.Command{
@@ -80,6 +81,7 @@ var agentCancelCmd = &cobra.Command{
 }
 
 func init() {
+	agentListCmd.Flags().BoolVarP(&agentListAll, "all", "a", false, "include closed sessions")
 	agentNewCmd.Flags().StringVar(&agentNewDir, "dir", "", "working directory (default: current)")
 	agentNewCmd.Flags().StringVar(&agentNewModel, "model", "", "model override")
 	agentNewCmd.Flags().StringVar(&agentNewKind, "kind", "", "longlived (default) or task")
@@ -112,14 +114,18 @@ func runAgentSessionList(_ *cobra.Command, _ []string) error {
 		return err
 	}
 	sessions, _ := out["sessions"].([]any)
-	if len(sessions) == 0 {
-		fmt.Println("no sessions")
-		return nil
-	}
+	shown := 0
 	for _, v := range sessions {
 		s, _ := v.(map[string]any)
+		if !agentListAll && s["state"] == "closed" {
+			continue
+		}
+		shown++
 		fmt.Printf("%-28s %-9s %-9s q=%v %s  %s\n",
 			s["id"], s["agent"], s["state"], s["queue_len"], s["dir"], s["title"])
+	}
+	if shown == 0 {
+		fmt.Println("no sessions")
 	}
 	return nil
 }
