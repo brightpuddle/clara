@@ -41,13 +41,13 @@ Webex as the first clients, replacing tmux scraping for new sessions.
 - [x] de1f3e83 Concurrency and shutdown tests (context-bound goroutines, no leaks)
 
 1.4 Clara integration
-- [ ] `internal/builtin/agent`: MCP tools (`agent.session.create/list/get/close/
+- [x] ba493cee `internal/builtin/agent`: MCP tools (`agent.session.create/list/get/close/
       resume/discover`, `agent.prompt.send/cancel`, `agent.turn.interrupt`,
       `agent.events.read`)
-- [ ] CloudEvents `agent.*` published on the bus for each logged event
-- [ ] `clara agent` CLI: list, new, send, tail, cancel
-- [ ] Config section (`agents:`) and `clara types gen` coverage
-- [ ] Opt-in integration tests (tag `integration`) against real `agy acp` and
+- [x] ba493cee CloudEvents `agent.*` published on the bus for each logged event
+- [x] ba493cee `clara agent` CLI: list, new, send, tail, cancel
+- [x] ba493cee Config section (`agents:`) and `clara types gen` coverage
+- [~] Opt-in integration tests (tag `integration`) against real `agy acp` and
       `opencode acp` with cheap models
 
 1.5 Discord and Webex cutover (TS router)
