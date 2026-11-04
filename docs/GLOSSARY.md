@@ -51,3 +51,23 @@ cursors, and a revocable credential.
 
 **Fallback terminal** — Access to the raw agent TUI via tmux or `opencode
 attach`. Optional and secondary to Events.
+
+**ACP** — Agent Client Protocol: JSON-RPC over stdio between a client (Clara)
+and an agent process (`agy acp`, `opencode acp`). The universal adapter
+protocol (ADR 0005).
+
+**Turn** — One agent run in response to a prompt, from `turn.started` to
+`turn.ended`.
+
+**Prompt queue** — Clara's per-session queue of user prompts. Exactly one prompt
+is in flight to the agent at a time.
+
+**Host mode / Hub mode** — Every host runs adapters and a local log (host mode).
+Eve additionally aggregates all hosts, serves clients and sends push (hub mode).
+
+**Managed / Observed session** — Managed: Clara owns the agent process over ACP.
+Observed: a hand-started terminal agent seen only through hooks.
+
+**Quirk** — A small per-agent behaviour override in the ACP adapter (model
+selection, quota detection, early prompt responses).
+
