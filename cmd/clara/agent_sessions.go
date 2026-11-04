@@ -34,6 +34,14 @@ var agentListCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+var agentCmd = &cobra.Command{
+	Use:   "agent",
+	Short: "Manage dev agent sessions (agy, opencode)",
+	Long: `Manage dev agent sessions (agy, opencode) driven by the Clara daemon.
+
+To control the daemon itself, see 'clara start', 'clara stop' and 'clara status'.`,
+}
+
 var agentNewCmd = &cobra.Command{
 	Use:   "new <agy|opencode> [prompt]",
 	Short: "Start a managed agent session",

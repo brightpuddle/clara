@@ -44,14 +44,12 @@ var serveDaemon bool
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Start the Clara agent",
-	Long: `Start the Clara agent.
-
-Without -d, the agent runs in the foreground of the current terminal — useful
+	Short: "Run the Clara daemon in the foreground",
+	Long: `Run the Clara daemon in the foreground of the current terminal — useful
 for development or running under an external process supervisor.
 
-With -d, the agent is started as a background macOS LaunchAgent via launchctl.
-This is equivalent to 'clara agent start'.`,
+With -d, the daemon is started as a background macOS LaunchAgent via launchctl.
+This is equivalent to 'clara start', which is the usual way to start it.`,
 	RunE:         runServe,
 	SilenceUsage: true,
 }
@@ -75,7 +73,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	logger.Info().
 		Str("data_dir", cfg.DataDir).
 		Str("log_level", cfg.LogLevelNormalized()).
-		Msg("clara agent starting")
+		Msg("clara daemon starting")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -83,7 +81,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err := runDaemon(ctx, logger); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
-	logger.Info().Msg("clara agent stopped")
+	logger.Info().Msg("clara daemon stopped")
 	return nil
 }
 

@@ -77,7 +77,8 @@ External Signals / Sensors
 # Daemon Management
 clara serve                         # Start the daemon in foreground
 clara status                        # Report trigger counts, tool counts, and daemon status
-clara agent {start,stop,status}     # macOS LaunchAgent management
+clara {start,stop,status,logs}      # macOS LaunchAgent management (daemon)
+clara agent {list,new,send,tail,cancel}  # Dev agent sessions (agy, opencode)
 
 # Triggers
 clara trigger list                  # List all loaded triggers

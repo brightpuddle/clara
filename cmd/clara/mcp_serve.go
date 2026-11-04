@@ -70,7 +70,7 @@ func resolveExposeProfile(cfg *config.Config, profileName string, allow, deny []
 
 func runMCPServe(cmd *cobra.Command, args []string) error {
 	if !isRunning(cfg.ControlSocketPath()) {
-		return fmt.Errorf("clara agent is not running; start it with 'clara serve'")
+		return fmt.Errorf("clara daemon is not running; start it with 'clara start'")
 	}
 
 	profile, err := resolveExposeProfile(cfg, mcpServeProfile, mcpServeAllow, mcpServeDeny)

@@ -154,12 +154,16 @@ export class WebexAdapter implements ChatPlatformAdapter {
   }
 
   async addReaction(channelId: string, messageId: string, emoji: string): Promise<string | void> {
-    // Webex doesn't support bot reactions, so post an immediate waiting indicator message
+    // Webex doesn't support bot reactions, so in-progress states post a temporary
+    // indicator message. Terminal states (done, cancelled, failed) post nothing:
+    // the indicator is deleted and the reply itself is the signal.
+    const text = webexIndicatorText(emoji);
+    if (!text) return;
     try {
       const res = (await callTool("webex.notification.send" as any, {
         room_id: channelId,
-        text: `${emoji} Thinking...`,
-        markdown: `${emoji} *Thinking...*`,
+        text: text.plain,
+        markdown: text.markdown,
       })) as any;
       if (res?.message_id) {
         return String(res.message_id);
@@ -179,4 +183,11 @@ export class WebexAdapter implements ChatPlatformAdapter {
   async sendTyping(channelId: string): Promise<void> {
     // Webex Messaging API has no typing indicator endpoint
   }
+}
+
+const IN_PROGRESS_EMOJI: Record<string, string> = { "⏳": "Thinking...", "🕒": "Queued..." };
+
+export function webexIndicatorText(emoji: string): { plain: string; markdown: string } | null {
+  const label = IN_PROGRESS_EMOJI[emoji];
+  return label ? { plain: `${emoji} ${label}`, markdown: `${emoji} *${label}*` } : null;
 }

@@ -37,54 +37,53 @@ var (
 	resolveUserHomeDir = os.UserHomeDir
 )
 
-var agentCmd = &cobra.Command{
-	Use:   "agent",
-	Short: "Manage the Clara agent lifecycle",
-}
+var startCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start the Clara daemon in the background via launchd",
+	Long: `Start the Clara daemon as a background macOS LaunchAgent via launchctl.
 
-var agentStartCmd = &cobra.Command{
-	Use:          "start",
-	Short:        "Start the Clara agent as a background daemon",
-	RunE:         runAgentStart,
+To run the daemon in the foreground of this terminal instead, use 'clara serve'.
+To manage dev agent sessions (agy, opencode), see 'clara agent'.`,
+	RunE:         runStart,
 	SilenceUsage: true,
 }
 
-var agentStopCmd = &cobra.Command{
+var stopCmd = &cobra.Command{
 	Use:          "stop",
-	Short:        "Stop the running Clara agent",
-	RunE:         runAgentStop,
+	Short:        "Stop the background Clara daemon",
+	RunE:         runStop,
 	SilenceUsage: true,
 }
 
-var agentStatusCmd = &cobra.Command{
+var statusCmd = &cobra.Command{
 	Use:          "status",
-	Short:        "Show agent status and active intents",
-	RunE:         runAgentStatus,
+	Short:        "Show Clara daemon status",
+	RunE:         runStatus,
 	SilenceUsage: true,
 }
 
 var (
-	agentLogsFollow bool
-	agentLogsClear  bool
-	agentLogsCmd    = &cobra.Command{
+	logsFollow bool
+	logsClear  bool
+	logsCmd    = &cobra.Command{
 		Use:          "logs",
 		Short:        "Show recent daemon logs",
-		RunE:         runAgentLogs,
+		RunE:         runLogs,
 		SilenceUsage: true,
 	}
 )
 
 func init() {
-	agentLogsCmd.Flags().BoolVarP(&agentLogsFollow, "follow", "f", false, "follow log output")
-	agentLogsCmd.Flags().BoolVar(&agentLogsClear, "clear", false, "clear agent log file")
-	agentCmd.AddCommand(agentStartCmd, agentStopCmd, agentStatusCmd, agentLogsCmd)
+	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "follow log output")
+	logsCmd.Flags().BoolVar(&logsClear, "clear", false, "clear daemon log file")
+	rootCmd.AddCommand(startCmd, stopCmd, logsCmd)
 }
 
-// runDaemonize starts the Clara agent via launchctl. It is shared between
-// 'clara agent start' and 'clara serve -d'.
+// runDaemonize starts the Clara daemon via launchctl. It is shared between
+// 'clara start' and 'clara serve -d'.
 func runDaemonize(ctx context.Context) error {
 	if isRunning(cfg.ControlSocketPath()) {
-		fmt.Println("Clara agent is already running.")
+		fmt.Println("Clara daemon is already running.")
 		return nil
 	}
 
@@ -122,15 +121,15 @@ func runDaemonize(ctx context.Context) error {
 	if err := waitForAgentState(ctx, cfg.ControlSocketPath(), true); err != nil {
 		return err
 	}
-	fmt.Println("Clara agent started.")
+	fmt.Println("Clara daemon started.")
 	return nil
 }
 
-func runAgentStart(cmd *cobra.Command, args []string) error {
+func runStart(cmd *cobra.Command, args []string) error {
 	return runDaemonize(cmd.Context())
 }
 
-func runAgentStop(cmd *cobra.Command, args []string) error {
+func runStop(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(cmd.Context(), agentLifecycleTimeout)
 	defer cancel()
 
@@ -140,7 +139,7 @@ func runAgentStop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if !running && !loaded {
-		fmt.Println("Clara agent is not running.")
+		fmt.Println("Clara daemon is not running.")
 		return nil
 	}
 
@@ -165,11 +164,11 @@ func runAgentStop(cmd *cobra.Command, args []string) error {
 	if err := waitForAgentState(ctx, cfg.ControlSocketPath(), false); err != nil {
 		return err
 	}
-	fmt.Println("Clara agent stopped.")
+	fmt.Println("Clara daemon stopped.")
 	return nil
 }
 
-func runAgentStatus(cmd *cobra.Command, args []string) error {
+func runStatus(cmd *cobra.Command, args []string) error {
 	theme := theme.DetectTheme()
 
 	if !isRunning(cfg.ControlSocketPath()) {
@@ -227,15 +226,15 @@ func runAgentStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runAgentLogs(cmd *cobra.Command, args []string) error {
-	if agentLogsClear {
+func runLogs(cmd *cobra.Command, args []string) error {
+	if logsClear {
 		if err := os.Truncate(cfg.LogPath(), 0); err != nil && !os.IsNotExist(err) {
-			return errors.Wrap(err, "clear agent log")
+			return errors.Wrap(err, "clear daemon log")
 		}
 		fmt.Println("Agent log cleared.")
 		return nil
 	}
-	if agentLogsFollow {
+	if logsFollow {
 		return followAgentLog(cmd.Context(), cfg.LogPath(), watchLogTailLines)
 	}
 	return printAgentLogTail(cfg.LogPath(), defaultLogTailLines)
@@ -352,9 +351,9 @@ func waitForAgentState(ctx context.Context, socketPath string, wantRunning bool)
 		select {
 		case <-ctx.Done():
 			if wantRunning {
-				return errors.New("timed out waiting for Clara agent to start")
+				return errors.New("timed out waiting for Clara daemon to start")
 			}
-			return errors.New("timed out waiting for Clara agent to stop")
+			return errors.New("timed out waiting for Clara daemon to stop")
 		case <-ticker.C:
 			if check() {
 				return nil

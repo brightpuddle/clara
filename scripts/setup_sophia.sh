@@ -79,8 +79,8 @@ rm -f "$HOME/.config/clara/triggers/"*.yaml 2>/dev/null || true
 
 echo "✅ Wrote satellite config to $CONFIG_FILE and cleared local triggers."
 echo "Restarting local Clara satellite daemon on sophia..."
-/usr/local/bin/clara agent stop >/dev/null 2>&1 || true
-/usr/local/bin/clara agent start
+/usr/local/bin/clara stop >/dev/null 2>&1 || true
+/usr/local/bin/clara start
 
 TUNNEL_PLIST="$HOME/Library/LaunchAgents/com.brightpuddle.clara.vpn-tunnel.plist"
 

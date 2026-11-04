@@ -1270,13 +1270,14 @@ async function main() {
       } catch {}
 
       // Add instant visibility: reaction + typing indicator
+      let trackingId = messageId;
       if (messageId && !messageId.startsWith("cli-")) {
         try {
           const indicatorId = await adapter.addReaction(targetId, messageId, "⏳");
           await adapter.sendTyping(targetId);
           // For Discord, indicatorId is undefined so we track messageId.
           // For Webex, indicatorId is the temporary "Thinking..." message ID to delete.
-          const trackingId = (typeof indicatorId === "string" && indicatorId) ? indicatorId : messageId;
+          if (typeof indicatorId === "string" && indicatorId) trackingId = indicatorId;
           stateDb
             .query(
               "INSERT OR REPLACE INTO pending_reactions (channel_id, message_id, session_name, created_at) VALUES (?, ?, ?, ?)"
@@ -1414,13 +1415,13 @@ async function main() {
       // Resolve pending reactions (change ⏳ to ✅)
       if (messageId && !messageId.startsWith("cli-")) {
         try {
-          await adapter.removeReaction(targetId, messageId, "⏳");
+          await adapter.removeReaction(targetId, trackingId, "⏳");
           await adapter.addReaction(targetId, messageId, "✅");
           stateDb
             .query(
               "DELETE FROM pending_reactions WHERE channel_id = ? AND message_id = ?"
             )
-            .run(targetId, messageId);
+            .run(targetId, trackingId);
         } catch {}
       }
 

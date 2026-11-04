@@ -97,9 +97,9 @@ make install
 clara serve
 
 # Or manage the LaunchAgent daemon
-clara agent start
-clara agent status
-clara agent logs -f
+clara start
+clara status
+clara logs -f
 ```
 
 ---
@@ -203,7 +203,7 @@ await callTool("notify.send", {
 # Daemon Management
 clara serve                         # Start daemon in foreground
 clara status                        # Show daemon trigger/tool summary
-clara agent {start,stop,status}     # Manage LaunchAgent
+clara {start,stop,status,logs}     # Manage the daemon LaunchAgent
 
 # Triggers
 clara trigger list                  # List all configured triggers

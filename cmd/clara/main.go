@@ -26,7 +26,7 @@ var rootCmd = &cobra.Command{
 	Short: "Local trigger manager, event bus, and MCP tool host",
 	Long: `Clara is a centralized trigger, event, and MCP tool supervisor.
 
-Run 'clara serve' to start the background daemon.
+Run 'clara start' to start the background daemon (or 'clara serve' for foreground).
 Run 'clara status' to check on a running daemon.
 Run 'clara trigger list' to view configured triggers.
 Run 'clara tool list' to view registered MCP tools.
@@ -34,14 +34,6 @@ Run 'clara --help' to see all available commands.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return cmd.Help()
 	},
-	SilenceUsage: true,
-}
-
-// statusCmd mirrors 'clara agent status' at the top level for quick access.
-var statusCmd = &cobra.Command{
-	Use:          "status",
-	Short:        "Show agent status (alias for 'clara agent status')",
-	RunE:         runAgentStatus,
 	SilenceUsage: true,
 }
 
