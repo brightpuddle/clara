@@ -119,7 +119,7 @@ badges on the others.
 
 `spawn`, `send`, `interrupt`, `status`, `events`. Per agent:
 
-- **opencode:** prefer `opencode serve` HTTP/SSE API (sessions, message parts,
+- **opencode:** HTTP client of the v2 background service (see spike doc).
   prompts). Desktop access to the TUI via `opencode attach`. To be verified in
   the spike.
 - **agy:** hooks plus JSONL transcripts for output; tmux `send-keys` for input.

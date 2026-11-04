@@ -1,6 +1,7 @@
 # 0004: Structured agent events are the source of truth; tmux is runtime
 
-Date: 2026-11-04. Status: accepted (opencode details pending spike).
+Date: 2026-11-04. Status: accepted. opencode confirmed viable by spike; see
+`docs/superpowers/specs/2026-11-04-opencode-v2-spike.md`. agy still open.
 
 ## Context
 
@@ -11,9 +12,9 @@ questions.
 
 ## Decision
 
-Adapters produce structured Events. opencode moves to its server API
-(`opencode serve`, with `opencode attach` for desktop TUI access), to be
-verified in a spike. agy keeps hooks plus transcripts. tmux remains the
+Adapters produce structured Events. opencode v2 is already client-server, so
+its adapter is an HTTP client of the background service (sessions already live
+there; the TUI is just another client). agy keeps hooks plus transcripts. tmux remains the
 runtime for agy and a manual-access fallback; it is never parsed for content
 except as a documented last resort.
 
