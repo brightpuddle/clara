@@ -47,9 +47,9 @@ A Stabilise agent core ─► B Terminal cockpit ─► C Daily priorities ─�
 
 ### Track A: Stabilise the agent core (now, small)
 Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
-- [ ] A1 Pin agy model: config `agents.adapters.agy.model` (set it in
-      `~/.config/clara/config.yaml`; verify `agy acp` honours it via `set_model`), and
-      document that `agy acp` ignores `~/.gemini/antigravity-cli/settings.json`.
+- [~] A1 Pin agy model: config `agents.adapters.agy.model` is set; pending daemon
+      restart and a check that new agy sessions start on it. `agy acp` ignores
+      `~/.gemini/antigravity-cli/settings.json`, so the Clara config is the source.
 - [ ] A2 Router and daemon restart mid-turn: no lost or duplicated messages.
 - [ ] A3 Webex smoke test for managed sessions.
 - [ ] A4 Opt-in integration tests (tag `integration`) with cheap models.
@@ -90,6 +90,7 @@ Sophia runs the same core; Eve's hub aggregates. Mostly built; needs live testin
 over the tunnel and sleep/wake validation. Surfaces in B3 as multi-host rows.
 
 ### Track E: Mobile (Stages 3 and 4 of the agent plan)
+Priority may bubble up after B1/B2 (user, 2026-11-04); Discord covers mobile until then.
 Client API (`/v1/snapshot|sync|stream|commands`), device registry, APNs, then the
 iOS app (inbox first, session thread, dictation composer). Until then Discord is the
 mobile client. Starts after B3, so the desk side is settled and the API is proven by
@@ -107,7 +108,7 @@ ADRs) so agents are guided correctly.
 
 ## Immediate order of work
 
-1. A1 (config change, minutes), A5.
+1. A1 (restart and verify), A5.
 2. B1 attach client (first code), then B2.
 3. C1 mail triage shadow review and go-live (small, high daily value).
 4. B3 cockpit dashboard.
