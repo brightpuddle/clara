@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 
@@ -23,6 +24,7 @@ type Puller struct {
 	onEvent func([]agents.Event)
 
 	known, online bool
+	synced        atomic.Bool
 }
 
 // NewPuller returns a Puller for host. onEvent, if set, receives each batch of
@@ -71,3 +73,7 @@ func (p *Puller) Pull(ctx context.Context) (int, error) {
 		}
 	}
 }
+
+// Synced reports whether the first pull attempt has finished, successfully or
+// not. An unreachable host must not hold up clients indefinitely.
+func (p *Puller) Synced() bool { return p.synced.Load() }

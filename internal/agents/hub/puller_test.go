@@ -134,3 +134,15 @@ func TestStepEmitsHostStatusOnTransitions(t *testing.T) {
 		t.Fatalf("cursor = %d", c)
 	}
 }
+
+func TestSyncedAfterFirstStepEvenOnFailure(t *testing.T) {
+	h := newHub(t)
+	p := hub.NewPuller(h, "sophia", &fakeSource{err: errors.New("down")}, 10, nil)
+	if p.Synced() {
+		t.Fatal("synced before first step")
+	}
+	p.Step(context.Background(), zerolog.Nop())
+	if !p.Synced() {
+		t.Fatal("want synced after first attempt")
+	}
+}

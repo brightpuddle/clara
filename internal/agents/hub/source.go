@@ -55,6 +55,7 @@ func (p *Puller) Step(ctx context.Context, log zerolog.Logger) {
 	if ctx.Err() != nil {
 		return
 	}
+	defer p.synced.Store(true)
 	online := err == nil
 	if err != nil && (!p.known || p.online) {
 		log.Warn().Err(err).Str("host", p.host).Msg("agent pull failed")

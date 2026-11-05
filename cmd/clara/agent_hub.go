@@ -52,6 +52,14 @@ func startAgentHub(
 				}
 			}))
 	}
+	agentbuiltin.RegisterHub(reg, h, func() bool {
+		for _, p := range pullers {
+			if !p.Synced() {
+				return false
+			}
+		}
+		return true
+	})
 	for _, p := range pullers {
 		go p.Run(ctx, agentPullInterval, log)
 	}
