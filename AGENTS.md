@@ -274,6 +274,8 @@ Clara is gaining a first-class agent management core (`internal/agents`, builtin
 `opencode` over ACP, replacing tmux scraping. It is the foundation for a future
 iPhone/Mac client. Read these before touching it:
 
+- Roadmap (read first; ordering of all tracks): `docs/ROADMAP.md`
+- Terminal cockpit plan: `docs/superpowers/plans/2026-11-04-terminal-cockpit.md`
 - Design: `docs/superpowers/specs/2026-11-04-cockpit-design.md`
 - Schema and adapter interface: `docs/superpowers/specs/2026-11-04-cockpit-event-schema-design.md`
 - Evidence from spikes: `docs/superpowers/specs/2026-11-04-opencode-v2-spike.md`

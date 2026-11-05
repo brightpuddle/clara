@@ -71,6 +71,13 @@ Observed: a hand-started terminal agent seen only through hooks.
 **Quirk** — A small per-agent behaviour override in the ACP adapter (model
 selection, quota detection, early prompt responses).
 
+**Terminal cockpit** — The desk client: `clara agent attach` (interactive session
+client with `$EDITOR` prompts) and `clara cockpit` (dashboard) in one Bubble Tea app.
+ADR 0007, `docs/ROADMAP.md` Track B.
+
+**Daily-driver check** — A one-line, real-use acceptance test per roadmap item,
+replacing formal release gates (one user; validation is releasing).
+
 **Agent core** — The `internal/agents` package and `agent` builtin: adapters,
 session runner, prompt queue, host log, MCP tools and CloudEvents. A standalone
 Clara capability; Stage 1 of the Cockpit work, merged to `main` before any

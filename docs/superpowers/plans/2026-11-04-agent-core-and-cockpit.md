@@ -4,6 +4,8 @@ Source of truth for task status. Process: `AGENTS.md` "Development Process".
 Design: `docs/superpowers/specs/2026-11-04-cockpit-design.md`,
 `.../2026-11-04-cockpit-event-schema-design.md`. Decisions: `docs/adr/`.
 Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
+Ordering across all work (agent core, terminal cockpit, daily automation, mobile) is
+in `docs/ROADMAP.md`; this plan covers the agent core and mobile stages.
 
 ## Stage 0: Design and spikes
 - [x] Design spec, glossary, ADRs 0001 to 0006
@@ -97,9 +99,10 @@ and no lost or duplicated messages across router and daemon restarts.
       dictation, queue view, interrupt
 - [ ] Notification quick replies; TestFlight; device pairing
 
-## Stage 5: macOS app and Discord retirement
-- [ ] macOS target with multi-pane layout from shared views
-- [ ] Retire Discord agent-session mirroring; migrate or drop
+## Stage 5: Discord retirement (macOS app dropped, see ADR 0007)
+The desk client is the terminal cockpit: `2026-11-04-terminal-cockpit.md`. Master
+roadmap: `docs/ROADMAP.md`.
+- [ ] Retire Discord agent-session mirroring once iOS is a reliable daily driver; migrate or drop
       `assistant_state.db` conversation tables (ADR 0001)
 
 ## Stage 6: Later
