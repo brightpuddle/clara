@@ -5,13 +5,13 @@ Roadmap: `docs/ROADMAP.md`. Decision: `docs/adr/0007-terminal-first-desk-client.
 Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
 
 ## B0 Prerequisites (research, small)
-- [ ] Inventory what ACP advertises for agy and opencode: available commands, models,
+- [x] 6560f385 Inventory what ACP advertises for agy and opencode: available commands, models,
       modes, session list/load. Decide the completion sources for slash commands.
-- [ ] Confirm what `agent.*` tools/events give a client: state, model, queue depth,
+- [x] 6560f385 Confirm what `agent.*` tools/events give a client: state, model, queue depth,
       cwd, last message. List gaps (e.g. git info computed client-side).
-- [ ] Choose TUI stack (proposed: Bubble Tea + Bubbles + Lip Gloss) and package
+- [x] 6560f385 Choose TUI stack (Bubble Tea + Bubbles + Lip Gloss) and package
       layout: `internal/cockpit/` (UI components, no daemon logic), `cmd/clara/`
-      wiring only.
+      wiring only. Dependencies added to go.mod.
 
 ## B1 `clara agent attach <session>`
 - [ ] Session resolver: id, unique prefix, title, or fzf-style picker when omitted;
