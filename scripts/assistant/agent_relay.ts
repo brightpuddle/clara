@@ -2,11 +2,11 @@
 /**
  * ~/.config/clara/scripts/assistant/agent_relay.ts
  *
- * Supervised worker that mirrors managed-agent host events (agent.events.read)
- * into the Discord/Webex channel bound to each session: assistant replies,
+ * Supervised worker that mirrors managed-agent events from every host, read from
+ * the daemon's aggregated hub log (agent.hub.read), into the Discord/Webex channel bound to each session: assistant replies,
  * status reactions on the user's message, failures and questions.
  *
- * The cursor (host_seq) is persisted, so a restart of this worker or of the
+ * The cursor (global hub seq) is persisted, so a restart of this worker or of the
  * daemon resumes exactly where it stopped. A fresh install starts at the
  * current head and does not replay history.
  */
@@ -33,7 +33,7 @@ const STATE_DIR = join(homedir(), ".local/share/clara");
 mkdirSync(STATE_DIR, { recursive: true });
 const db = new Database(join(STATE_DIR, "assistant_state.db"));
 db.exec(`
-  CREATE TABLE IF NOT EXISTS agent_relay_cursor (id INTEGER PRIMARY KEY CHECK (id = 1), host_seq INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS agent_relay_hub_cursor (id INTEGER PRIMARY KEY CHECK (id = 1), seq INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS agent_relay_prompts (prompt_id TEXT PRIMARY KEY, rec TEXT NOT NULL, created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS agent_relay_turns (turn_id TEXT PRIMARY KEY, prompt_id TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS agent_relay_running (session TEXT PRIMARY KEY);
@@ -43,6 +43,7 @@ const POLL_MS = Number(process.env.CLARA_AGENT_RELAY_POLL_MS || 1500);
 const PAGE = 200;
 const MAX_EVENT_FAILURES = 5;
 const CHANNEL_REFRESH_MS = 10_000;
+const SYNC_WAIT_MS = 60_000;
 
 const sqlStore: Store = {
   getPrompt(id) {
@@ -144,32 +145,42 @@ const chat: Chat = {
 };
 
 function loadCursor(): number | null {
-  const row = db.query("SELECT host_seq FROM agent_relay_cursor WHERE id = 1").get() as any;
-  return row ? Number(row.host_seq) : null;
+  const row = db.query("SELECT seq FROM agent_relay_hub_cursor WHERE id = 1").get() as any;
+  return row ? Number(row.seq) : null;
 }
 
 function saveCursor(seq: number) {
-  db.query("INSERT OR REPLACE INTO agent_relay_cursor (id, host_seq) VALUES (1, ?)").run(seq);
+  db.query("INSERT OR REPLACE INTO agent_relay_hub_cursor (id, seq) VALUES (1, ?)").run(seq);
 }
 
-async function readPage(after: number): Promise<{ events: HostEvent[]; next: number }> {
-  const res = (await callTool("agent.events.read" as any, { after, limit: PAGE })) as any;
+async function readPage(
+  after: number
+): Promise<{ events: HostEvent[]; next: number; synced: boolean }> {
+  const res = (await callTool("agent.hub.read" as any, { after, limit: PAGE })) as any;
   const events = ((res?.events || []) as any[]).map((e) => ({
+    seq: Number(e.seq),
     host_seq: Number(e.host_seq),
     host: String(e.host),
     session: String(e.session || ""),
     type: String(e.type),
     payload: typeof e.payload === "string" ? JSON.parse(e.payload) : e.payload,
   }));
-  return { events, next: Number(res?.next ?? after) };
+  return { events, next: Number(res?.next ?? after), synced: Boolean(res?.synced) };
 }
 
+// Waits for the hub to finish its first pull from every host, so a still-running
+// backfill of old history is never mistaken for new activity.
 async function seekHead(): Promise<number> {
+  const deadline = Date.now() + SYNC_WAIT_MS;
   let after = 0;
   for (;;) {
     const page = await readPage(after);
-    if (page.events.length === 0) return after;
-    after = page.next;
+    if (page.events.length > 0) {
+      after = page.next;
+      continue;
+    }
+    if (page.synced || Date.now() > deadline) return after;
+    await new Promise((r) => setTimeout(r, 1000));
   }
 }
 
@@ -179,7 +190,7 @@ async function main() {
   if (cursor === null) {
     cursor = await seekHead();
     saveCursor(cursor);
-    console.log(`[agent_relay] fresh start at host_seq=${cursor}`);
+    console.log(`[agent_relay] fresh start at hub seq=${cursor}`);
   }
 
   let failures = 0;
@@ -194,13 +205,13 @@ async function main() {
           await relay.handle(ev);
           failures = 0;
         } catch (err: any) {
-          console.error(`[agent_relay] event ${ev.type}#${ev.host_seq} failed: ${err.message}`);
+          console.error(`[agent_relay] event ${ev.type}#${ev.seq} failed: ${err.message}`);
           // Retry on the next poll so a transient chat outage loses nothing,
           // but never let one poison event block the stream forever.
           if (++failures < MAX_EVENT_FAILURES) break;
           failures = 0;
         }
-        cursor = ev.host_seq;
+        cursor = ev.seq ?? cursor;
         saveCursor(cursor);
       }
       if (page.events.length === PAGE && failures === 0) continue;

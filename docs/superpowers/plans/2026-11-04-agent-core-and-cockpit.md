@@ -79,7 +79,10 @@ and no lost or duplicated messages across router and daemon restarts.
       Done: hub emits `host.status` on reachability transitions; `clara agent --host <name>`
       routes to `agents.remote_hosts[].tool_prefix`. Todo: live test; router routing.
 - [ ] Sleep/wake test: no lost or duplicated events
-- [ ] Router uses the hub view for both hosts
+- [~] Router uses the hub view for both hosts
+      Done: `agent.hub.read` tool; relay reads the hub (global seq cursor, waits for
+      `synced` on fresh start); router routes session list/spawn/kill/stop/model/prompt
+      by host (`agent/hosts.ts`, `CLARA_AGENT_HOSTS`). Todo: live test on Eve + Sophia.
 
 ## Stage 3: Client API and push
 - [ ] `/v1/snapshot`, `/v1/sync`, `/v1/stream`, `/v1/commands` with idempotency

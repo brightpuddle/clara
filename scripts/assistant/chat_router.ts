@@ -48,6 +48,7 @@ import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./
 
 import { formatOrigin } from "./agent/binding.ts";
 import { parseDotCommand } from "./agent/commands.ts";
+import { REMOTE_HOSTS, agentToolFor, splitHost } from "./agent/hosts.ts";
 import { formatHistory } from "./agent/history.ts";
 import { planSync, sessionLabel, type SessionInfo } from "./agent/sync.ts";
 
@@ -513,20 +514,32 @@ async function handleTriggersCommand(): Promise<string> {
   }
 }
 
-async function listAgentSessions(): Promise<SessionInfo[]> {
-  try {
-    const res = (await callTool("agent.session.list" as any, {})) as any;
-    return (res?.sessions || []) as SessionInfo[];
-  } catch {
-    return [];
-  }
+/** Calls an agent.* tool on the host that owns the session (local when undefined). */
+function callAgent(host: string | undefined, name: string, args: Record<string, unknown>) {
+  return callTool(agentToolFor(host, name) as any, args as any);
 }
 
-async function readSessionEvents(session: string): Promise<any[]> {
+/** Sessions from this machine and every remote host; an unreachable host is skipped. */
+async function listAgentSessions(): Promise<SessionInfo[]> {
+  const hosts: (string | undefined)[] = [undefined, ...Object.keys(REMOTE_HOSTS)];
+  const lists = await Promise.all(
+    hosts.map(async (h) => {
+      try {
+        const res = (await callAgent(h, "agent.session.list", {})) as any;
+        return (res?.sessions || []) as SessionInfo[];
+      } catch {
+        return [] as SessionInfo[];
+      }
+    })
+  );
+  return lists.flat();
+}
+
+async function readSessionEvents(host: string | undefined, session: string): Promise<any[]> {
   const all: any[] = [];
   let after = 0;
   for (;;) {
-    const res = (await callTool("agent.events.read" as any, { session, after, limit: 1000 })) as any;
+    const res = (await callAgent(host, "agent.events.read", { session, after, limit: 1000 })) as any;
     const evs = (res?.events || []) as any[];
     if (evs.length === 0) return all;
     all.push(...evs.filter((e) => e.type === "message.user" || e.type === "message.assistant"));
@@ -534,9 +547,9 @@ async function readSessionEvents(session: string): Promise<any[]> {
   }
 }
 
-async function backfillAgentHistory(channelId: string, session: string) {
+async function backfillAgentHistory(channelId: string, host: string | undefined, session: string) {
   try {
-    const text = formatHistory(await readSessionEvents(session));
+    const text = formatHistory(await readSessionEvents(host, session));
     if (text) await getPrimaryAdapter().sendMessage(channelId, text);
   } catch (err: any) {
     console.warn(`[chat_router] history backfill failed for ${session}: ${err.message}`);
@@ -551,7 +564,7 @@ async function syncAgentSessions(): Promise<string> {
   const lines: string[] = [];
   for (const sess of plan.create) {
     const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess));
-    await backfillAgentHistory(ch.id, sess.id);
+    await backfillAgentHistory(ch.id, sess.host, sess.id);
     lines.push(`- Created **${ch.name}** for ${sess.agent} \`${sess.id}\` (history restored)`);
   }
   for (const ch of plan.remove) {
@@ -1120,7 +1133,7 @@ async function main() {
     // ========================================================
     const boundAgent = resolveAnyBoundAgentSession(platform, channelName, channelTopic);
     if (boundAgent) {
-      const { session } = boundAgent;
+      const { session, host: agentHost } = boundAgent;
       const adapter = getPlatformAdapter(platform);
 
       // Anything starting with `.` is Clara's and never reaches the agent. The
@@ -1132,25 +1145,25 @@ async function main() {
       if (cmd) {
         switch (cmd.name) {
           case "kill":
-            await callTool("agent.session.close" as any, { session });
+            await callAgent(agentHost, "agent.session.close", { session });
             await sendReply(platform, targetId, `🛑 Closed agent session \`${session}\`. Deleting channel...`, isDryRun);
             await adapter.deleteChannel(targetId);
             return;
           case "stop":
           case "interrupt":
-            await callTool("agent.turn.interrupt" as any, { session });
+            await callAgent(agentHost, "agent.turn.interrupt", { session });
             await sendReply(platform, targetId, "⏹️ Interrupt requested.", isDryRun);
             return;
           case "model":
             if (cmd.args) {
               try {
-                await callTool("agent.session.model" as any, { session, model: cmd.args.split(/\s+/)[0] });
+                await callAgent(agentHost, "agent.session.model", { session, model: cmd.args.split(/\s+/)[0] });
                 await sendReply(platform, targetId, `🧠 Model set to \`${cmd.args.split(/\s+/)[0]}\`.`, isDryRun);
               } catch (err: any) {
                 await sendReply(platform, targetId, `⚠️ Could not change model: ${err.message}`, isDryRun);
               }
             } else {
-              const info = (await callTool("agent.session.get" as any, { session })) as any;
+              const info = (await callAgent(agentHost, "agent.session.get", { session })) as any;
               const cur = info?.session?.model || "(agent default)";
               await sendReply(
                 platform,
@@ -1177,7 +1190,7 @@ async function main() {
       // `./clear` reaches the agent as `/clear`
       const promptText = normalized.startsWith("./") ? normalized.slice(1) : normalized;
       // The reply, reactions and queue feedback come back through agent_relay.ts.
-      await callTool("agent.prompt.send" as any, {
+      await callAgent(agentHost, "agent.prompt.send", {
         session,
         text: promptText,
         origin: formatOrigin({ platform, channelId: targetId, messageId }),
@@ -1541,29 +1554,28 @@ async function main() {
       const parts = normalized.replace(/^[./]?spawn\s+/i, "").trim().split(/\s+/);
       let rawName = parts[0];
       const second = (parts[1] || "").toLowerCase();
-      const hostGiven = /^(sophia|laptop|eve):/i.test(rawName);
-      // Managed ACP session: eve only, no custom shell command, agent agy|opencode.
+      const { host: spawnHost, name: spawnName } = splitHost(rawName);
+      // Managed ACP session on any agent host, agent agy|opencode, no custom shell command.
       const wantsManaged =
-        !/^(sophia|laptop):/i.test(rawName) &&
-        (MANAGED_AGENTS.has(second) || (parts.length === 1 && AGENT_MANAGED_DEFAULT));
+        MANAGED_AGENTS.has(second) || (parts.length === 1 && AGENT_MANAGED_DEFAULT);
       if (wantsManaged) {
-        if (hostGiven) rawName = rawName.split(":")[1] || "dev";
+        rawName = spawnName;
         const agent = MANAGED_AGENTS.has(second) ? second : "opencode";
         const opts = parts.slice(2);
         const model = opts.find((o) => o.startsWith("model="))?.slice(6);
         const dir = opts.find((o) => !o.startsWith("model=")) || join(HOME, ".config/clara");
-        const created = (await callTool("agent.session.create" as any, { agent, dir, model, title: rawName })) as any;
+        const created = (await callAgent(spawnHost, "agent.session.create", { agent, dir, model, title: rawName })) as any;
         const sessionId = String(created?.session || "");
         const primary = getPrimaryAdapter();
-        const ch = await primary.ensureAgentChannel(
-          (await callTool("agent.session.get" as any, { session: sessionId }) as any)?.session?.host || LOCAL_HOST_PREFIX,
-          sessionId,
-          rawName
-        );
+        const sessionHost =
+          ((await callAgent(spawnHost, "agent.session.get", { session: sessionId })) as any)?.session?.host ||
+          spawnHost ||
+          LOCAL_HOST_PREFIX;
+        const ch = await primary.ensureAgentChannel(sessionHost, sessionId, rawName);
         await sendReply(
           platform,
           targetId,
-          `Started managed **${agent}** session \`${sessionId}\` in \`${dir}\`. Channel: **\`${ch.name}\`**.`,
+          `Started managed **${agent}** session \`${sessionId}\` on **\`${sessionHost}\`** in \`${dir}\`. Channel: **\`${ch.name}\`**.`,
           isDryRun
         );
         return;

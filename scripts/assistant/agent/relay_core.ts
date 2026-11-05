@@ -9,6 +9,8 @@
 import { parseOrigin, type Origin } from "./binding.ts";
 
 export interface HostEvent {
+  /** Global hub sequence (the relay cursor). */
+  seq?: number;
   host_seq: number;
   host: string;
   session: string;
