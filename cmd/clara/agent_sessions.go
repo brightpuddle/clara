@@ -11,21 +11,31 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 
+	"github.com/brightpuddle/clara/internal/cockpit"
 	"github.com/brightpuddle/clara/internal/ipc"
 )
 
 const agentTailPollInterval = 500 * time.Millisecond
 
 var (
-	agentNewDir    string
-	agentNewModel  string
-	agentNewKind   string
-	agentSendFrom  string
-	agentTailAfter int64
-	agentTailFlw   bool
-	agentListAll   bool
-	agentHost      string
+	agentNewDir      string
+	agentNewModel    string
+	agentNewKind     string
+	agentSendFrom    string
+	agentTailAfter   int64
+	agentTailFlw     bool
+	agentListAll     bool
+	agentHost        string
+	agentStatusShort bool
 )
+
+var agentStatusCmd = &cobra.Command{
+	Use:          "status",
+	Short:        "Show status of managed agent sessions",
+	Args:         cobra.NoArgs,
+	RunE:         runAgentSessionStatus,
+	SilenceUsage: true,
+}
 
 var agentListCmd = &cobra.Command{
 	Use:          "list",
@@ -89,9 +99,10 @@ func init() {
 	agentSendCmd.Flags().StringVar(&agentSendFrom, "origin", "cli", "origin label for the prompt")
 	agentTailCmd.Flags().Int64Var(&agentTailAfter, "after", 0, "start after this host_seq")
 	agentTailCmd.Flags().BoolVarP(&agentTailFlw, "follow", "f", false, "keep polling for new events")
+	agentStatusCmd.Flags().BoolVarP(&agentStatusShort, "short", "s", false, "print concise one-line status (tmux/wezterm)")
 	agentCmd.PersistentFlags().StringVar(&agentHost, "host", "",
 		"agent host to act on (default: this machine; see agents.remote_hosts)")
-	agentCmd.AddCommand(agentListCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd)
+	agentCmd.AddCommand(agentListCmd, agentStatusCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd)
 }
 
 // agentToolPrefix maps a host name to the tool namespace prefix of its agent
@@ -128,6 +139,29 @@ func callAgentTool(name string, args map[string]any) (map[string]any, error) {
 	}
 	m, _ := resp.Data.(map[string]any)
 	return m, nil
+}
+
+func runAgentSessionStatus(_ *cobra.Command, _ []string) error {
+	out, err := callAgentTool("agent.session.list", nil)
+	if err != nil {
+		return err
+	}
+	rawSessions, _ := out["sessions"].([]any)
+	var summaries []cockpit.SessionSummary
+	for _, v := range rawSessions {
+		s, _ := v.(map[string]any)
+		summaries = append(summaries, cockpit.SessionSummary{
+			ID:    fmt.Sprint(s["id"]),
+			State: fmt.Sprint(s["state"]),
+		})
+	}
+
+	if agentStatusShort {
+		fmt.Println(cockpit.FormatStatusShort(summaries))
+		return nil
+	}
+
+	return runAgentSessionList(nil, nil)
 }
 
 func runAgentSessionList(_ *cobra.Command, _ []string) error {

@@ -18,6 +18,7 @@ import (
 	fsbuiltin "github.com/brightpuddle/clara/internal/builtin/fs"
 	notifybuiltin "github.com/brightpuddle/clara/internal/builtin/notify"
 	shellbuiltin "github.com/brightpuddle/clara/internal/builtin/shell"
+	"github.com/brightpuddle/clara/internal/cockpit"
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
@@ -231,6 +232,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	if agentMgr != nil {
 		agentbuiltin.PublishToBus(agentMgr, sup.EventBus())
 		startAgentHub(daemonCtx, agentMgr, reg, sup.EventBus(), db, logger)
+		startAttentionNotifier(daemonCtx, sup.EventBus(), reg, cockpit.DefaultAttentionConfig(), logger)
 	}
 
 	triggerRunner := trigger.NewRunner(60 * time.Second)
