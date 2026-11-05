@@ -47,6 +47,19 @@ export class TriageAuditDatabase {
     `);
 
     this.db.run(`
+      CREATE TABLE IF NOT EXISTS processed_reminders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        rfc_message_id TEXT,
+        subject TEXT,
+        sender TEXT,
+        reminder_identifier TEXT,
+        reminder_title TEXT,
+        created_at TEXT NOT NULL
+      );
+    `);
+
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS rule_hit_counters (
         rule_id TEXT PRIMARY KEY,
         hit_count INTEGER NOT NULL DEFAULT 0,
@@ -56,6 +69,47 @@ export class TriageAuditDatabase {
 
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON triage_audit_log(timestamp DESC);`);
     this.db.run(`CREATE INDEX IF NOT EXISTS idx_audit_rule ON triage_audit_log(rule_id);`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reminders_msg_id ON processed_reminders(message_id);`);
+    this.db.run(`CREATE INDEX IF NOT EXISTS idx_reminders_rfc_id ON processed_reminders(rfc_message_id);`);
+  }
+
+  public hasReminderForMessage(messageId: string, rfcMessageId?: string): boolean {
+    if (rfcMessageId) {
+      const row = this.db.query(
+        "SELECT id FROM processed_reminders WHERE message_id = ? OR rfc_message_id = ? LIMIT 1"
+      ).get(messageId, rfcMessageId);
+      if (row) return true;
+    } else {
+      const row = this.db.query(
+        "SELECT id FROM processed_reminders WHERE message_id = ? LIMIT 1"
+      ).get(messageId);
+      if (row) return true;
+    }
+    return false;
+  }
+
+  public recordReminderCreated(
+    messageId: string,
+    rfcMessageId: string | undefined,
+    subject: string,
+    sender: string,
+    reminderIdentifier?: string,
+    reminderTitle?: string
+  ) {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO processed_reminders (
+        message_id, rfc_message_id, subject, sender, reminder_identifier, reminder_title, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      messageId,
+      rfcMessageId ?? null,
+      subject,
+      sender,
+      reminderIdentifier ?? null,
+      reminderTitle ?? null,
+      now
+    );
   }
 
   public recordHit(ruleId: string) {

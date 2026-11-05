@@ -282,6 +282,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                     numberProperty("priority", "Optional EventKit priority."),
                     stringProperty("list_name", "Optional reminder list name."),
                     stringProperty("location", "Optional structured location title."),
+                    stringProperty("url", "Optional URL associated with the reminder."),
                     alarmsProperty(),
                 ],
                 required: ["title"]
@@ -304,6 +305,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                     numberProperty("priority", "Updated EventKit priority."),
                     stringProperty("list_name", "Updated reminder list name."),
                     stringProperty("location", "Updated structured location title."),
+                    stringProperty("url", "Updated URL associated with the reminder."),
                     alarmsProperty(),
                 ],
                 required: ["identifier"]
@@ -1375,7 +1377,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                 if fetchCount > 0 then
                     repeat with i from 1 to fetchCount
                         set theMsg to item i of theMessages
-                        set end of results to {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
+                        set end of results to {id:id of theMsg, message_id:message id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
                     end repeat
                 end if
                 return results
@@ -1388,7 +1390,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                 if msgCount > 0 then
                     repeat with i from msgCount to startIndex by -1
                         set theMsg to item i of theMessages
-                        set end of results to {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
+                        set end of results to {id:id of theMsg, message_id:message id of theMsg, subject:subject of theMsg, sender:sender of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
                     end repeat
                 end if
                 return results
@@ -1420,7 +1422,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                 end try
             end if
             if theMsg is missing value then error "Message \(messageID) not found"
-            return {id:id of theMsg, subject:subject of theMsg, sender:sender of theMsg, content:content of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
+            return {id:id of theMsg, message_id:message id of theMsg, subject:subject of theMsg, sender:sender of theMsg, content:content of theMsg, date_received:date received of theMsg as string, read_status:read status of theMsg}
         end tell
         """
         return try executeAppleScript(script) as? [String: Any] ?? [:]
@@ -1866,6 +1868,13 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         if let location = optionalStringPresence(args, "location") {
             reminder.location = location.isEmpty ? nil : location
         }
+        if let urlPresence = optionalStringPresence(args, "url") {
+            if urlPresence.isEmpty {
+                reminder.url = nil
+            } else {
+                reminder.url = URL(string: urlPresence)
+            }
+        }
         if args.keys.contains("alarms") {
             reminder.alarms = try parseAlarms(args["alarms"])
         }
@@ -1995,6 +2004,9 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         }
         if let location = reminder.location {
             result["location"] = location
+        }
+        if let url = reminder.url?.absoluteString {
+            result["url"] = url
         }
         if let alarms = reminder.alarms {
             result["alarms"] = alarms.map(serializeAlarm)

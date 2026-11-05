@@ -11,13 +11,21 @@ export class AppleMailClient {
   public async listInbox(limit: number = 50, accountName?: string, unreadOnly: boolean = true): Promise<MailSummary[]> {
     try {
       // Try Clara MCP tool first
-      const res = await callTool("mail_list_inbox" as any, {
+      const res = await callTool("macos.mail_list_inbox" as any, {
         limit,
         account_name: accountName,
         unread: unreadOnly,
       });
       if (Array.isArray(res) && res.length > 0) {
-        return res.map(m => ({ ...m, account_name: accountName }));
+        return res.map(m => ({
+          id: String(m.ID ?? m.id),
+          message_id: m.message_id ? String(m.message_id).replace(/^<|>$/g, "").trim() : undefined,
+          subject: m.subject || "",
+          sender: m.sender || "",
+          date_received: m.date_received || "",
+          read_status: m.read_status === true || m.read_status === "true",
+          account_name: accountName,
+        }));
       }
     } catch {
       // Standalone osascript fallback for local testing / direct execution
@@ -31,11 +39,21 @@ export class AppleMailClient {
    */
   public async getMessage(messageId: string, accountName?: string): Promise<MailDetail> {
     try {
-      const res = await callTool("mail_get_message" as any, {
+      const res = await callTool("macos.mail_get_message" as any, {
         message_id: messageId,
       });
-      if (res && res.id && res.subject !== undefined) {
-        return { ...res, account_name: accountName };
+      if (res && (res.id !== undefined || res.ID !== undefined) && res.subject !== undefined) {
+        const rawMsgId = res.message_id ? String(res.message_id).replace(/^<|>$/g, "").trim() : undefined;
+        return {
+          id: String(res.ID ?? res.id),
+          message_id: rawMsgId,
+          subject: res.subject || "",
+          sender: res.sender || "",
+          date_received: res.date_received || "",
+          read_status: res.read_status === true || res.read_status === "true",
+          content: res.content || "",
+          account_name: accountName,
+        };
       }
     } catch {
       // Standalone osascript fallback
@@ -49,7 +67,7 @@ export class AppleMailClient {
    */
   public async moveMessage(messageId: string, targetMailbox: string, accountName: string): Promise<boolean> {
     try {
-      const res = await callTool("mail_move" as any, {
+      const res = await callTool("macos.mail_move" as any, {
         message_id: messageId,
         target_mailbox: targetMailbox,
         account_name: accountName,
@@ -69,7 +87,7 @@ export class AppleMailClient {
    */
   public async deleteMessage(messageId: string): Promise<boolean> {
     try {
-      const res = await callTool("mail_delete" as any, {
+      const res = await callTool("macos.mail_delete" as any, {
         message_id: messageId,
       });
       if (res && (res.deleted || res.status === "deleted")) {
@@ -187,7 +205,11 @@ tell application "Mail"
         set mSender to sender of m
         set mDate to date received of m as string
         set mRead to read status of m as string
-        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead
+        set mMsgId to ""
+        try
+          set mMsgId to message id of m as string
+        end try
+        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "|||" & mMsgId
       end repeat
     end if
   else
@@ -202,7 +224,11 @@ tell application "Mail"
         set mSender to sender of m
         set mDate to date received of m as string
         set mRead to read status of m as string
-        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead
+        set mMsgId to ""
+        try
+          set mMsgId to message id of m as string
+        end try
+        set end of msgList to mId & "|||" & mSub & "|||" & mSender & "|||" & mDate & "|||" & mRead & "|||" & mMsgId
       end repeat
     end if
   end if
@@ -218,9 +244,10 @@ end tell`;
       if (!raw) return [];
       const parts = raw.split("---MSG---").filter(p => p.trim().length > 0);
       return parts.map(part => {
-        const [id, subject, sender, date_received, read_status] = part.split("|||");
+        const [id, subject, sender, date_received, read_status, message_id] = part.split("|||");
         return {
           id: id?.trim() || "",
+          message_id: message_id ? message_id.replace(/^<|>$/g, "").trim() : undefined,
           subject: subject?.trim() || "",
           sender: sender?.trim() || "",
           date_received: date_received?.trim() || "",
@@ -298,8 +325,11 @@ end tell`;
         }
       }
 
+      const rawMsgId = headersMap["message-id"] ? headersMap["message-id"].replace(/^<|>$/g, "").trim() : undefined;
+
       return {
         id: id?.trim() || messageId,
+        message_id: rawMsgId,
         subject: subject?.trim() || "",
         sender: sender?.trim() || "",
         date_received: date_received?.trim() || "",
@@ -563,9 +593,10 @@ end tell`;
       if (!raw) return [];
       const parts = raw.split("---MSG---").filter(p => p.trim().length > 0);
       return parts.map(part => {
-        const [id, subject, sender, date_received, read_status] = part.split("|||");
+        const [id, subject, sender, date_received, read_status, message_id] = part.split("|||");
         return {
           id: id?.trim() || "",
+          message_id: message_id ? message_id.replace(/^<|>$/g, "").trim() : undefined,
           subject: subject?.trim() || "",
           sender: sender?.trim() || "",
           date_received: date_received?.trim() || "",

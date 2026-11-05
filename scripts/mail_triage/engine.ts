@@ -197,8 +197,14 @@ export class TriageEngine {
 
         // Reminders & Task creation
         if (decision.reminder) {
-          const created = await this.applyReminderAction(evaluatedMail, decision.reminder);
-          if (created) metrics.reminders_created!++;
+          const rfcId = evaluatedMail.message_id || evaluatedMail.headers?.["message-id"];
+          const cleanRfcId = rfcId ? rfcId.replace(/^<|>$/g, "").trim() : undefined;
+          if (this.db.hasReminderForMessage(evaluatedMail.id, cleanRfcId)) {
+            console.log(`  ⏭️ [DEDUP] Skipping reminder for message ${evaluatedMail.id}: reminder already recorded`);
+          } else {
+            const created = await this.applyReminderAction(evaluatedMail, decision.reminder);
+            if (created) metrics.reminders_created!++;
+          }
         }
 
         // Draft response creation
@@ -290,7 +296,7 @@ export class TriageEngine {
 
   private async applyReminderAction(
     mail: MailDetail,
-    reminder: { title: string; due_date?: string; notes?: string; priority?: number }
+    reminder: { title: string; due_date?: string; notes?: string; priority?: number; url?: string }
   ): Promise<boolean> {
     try {
       const notes = [
@@ -301,16 +307,21 @@ export class TriageEngine {
         `Date: ${mail.date_received}`,
       ].filter(Boolean).join("\n");
 
+      const rfcId = mail.message_id || mail.headers?.["message-id"];
+      const cleanRfcId = rfcId ? rfcId.replace(/^<|>$/g, "").trim() : undefined;
+      const messageUrl = reminder.url || (cleanRfcId ? `message://${encodeURIComponent("<" + cleanRfcId + ">")}` : undefined);
+
       // 1. Create macOS Reminder
       const res = await callTool("macos.reminders_create" as any, {
         title: reminder.title,
         notes,
         due_date: reminder.due_date,
         priority: reminder.priority,
+        url: messageUrl,
       });
 
       const reminderId = res?.identifier;
-      console.log(`📝 [REMINDER CREATED] "${reminder.title}" (Due: ${reminder.due_date || "none"})`);
+      console.log(`📝 [REMINDER CREATED] "${reminder.title}" (Due: ${reminder.due_date || "none"})${messageUrl ? ` [Linked: ${messageUrl}]` : ""}`);
 
       // 2. Also register in Clara task tracking
       try {
@@ -323,6 +334,16 @@ export class TriageEngine {
       } catch (tErr: any) {
         // Task creation is optional if macos reminder succeeded
       }
+
+      // 3. Record in database to prevent future duplicate reminders
+      this.db.recordReminderCreated(
+        mail.id,
+        cleanRfcId,
+        mail.subject,
+        mail.sender,
+        reminderId,
+        reminder.title
+      );
 
       return true;
     } catch (err: any) {

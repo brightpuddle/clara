@@ -8,6 +8,7 @@ export interface ReminderProposal {
   notes?: string;
   due_date?: string; // ISO-8601 string or relative
   priority?: number;
+  url?: string;
 }
 
 export interface DraftProposal {
@@ -26,6 +27,7 @@ export interface MailAccountConfig {
 
 export interface MailSummary {
   id: string;
+  message_id?: string;
   subject: string;
   sender: string;
   date_received: string;
