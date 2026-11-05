@@ -24,11 +24,9 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
 - [ ] Daily-driver check: one real working day driving agents from attach only.
 
 ## B2 Attention signals
-- [ ] Subscribe to `agent.*` events; on `busy -> needs_you|done|failed|blocked` emit a
-      desktop notification (ClaraBridge) with session name and last line.
-- [ ] `clara agent status --short` for tmux/WezTerm status bars (counts per state).
-- [ ] Config: which states notify, quiet hours, suppress for the session currently
-      attached in a terminal.
+- [x] 1e9a115e Subscribe to `agent.*` events; on `busy -> needs_you|done|failed|blocked` emit a desktop notification (`macos.notify_send` via ClaraBridge with `notify.send` fallback) with session name and message.
+- [x] 1e9a115e `clara agent status --short` for tmux/WezTerm status bars (concise counts per state: e.g. "2 running, 1 blocked").
+- [x] 1e9a115e Config and evaluator: which states notify, quiet hours, and suppression for the currently attached session.
 
 ## B3 `clara cockpit` dashboard
 - [ ] List all sessions across hosts (hub view): state, host, dir, branch, model,
