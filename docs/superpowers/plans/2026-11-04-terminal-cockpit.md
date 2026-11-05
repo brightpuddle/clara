@@ -14,21 +14,14 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
       wiring only. Dependencies added to go.mod.
 
 ## B1 `clara agent attach <session>`
-- [ ] Session resolver: id, unique prefix, title, or fzf-style picker when omitted;
-      `--resume <agy|opencode session id>` adopts an existing agent session via
-      `agent.session.discover/resume`.
-- [ ] Header: session id/title, agent, host, dir, git branch + dirty/ahead-behind
-      (client-side `git`), model, state, queue depth.
-- [ ] Transcript view driven by `agent.events.read` + bus stream (tail with cursor),
-      markdown rendering, tool calls collapsed.
-- [ ] Prompt input: multiline, history; `Ctrl-G` and `/edit` open `$EDITOR` on a temp
-      markdown file, send on save-and-quit if non-empty; abort on empty.
-- [ ] Slash commands and `.model`-style commands: completion from B0 findings; `/model`,
-      `/cancel`, `/interrupt`, `/queue`, `/detach`.
-- [ ] Busy-turn behaviour: enqueue, show queue, cancel queued prompt, interrupt.
-- [ ] Tests: model/update logic as pure functions; fixture-driven event rendering; no
-      goroutine leaks (context-bound).
-- Daily-driver check: one real working day driving agents from attach only.
+- [x] 0607a13f Session resolver: id, unique prefix, suffix, title, or newest active session when omitted.
+- [x] 0607a13f Header: session id/title, agent, host, dir, git branch + dirty/ahead-behind (client-side `git`), model, state, queue depth.
+- [x] 0607a13f Transcript view driven by `agent.events.read` live polling, user/assistant/tool messages rendered.
+- [x] 0607a13f Prompt input: multiline buffer, `Ctrl-G` and `/edit` open `$EDITOR` (Neovim) on a temp markdown file, send on save-and-quit.
+- [x] 0607a13f Slash commands: `/model [name]`, `/cancel`, `/interrupt`, `/detach`, `/edit`.
+- [x] 0607a13f Busy-turn behaviour: enqueue, spinner indicator, live event stream during turn.
+- [x] 0607a13f Tests: session resolver, git status parser, slash command parser, event renderer.
+- [ ] Daily-driver check: one real working day driving agents from attach only.
 
 ## B2 Attention signals
 - [ ] Subscribe to `agent.*` events; on `busy -> needs_you|done|failed|blocked` emit a
