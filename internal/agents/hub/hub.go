@@ -29,9 +29,10 @@ func New(db *sql.DB) (*Hub, error) {
 			session  TEXT NOT NULL DEFAULT '',
 			ts       INTEGER NOT NULL,
 			type     TEXT NOT NULL,
-			payload  TEXT NOT NULL,
-			UNIQUE (host, host_seq)
+			payload  TEXT NOT NULL
 		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_cockpit_hub_events_host
+			ON cockpit_hub_events(host, host_seq) WHERE host_seq > 0;
 		CREATE INDEX IF NOT EXISTS idx_cockpit_hub_events_session
 			ON cockpit_hub_events(session, seq);
 	`)
@@ -85,6 +86,31 @@ func (h *Hub) Ingest(ctx context.Context, evs []agents.Event) ([]agents.Event, e
 		return nil, errors.Wrap(err, "commit ingest")
 	}
 	return out, nil
+}
+
+// Append stores a hub-generated event (host_seq 0), such as host.status.
+func (h *Hub) Append(ctx context.Context, ev agents.Event) (agents.Event, error) {
+	if ev.ID == "" {
+		ev.ID = agents.NewID()
+	}
+	if ev.TS.IsZero() {
+		ev.TS = time.Now().UTC()
+	}
+	if len(ev.Payload) == 0 {
+		ev.Payload = json.RawMessage(`{}`)
+	}
+	ev.HostSeq = 0
+	res, err := h.db.ExecContext(ctx,
+		`INSERT INTO cockpit_hub_events (host, host_seq, id, session, ts, type, payload)
+		 VALUES (?, 0, ?, ?, ?, ?, ?)`,
+		ev.Host, ev.ID, ev.Session, ev.TS.UnixNano(), string(ev.Type), string(ev.Payload))
+	if err != nil {
+		return agents.Event{}, errors.Wrap(err, "append hub event")
+	}
+	if ev.Seq, err = res.LastInsertId(); err != nil {
+		return agents.Event{}, errors.Wrap(err, "read seq")
+	}
+	return ev, nil
 }
 
 // HostCursor returns the highest host_seq ingested for host, or 0.

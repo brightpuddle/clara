@@ -48,24 +48,47 @@ func (s *ToolSource) ReadEvents(
 	return out.Events, nil
 }
 
-// Run pulls every interval until ctx is cancelled. Errors (for example the
-// tunnel being down) are logged once per outage and retried on the next tick.
+// Step runs one pull and, when reachability changes, records and publishes a
+// host.status event. The first successful pull reports the host online.
+func (p *Puller) Step(ctx context.Context, log zerolog.Logger) {
+	_, err := p.Pull(ctx)
+	if ctx.Err() != nil {
+		return
+	}
+	online := err == nil
+	if err != nil && (!p.known || p.online) {
+		log.Warn().Err(err).Str("host", p.host).Msg("agent pull failed")
+	}
+	if p.known && p.online == online {
+		return
+	}
+	if !p.known && !online {
+		// Never reached: stay silent until the first success rather than
+		// announcing a host as offline that was never online.
+		p.known, p.online = true, false
+		return
+	}
+	p.known, p.online = true, online
+	ev, aerr := agents.NewEvent(p.host, "", agents.TypeHostStatus,
+		agents.HostStatus{Online: online, LastSeen: time.Now().UTC()})
+	if aerr == nil {
+		ev, aerr = p.hub.Append(ctx, ev)
+	}
+	if aerr != nil {
+		log.Error().Err(aerr).Str("host", p.host).Msg("record host status")
+		return
+	}
+	if p.onEvent != nil {
+		p.onEvent([]agents.Event{ev})
+	}
+}
+
+// Run steps every interval until ctx is cancelled.
 func (p *Puller) Run(ctx context.Context, interval time.Duration, log zerolog.Logger) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
-	failing := false
 	for {
-		if _, err := p.Pull(ctx); err != nil {
-			if !failing && ctx.Err() == nil {
-				log.Warn().Err(err).Str("host", p.host).Msg("agent pull failed")
-			}
-			failing = true
-		} else {
-			if failing {
-				log.Info().Str("host", p.host).Msg("agent pull recovered")
-			}
-			failing = false
-		}
+		p.Step(ctx, log)
 		select {
 		case <-ctx.Done():
 			return

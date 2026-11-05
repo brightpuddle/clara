@@ -24,6 +24,7 @@ var (
 	agentTailAfter int64
 	agentTailFlw   bool
 	agentListAll   bool
+	agentHost      string
 )
 
 var agentListCmd = &cobra.Command{
@@ -88,11 +89,32 @@ func init() {
 	agentSendCmd.Flags().StringVar(&agentSendFrom, "origin", "cli", "origin label for the prompt")
 	agentTailCmd.Flags().Int64Var(&agentTailAfter, "after", 0, "start after this host_seq")
 	agentTailCmd.Flags().BoolVarP(&agentTailFlw, "follow", "f", false, "keep polling for new events")
+	agentCmd.PersistentFlags().StringVar(&agentHost, "host", "",
+		"agent host to act on (default: this machine; see agents.remote_hosts)")
 	agentCmd.AddCommand(agentListCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd)
+}
+
+// agentToolPrefix maps a host name to the tool namespace prefix of its agent
+// core: empty for this machine, the configured tool_prefix for a remote.
+func agentToolPrefix(host string) (string, error) {
+	if host == "" || host == cfg.Agents.HostName() {
+		return "", nil
+	}
+	for _, r := range cfg.Agents.RemoteHosts {
+		if r.Name == host {
+			return r.ToolPrefix, nil
+		}
+	}
+	return "", errors.Newf("unknown agent host %q (not in agents.remote_hosts)", host)
 }
 
 // callAgentTool invokes an agent.* tool on the running daemon.
 func callAgentTool(name string, args map[string]any) (map[string]any, error) {
+	prefix, err := agentToolPrefix(agentHost)
+	if err != nil {
+		return nil, err
+	}
+	name = prefix + name
 	resp, err := sendRawRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodToolCall,
 		Params: map[string]any{"name": name},

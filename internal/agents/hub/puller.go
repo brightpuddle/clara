@@ -21,6 +21,8 @@ type Puller struct {
 	src     Source
 	batch   int
 	onEvent func([]agents.Event)
+
+	known, online bool
 }
 
 // NewPuller returns a Puller for host. onEvent, if set, receives each batch of

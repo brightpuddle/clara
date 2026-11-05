@@ -75,7 +75,9 @@ and no lost or duplicated messages across router and daemon restarts.
       dedupe on `(host, host_seq)`. Done: `internal/agents/hub` (Hub, Puller, ToolSource),
       wired in `cmd/clara/agent_hub.go` (local + `agents.remote_hosts`, 2s poll).
       Todo: live test against Sophia over the tunnel.
-- [ ] `host.status` online/offline; command routing to the right host
+- [~] `host.status` online/offline; command routing to the right host
+      Done: hub emits `host.status` on reachability transitions; `clara agent --host <name>`
+      routes to `agents.remote_hosts[].tool_prefix`. Todo: live test; router routing.
 - [ ] Sleep/wake test: no lost or duplicated events
 - [ ] Router uses the hub view for both hosts
 

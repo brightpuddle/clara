@@ -2,8 +2,11 @@ package hub_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
+
+	"github.com/rs/zerolog"
 
 	"github.com/brightpuddle/clara/internal/agents"
 	"github.com/brightpuddle/clara/internal/agents/hub"
@@ -89,5 +92,45 @@ func TestToolSourceDecodesEventsRead(t *testing.T) {
 	}
 	if gotName != "laptop.agent.events.read" || gotArgs["after"] != int64(3) || gotArgs["limit"] != 50 {
 		t.Fatalf("call %q %v", gotName, gotArgs)
+	}
+}
+
+func TestStepEmitsHostStatusOnTransitions(t *testing.T) {
+	h, ctx := newHub(t), context.Background()
+	src := &fakeSource{err: errors.New("tunnel down")}
+	var got []agents.Event
+	p := hub.NewPuller(h, "sophia", src, 10, func(e []agents.Event) { got = append(got, e...) })
+	status := func() []bool {
+		var out []bool
+		for _, e := range got {
+			if e.Type != agents.TypeHostStatus {
+				continue
+			}
+			var hs agents.HostStatus
+			json.Unmarshal(e.Payload, &hs)
+			out = append(out, hs.Online)
+		}
+		return out
+	}
+	step := func() { p.Step(ctx, zerolog.Nop()) }
+	step() // never reached: silent
+	if len(status()) != 0 {
+		t.Fatalf("unexpected status %v", status())
+	}
+	src.err = nil
+	step()
+	step() // still online: no duplicate
+	src.err = errors.New("down")
+	step()
+	step()
+	src.err = nil
+	step()
+	want := []bool{true, false, true}
+	if s := status(); len(s) != 3 || s[0] != want[0] || s[1] != want[1] || s[2] != want[2] {
+		t.Fatalf("status = %v", s)
+	}
+	// host.status events must not disturb the host_seq cursor.
+	if c, _ := h.HostCursor(ctx, "sophia"); c != 0 {
+		t.Fatalf("cursor = %d", c)
 	}
 }
