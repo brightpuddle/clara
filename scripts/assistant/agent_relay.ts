@@ -20,6 +20,7 @@ import { getPlatformAdapter, getPrimaryAdapter } from "./platform/manager.ts";
 import type { PlatformType } from "./platform/types.ts";
 import type { Origin } from "./agent/binding.ts";
 import { sessionLabel } from "./agent/sync.ts";
+import { reconcileAll } from "./agent/reconciler.ts";
 import {
   Relay,
   type ChannelRef,
@@ -44,6 +45,7 @@ const PAGE = 200;
 const MAX_EVENT_FAILURES = 5;
 const CHANNEL_REFRESH_MS = 10_000;
 const SYNC_WAIT_MS = 60_000;
+const AUTO_RECONCILE_INTERVAL_MS = Number(process.env.CLARA_RECONCILE_INTERVAL_MS || 45_000);
 
 const sqlStore: Store = {
   getPrompt(id) {
@@ -195,10 +197,24 @@ async function main() {
 
   let failures = 0;
   let stopping = false;
+  let lastReconcile = Date.now();
   for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => (stopping = true));
+
+  // Run an initial reconciliation pass on startup
+  reconcileAll().catch((err: any) =>
+    console.warn(`[agent_relay] Initial auto-reconcile error: ${err.message}`)
+  );
 
   while (!stopping) {
     try {
+      // Periodic automatic session reconciliation (tmux & agents across all hosts)
+      if (Date.now() - lastReconcile > AUTO_RECONCILE_INTERVAL_MS) {
+        lastReconcile = Date.now();
+        reconcileAll().catch((err: any) =>
+          console.warn(`[agent_relay] Periodic auto-reconcile error: ${err.message}`)
+        );
+      }
+
       const page = await readPage(cursor);
       for (const ev of page.events) {
         try {

@@ -96,21 +96,28 @@ cat > "$TUNNEL_PLIST" <<EOF
         <string>/usr/bin/ssh</string>
         <string>-NT</string>
         <string>-o</string>
-        <string>ServerAliveInterval=15</string>
+        <string>ServerAliveInterval=10</string>
         <string>-o</string>
-        <string>ServerAliveCountMax=3</string>
+        <string>ServerAliveCountMax=2</string>
         <string>-o</string>
         <string>ExitOnForwardFailure=yes</string>
+        <string>-o</string>
+        <string>ConnectTimeout=10</string>
+        <string>-o</string>
+        <string>TCPKeepAlive=yes</string>
         <string>-R</string>
         <string>14444:127.0.0.1:4444</string>
         <string>${USER}@${EVE_HOST}</string>
     </array>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>NetworkState</key>
+        <true/>
+    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>ThrottleInterval</key>
-    <integer>10</integer>
+    <integer>5</integer>
 </dict>
 </plist>
 EOF

@@ -42,8 +42,7 @@ Output MUST be valid JSON conforming exactly to this structure:
   "reminder": {
     "title": "Follow up on invoice #123",
     "due_date": "2026-11-06T17:00:00Z",
-    "notes": "Action required by Friday",
-    "priority": 1
+    "notes": "Action required by Friday"
   },
   "draft": {
     "subject": "Re: Project Sync",

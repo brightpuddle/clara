@@ -299,24 +299,21 @@ export class TriageEngine {
     reminder: { title: string; due_date?: string; notes?: string; priority?: number; url?: string }
   ): Promise<boolean> {
     try {
-      const notes = [
-        reminder.notes || "",
-        `---`,
-        `From: ${mail.sender}`,
-        `Subject: ${mail.subject}`,
-        `Date: ${mail.date_received}`,
-      ].filter(Boolean).join("\n");
-
       const rfcId = mail.message_id || mail.headers?.["message-id"];
       const cleanRfcId = rfcId ? rfcId.replace(/^<|>$/g, "").trim() : undefined;
       const messageUrl = reminder.url || (cleanRfcId ? `message://${encodeURIComponent("<" + cleanRfcId + ">")}` : undefined);
+
+      const notes = [
+        reminder.notes || "",
+        messageUrl ? `Link: ${messageUrl}` : "",
+      ].filter(Boolean).join("\n\n");
 
       // 1. Create macOS Reminder
       const res = await callTool("macos.reminders_create" as any, {
         title: reminder.title,
         notes,
         due_date: reminder.due_date,
-        priority: reminder.priority,
+        priority: reminder.priority ?? 0,
         url: messageUrl,
       });
 
