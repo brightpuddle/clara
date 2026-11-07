@@ -56,7 +56,7 @@ type Model struct {
 	viewport   viewport.Model
 	textInput  textinput.Model
 	spinner    spinner.Model
-	transcript strings.Builder
+	transcript *strings.Builder
 	lastSeq    int64
 	width      int
 	height     int
@@ -86,11 +86,12 @@ func NewAttachModel(client SessionClient, sess SessionSummary) Model {
 	git := DetectGitStatus(sess.Dir)
 
 	return Model{
-		client:    client,
-		session:   sess,
-		git:       git,
-		textInput: ti,
-		spinner:   sp,
+		client:     client,
+		session:    sess,
+		git:        git,
+		textInput:  ti,
+		spinner:    sp,
+		transcript: &strings.Builder{},
 	}
 }
 
