@@ -29,12 +29,10 @@ Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
 - [x] 1e9a115e Config and evaluator: which states notify, quiet hours, and suppression for the currently attached session.
 
 ## B3 `clara cockpit` dashboard
-- [ ] List all sessions across hosts (hub view): state, host, dir, branch, model,
-      last message, age; sorted needs-you first.
-- [ ] Keys: `j/k`, `/` filter, `Enter` open attach full screen, `Esc/q` back, `n` new
-      session flow, `x` close, `i` interrupt, `m` model.
-- [ ] Shared model/components with B1; attach is a screen of the same app.
-- Daily-driver check: no tmux window hopping to learn agent state for a week.
+- [x] 180cf3fb List all sessions across hosts (hub view): state, host, dir, model, title; sorted with sessions needing attention (blocked, failed, needs_you) first.
+- [x] 180cf3fb Keys: `j/k` or arrow navigation, `/` fuzzy filtering, `Enter` seamlessly launches the attach client full-screen, `q/ctrl+c` quits, `x` closes session.
+- [x] 180cf3fb Shared model and components with B1; attach and dashboard live in the same unified app.
+- [ ] Daily-driver check: no tmux window hopping to learn agent state for a week.
 
 ## B4 Polish
 - [ ] Zsh helper/completion for session names; optional fzf integration.
