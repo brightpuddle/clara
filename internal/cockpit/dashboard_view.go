@@ -53,17 +53,19 @@ type closeSessionDoneMsg string
 
 // DashboardModel is the top-level Bubble Tea model for the cockpit dashboard.
 type DashboardModel struct {
-	client       DashboardClient
-	sessions     []SessionSummary
-	filtered     []SessionSummary
-	cursor       int
-	filterInput  textinput.Model
-	filtering    bool
-	width        int
-	height       int
-	spinner      spinner.Model
-	err          error
-	quitting     bool
+	client      DashboardClient
+	sessions    []SessionSummary
+	filtered    []SessionSummary
+	cursor      int
+	filterInput textinput.Model
+	filtering   bool
+	showClosed  bool
+	width       int
+	height      int
+	spinner     spinner.Model
+	err         error
+	noticeMsg   string
+	quitting    bool
 
 	// Active attached child session (if Enter was pressed)
 	attachedMode bool
@@ -130,7 +132,7 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var (
-		cmds []tea.Cmd
+		cmds  []tea.Cmd
 		tiCmd tea.Cmd
 		spCmd tea.Cmd
 	)
@@ -144,7 +146,7 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filterInput.Blur()
 			default:
 				m.filterInput, tiCmd = m.filterInput.Update(msg)
-				m.filtered = FilterSessions(m.sessions, m.filterInput.Value())
+				m.filtered = FilterSessions(m.sessions, m.filterInput.Value(), m.showClosed)
 				if m.cursor >= len(m.filtered) {
 					m.cursor = max(0, len(m.filtered)-1)
 				}
@@ -158,17 +160,27 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 
+		case "a":
+			m.showClosed = !m.showClosed
+			m.filtered = FilterSessions(m.sessions, m.filterInput.Value(), m.showClosed)
+			if m.cursor >= len(m.filtered) {
+				m.cursor = max(0, len(m.filtered)-1)
+			}
+			return m, nil
+
 		case "/":
 			m.filtering = true
 			m.filterInput.Focus()
 			return m, textinput.Blink
 
 		case "j", "down":
+			m.noticeMsg = ""
 			if m.cursor < len(m.filtered)-1 {
 				m.cursor++
 			}
 
 		case "k", "up":
+			m.noticeMsg = ""
 			if m.cursor > 0 {
 				m.cursor--
 			}
@@ -184,6 +196,10 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Open selected session full-screen in attach client
 			if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
 				target := m.filtered[m.cursor]
+				if strings.ToLower(target.State) == "closed" {
+					m.noticeMsg = fmt.Sprintf("Session %s is closed. Resume native conversation or start a new session.", target.ID)
+					return m, nil
+				}
 				m.attachedMode = true
 				m.attachModel = NewAttachModel(m.client, target)
 				return m, m.attachModel.Init()
@@ -202,7 +218,7 @@ func (m DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sessionListMsg:
 		m.sessions = SortSessions([]SessionSummary(msg))
-		m.filtered = FilterSessions(m.sessions, m.filterInput.Value())
+		m.filtered = FilterSessions(m.sessions, m.filterInput.Value(), m.showClosed)
 		if m.cursor >= len(m.filtered) {
 			m.cursor = max(0, len(m.filtered)-1)
 		}
@@ -304,7 +320,15 @@ func (m DashboardModel) View() string {
 	}
 
 	// 5. Footer help
-	footer := "\n" + footerStyle.Render("Keys: [j/k] Navigate • [Enter] Attach • [/] Filter • [x] Close • [q] Quit")
+	closedToggleHelp := "[a] Show closed"
+	if m.showClosed {
+		closedToggleHelp = "[a] Hide closed"
+	}
+	footer := "\n" + footerStyle.Render(fmt.Sprintf("Keys: [j/k] Navigate • [Enter] Attach • [/] Filter • %s • [x] Close • [q] Quit", closedToggleHelp))
+
+	if m.noticeMsg != "" {
+		footer += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("Notice: "+m.noticeMsg)
+	}
 
 	if m.err != nil {
 		footer += "\n" + errorStyle.Render(fmt.Sprintf("Error: %v", m.err))

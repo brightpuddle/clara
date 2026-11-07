@@ -113,6 +113,10 @@ export class Relay {
         if (p.stop_reason === "error") await this.notice(ev, "⚠️ The turn ended with an error.");
         return;
       }
+      case "session.cleared": {
+        await this.notice(ev, "────────────────── 🧹 Session Cleared / Context Reset ──────────────────");
+        return;
+      }
       case "session.status": {
         if (p.state === "failed") {
           await this.notice(ev, `❌ Session failed${p.reason ? `: ${p.reason}` : "."}`);

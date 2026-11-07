@@ -106,6 +106,8 @@ func Register(
 		s.setModel,
 		mcp.WithString("session", req("Session id.")...),
 		mcp.WithString("model", req("Model id, e.g. gemini-3.8-flash-high.")...))
+	add("agent.session.clear", "Completely reinitialize the session with a fresh context.", s.clear,
+		mcp.WithString("session", req("Session id.")...))
 	add("agent.prompt.send", "Queue a prompt; it runs when the session is idle.", s.send,
 		mcp.WithString("session", req("Session id.")...),
 		mcp.WithString("text", req("Prompt text.")...),
@@ -267,6 +269,20 @@ func (s *service) setModel(ctx context.Context, args map[string]any) (any, error
 		return nil, err
 	}
 	return map[string]any{"session": id, "model": model}, nil
+}
+
+func (s *service) clear(ctx context.Context, args map[string]any) (any, error) {
+	if err := s.check(); err != nil {
+		return nil, err
+	}
+	id, err := requireStr(args, "agent.session.clear", "session")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.mgr.Clear(ctx, id); err != nil {
+		return nil, err
+	}
+	return map[string]any{"session": id, "cleared": true}, nil
 }
 
 func (s *service) send(_ context.Context, args map[string]any) (any, error) {

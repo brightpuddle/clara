@@ -249,6 +249,43 @@ func (r *Runner) SetModel(ctx context.Context, model string) error {
 	return err
 }
 
+// Clear stops the current agent process, resets nativeID so a clean agent session
+// starts, clears queued prompts, and logs TypeSessionCleared.
+func (r *Runner) Clear(ctx context.Context) error {
+	var err error
+	if derr := r.do(func() {
+		if r.active != nil {
+			err = ErrTurnActive
+			return
+		}
+		// Clear queued prompts
+		for _, q := range r.queue {
+			r.record(agents.TypePromptCancelled, agents.PromptCancelled{PromptID: q.id})
+		}
+		r.queue = nil
+
+		// Reset nativeID so restart creates a fresh native session
+		r.nativeID = ""
+		r.cfg.Spec.ResumeID = ""
+
+		// Record session.cleared
+		r.record(agents.TypeSessionCleared, agents.SessionCleared{ClearedAt: time.Now().UTC()})
+
+		// Close current agent session and trigger re-open
+		if r.sess != nil {
+			s := r.sess
+			go func() {
+				cctx, cancel := context.WithTimeout(r.bg, r.opts.CloseTimeout)
+				defer cancel()
+				_ = s.Close(cctx)
+			}()
+		}
+	}); derr != nil {
+		return derr
+	}
+	return err
+}
+
 func (r *Runner) Close(ctx context.Context) error {
 	_ = r.do(func() { r.beginClose() })
 	select {

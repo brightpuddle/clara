@@ -91,6 +91,24 @@ var agentCancelCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+var agentClearCmd = &cobra.Command{
+	Use:   "clear <session>",
+	Short: "Completely reinitialize an agent session with fresh context",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runAgentSessionClear,
+
+	SilenceUsage: true,
+}
+
+var agentResumeCmd = &cobra.Command{
+	Use:   "resume <agy|opencode> [native-id]",
+	Short: "Discover or adopt an existing native agent conversation",
+	Args:  cobra.RangeArgs(1, 2),
+	RunE:  runAgentSessionResume,
+
+	SilenceUsage: true,
+}
+
 func init() {
 	agentListCmd.Flags().BoolVarP(&agentListAll, "all", "a", false, "include closed sessions")
 	agentNewCmd.Flags().StringVar(&agentNewDir, "dir", "", "working directory (default: current)")
@@ -102,7 +120,7 @@ func init() {
 	agentStatusCmd.Flags().BoolVarP(&agentStatusShort, "short", "s", false, "print concise one-line status (tmux/wezterm)")
 	agentCmd.PersistentFlags().StringVar(&agentHost, "host", "",
 		"agent host to act on (default: this machine; see agents.remote_hosts)")
-	agentCmd.AddCommand(agentListCmd, agentStatusCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd)
+	agentCmd.AddCommand(agentListCmd, agentStatusCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd, agentClearCmd, agentResumeCmd)
 }
 
 // agentToolPrefix maps a host name to the tool namespace prefix of its agent
@@ -235,6 +253,49 @@ func runAgentSessionCancel(_ *cobra.Command, args []string) error {
 	}
 	_, err := callAgentTool("agent.turn.interrupt", map[string]any{"session": args[0]})
 	return err
+}
+
+func runAgentSessionClear(_ *cobra.Command, args []string) error {
+	_, err := callAgentTool("agent.session.clear", map[string]any{"session": args[0]})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Cleared session %s.\n", args[0])
+	return nil
+}
+
+func runAgentSessionResume(_ *cobra.Command, args []string) error {
+	agent := args[0]
+	if len(args) == 1 {
+		// Discover resumable sessions
+		out, err := callAgentTool("agent.session.discover", map[string]any{"agent": agent})
+		if err != nil {
+			return err
+		}
+		raw, _ := out["sessions"].([]any)
+		if len(raw) == 0 {
+			fmt.Printf("No resumable native %s sessions found.\n", agent)
+			return nil
+		}
+		fmt.Printf("Resumable native %s sessions:\n", agent)
+		for _, v := range raw {
+			s, _ := v.(map[string]any)
+			fmt.Printf("  %-36v  %-25v  %v\n", s["id"], s["dir"], s["title"])
+		}
+		fmt.Println("\nTo resume: clara agent resume", agent, "<native-id>")
+		return nil
+	}
+
+	nativeID := args[1]
+	out, err := callAgentTool("agent.session.resume", map[string]any{
+		"agent":     agent,
+		"native_id": nativeID,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Resumed native session %s as managed session %v\n", nativeID, out["session"])
+	return nil
 }
 
 func runAgentSessionTail(cmd *cobra.Command, args []string) error {

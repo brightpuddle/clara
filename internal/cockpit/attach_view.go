@@ -45,24 +45,24 @@ type SessionClient interface {
 	SendPrompt(ctx context.Context, session, prompt string) error
 	Interrupt(ctx context.Context, session string) error
 	SetModel(ctx context.Context, session, model string) error
+	ClearSession(ctx context.Context, session string) error
 }
 
 // Model is the Bubble Tea model for the interactive attach session.
 type Model struct {
-	client       SessionClient
-	session      SessionSummary
-	git          GitInfo
-	viewport     viewport.Model
-	textInput    textinput.Model
-	spinner      spinner.Model
-	transcript   strings.Builder
-	lastSeq      int64
-	width        int
-	height       int
-	ready        bool
-	err          error
-	quitting     bool
-	editorActive bool
+	client     SessionClient
+	session    SessionSummary
+	git        GitInfo
+	viewport   viewport.Model
+	textInput  textinput.Model
+	spinner    spinner.Model
+	transcript strings.Builder
+	lastSeq    int64
+	width      int
+	height     int
+	ready      bool
+	err        error
+	quitting   bool
 }
 
 type eventsMsg []EventItem
@@ -304,12 +304,22 @@ func (m Model) handleSlashCmd(cmd, args string) tea.Cmd {
 			return m.pollSessionCmd()()
 		}
 
+	case "clear":
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := m.client.ClearSession(ctx, m.session.ID); err != nil {
+				return errMsg(err)
+			}
+			return m.pollEventsCmd()()
+		}
+
 	case "detach", "quit":
 		m.quitting = true
 		return tea.Quit
 
 	default:
-		m.transcript.WriteString(errorStyle.Render(fmt.Sprintf("Unknown command /%s. Available: /edit, /model, /interrupt, /cancel, /detach\n", cmd)))
+		m.transcript.WriteString(errorStyle.Render(fmt.Sprintf("Unknown command /%s. Available: /clear, /edit, /model, /interrupt, /cancel, /detach\n", cmd)))
 		m.viewport.SetContent(m.transcript.String())
 		m.viewport.GotoBottom()
 		return nil

@@ -46,6 +46,29 @@ func status(t *testing.T, s string, st agents.SessionState) agents.Event {
 	return mk(t, s, agents.TypeSessionStatus, agents.SessionStatus{State: st})
 }
 
+func TestPruneClosedSessions(t *testing.T) {
+	p := projection.New()
+	p.SetMaxClosedSessions(2)
+
+	// Create and close 4 sessions
+	for i := 1; i <= 4; i++ {
+		sid := string(rune('a' + i - 1))
+		apply(t, p,
+			created(t, sid),
+			status(t, sid, agents.StateClosed),
+		)
+	}
+
+	// Should only have 2 closed sessions retained (c and d, the newest ones)
+	sessions := p.Sessions()
+	if len(sessions) != 2 {
+		t.Fatalf("expected 2 closed sessions retained, got %d", len(sessions))
+	}
+	if sessions[0].ID != "c" || sessions[1].ID != "d" {
+		t.Fatalf("expected sessions c and d, got %s and %s", sessions[0].ID, sessions[1].ID)
+	}
+}
+
 func TestSessionLifecycle(t *testing.T) {
 	p := projection.New()
 	apply(t, p,

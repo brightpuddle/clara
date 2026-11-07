@@ -43,14 +43,19 @@ func SortSessions(sessions []SessionSummary) []SessionSummary {
 }
 
 // FilterSessions filters sessions by matching query against title, ID, agent, host, or directory.
-func FilterSessions(sessions []SessionSummary, query string) []SessionSummary {
+// When includeClosed is false, sessions with State == "closed" are excluded.
+func FilterSessions(sessions []SessionSummary, query string, includeClosed bool) []SessionSummary {
 	q := strings.TrimSpace(strings.ToLower(query))
-	if q == "" {
-		return sessions
-	}
 
 	var matched []SessionSummary
 	for _, s := range sessions {
+		if !includeClosed && strings.ToLower(s.State) == "closed" {
+			continue
+		}
+		if q == "" {
+			matched = append(matched, s)
+			continue
+		}
 		if strings.Contains(strings.ToLower(s.Title), q) ||
 			strings.Contains(strings.ToLower(s.ID), q) ||
 			strings.Contains(strings.ToLower(s.Agent), q) ||

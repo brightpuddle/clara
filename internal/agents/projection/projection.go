@@ -54,19 +54,24 @@ type Attention struct {
 	Answer     string               `json:"answer"`
 }
 
+// DefaultMaxClosedSessions is the maximum number of closed sessions kept in projection.
+const DefaultMaxClosedSessions = 20
+
 // Projection is not safe for concurrent use; callers serialize access.
 type Projection struct {
-	sessions   map[string]*Session
-	queues     map[string][]Prompt
-	attentions map[string]*Attention
-	applied    int64
+	sessions          map[string]*Session
+	queues            map[string][]Prompt
+	attentions        map[string]*Attention
+	applied           int64
+	maxClosedSessions int
 }
 
 func New() *Projection {
 	return &Projection{
-		sessions:   map[string]*Session{},
-		queues:     map[string][]Prompt{},
-		attentions: map[string]*Attention{},
+		sessions:          map[string]*Session{},
+		queues:            map[string][]Prompt{},
+		attentions:        map[string]*Attention{},
+		maxClosedSessions: DefaultMaxClosedSessions,
 	}
 }
 
@@ -194,6 +199,15 @@ func (p *Projection) autoResolve(session string) {
 	}
 }
 
+// SetMaxClosedSessions overrides the maximum number of closed sessions kept in projection.
+func (p *Projection) SetMaxClosedSessions(n int) {
+	if n < 0 {
+		n = 0
+	}
+	p.maxClosedSessions = n
+	p.pruneClosedSessions()
+}
+
 func (p *Projection) closeSession(s *Session) {
 	delete(p.queues, s.ID)
 	s.QueueLen = 0
@@ -202,6 +216,35 @@ func (p *Projection) closeSession(s *Session) {
 		if a.Session == s.ID && a.Open {
 			a.Open, a.ResolvedBy = false, "auto"
 		}
+	}
+	p.pruneClosedSessions()
+}
+
+func (p *Projection) pruneClosedSessions() {
+	if p.maxClosedSessions <= 0 {
+		return
+	}
+	var closed []*Session
+	for _, s := range p.sessions {
+		if s.State == agents.StateClosed {
+			closed = append(closed, s)
+		}
+	}
+	if len(closed) <= p.maxClosedSessions {
+		return
+	}
+	// Sort closed sessions by LastSeq ascending (oldest first)
+	sort.Slice(closed, func(i, j int) bool {
+		if closed[i].LastSeq != closed[j].LastSeq {
+			return closed[i].LastSeq < closed[j].LastSeq
+		}
+		return closed[i].ID < closed[j].ID
+	})
+
+	toPrune := len(closed) - p.maxClosedSessions
+	for i := 0; i < toPrune; i++ {
+		delete(p.sessions, closed[i].ID)
+		delete(p.queues, closed[i].ID)
 	}
 }
 

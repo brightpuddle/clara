@@ -28,6 +28,7 @@ const (
 	TypeAttentionRequested EventType = "attention.requested"
 	TypeAttentionResolved  EventType = "attention.resolved"
 	TypeUsageUpdated       EventType = "usage.updated"
+	TypeSessionCleared     EventType = "session.cleared"
 )
 
 // AllEventTypes lists every known event type.
@@ -38,6 +39,7 @@ func AllEventTypes() []EventType {
 		TypeTurnStarted, TypeTurnEnded, TypeToolCall, TypeToolUpdate,
 		TypePromptQueued, TypePromptSent, TypePromptCancelled,
 		TypeAttentionRequested, TypeAttentionResolved, TypeUsageUpdated,
+		TypeSessionCleared,
 	}
 }
 
@@ -170,6 +172,10 @@ type Option struct {
 
 type NativeRef struct {
 	FormID string `json:"form_id,omitempty"`
+}
+
+type SessionCleared struct {
+	ClearedAt time.Time `json:"cleared_at"`
 }
 
 type HostStatus struct {
@@ -322,6 +328,8 @@ func newPayload(typ EventType) any {
 		return AttentionResolved{}
 	case TypeUsageUpdated:
 		return UsageUpdated{}
+	case TypeSessionCleared:
+		return SessionCleared{}
 	}
 	return nil
 }

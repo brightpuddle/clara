@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	userStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))   // Cyan
-	assistantStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))  // Magenta/Pink
-	toolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))             // Gray
-	statusStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))             // Yellow/Gold
-	errorStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))  // Red
+	userStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))  // Cyan
+	assistantStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")) // Magenta/Pink
+	toolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))            // Gray
+	statusStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))            // Yellow/Gold
+	errorStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")) // Red
 )
 
 // EventItem represents a single event in the transcript.
@@ -65,6 +65,13 @@ func RenderEvent(e EventItem) string {
 	case "turn.ended":
 		stopReason, _ := e.Payload["stop_reason"].(string)
 		return statusStyle.Render(fmt.Sprintf("── Turn Ended (%s) ──", stopReason)) + "\n"
+
+	case "session.cleared":
+		clearedBanner := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("226")).
+			Render("\n────────────────── 🧹 Session Cleared / Context Reset ──────────────────\n")
+		return clearedBanner
 
 	case "session.status":
 		state, _ := e.Payload["state"].(string)

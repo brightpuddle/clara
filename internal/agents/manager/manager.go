@@ -279,3 +279,14 @@ func (m *Manager) Close(ctx context.Context, session string) error {
 	}
 	return r.Close(ctx)
 }
+
+// Clear completely reinitializes the agent session: resets prompt context,
+// starts a fresh native agent session on the same directory/settings, and records
+// session.cleared.
+func (m *Manager) Clear(ctx context.Context, session string) error {
+	r, err := m.runner(session)
+	if err != nil {
+		return err
+	}
+	return r.Clear(ctx)
+}

@@ -49,14 +49,14 @@ func (c *daemonSessionClient) GetSession(_ context.Context, id string) (cockpit.
 
 	queue, _ := out["queue"].([]any)
 	summary := cockpit.SessionSummary{
-		ID:        fmt.Sprint(s["id"]),
-		Host:      fmt.Sprint(s["host"]),
-		Agent:     fmt.Sprint(s["agent"]),
-		Dir:       fmt.Sprint(s["dir"]),
-		Title:     fmt.Sprint(s["title"]),
-		State:     fmt.Sprint(s["state"]),
-		Model:     fmt.Sprint(s["model"]),
-		QueueLen:  len(queue),
+		ID:         fmt.Sprint(s["id"]),
+		Host:       fmt.Sprint(s["host"]),
+		Agent:      fmt.Sprint(s["agent"]),
+		Dir:        fmt.Sprint(s["dir"]),
+		Title:      fmt.Sprint(s["title"]),
+		State:      fmt.Sprint(s["state"]),
+		Model:      fmt.Sprint(s["model"]),
+		QueueLen:   len(queue),
 		ActiveTurn: fmt.Sprint(s["active_turn"]),
 	}
 	return summary, nil
@@ -120,9 +120,16 @@ func (c *daemonSessionClient) Interrupt(_ context.Context, session string) error
 }
 
 func (c *daemonSessionClient) SetModel(_ context.Context, session, model string) error {
-	_, err := callAgentTool("agent.session.set_model", map[string]any{
+	_, err := callAgentTool("agent.session.model", map[string]any{
 		"session": session,
 		"model":   model,
+	})
+	return err
+}
+
+func (c *daemonSessionClient) ClearSession(_ context.Context, session string) error {
+	_, err := callAgentTool("agent.session.clear", map[string]any{
+		"session": session,
 	})
 	return err
 }
@@ -138,13 +145,13 @@ func runAgentSessionAttach(_ *cobra.Command, args []string) error {
 	for _, v := range rawSessions {
 		s, _ := v.(map[string]any)
 		summaries = append(summaries, cockpit.SessionSummary{
-			ID:        fmt.Sprint(s["id"]),
-			Host:      fmt.Sprint(s["host"]),
-			Agent:     fmt.Sprint(s["agent"]),
-			Dir:       fmt.Sprint(s["dir"]),
-			Title:     fmt.Sprint(s["title"]),
-			State:     fmt.Sprint(s["state"]),
-			Model:     fmt.Sprint(s["model"]),
+			ID:         fmt.Sprint(s["id"]),
+			Host:       fmt.Sprint(s["host"]),
+			Agent:      fmt.Sprint(s["agent"]),
+			Dir:        fmt.Sprint(s["dir"]),
+			Title:      fmt.Sprint(s["title"]),
+			State:      fmt.Sprint(s["state"]),
+			Model:      fmt.Sprint(s["model"]),
 			ActiveTurn: fmt.Sprint(s["active_turn"]),
 		})
 	}
@@ -169,10 +176,13 @@ func runAgentSessionAttach(_ *cobra.Command, args []string) error {
 			}
 		}
 		if newestOpen == nil {
-			target = summaries[len(summaries)-1]
-		} else {
-			target = *newestOpen
+			return errors.New("no open agent sessions found; all sessions are closed")
 		}
+		target = *newestOpen
+	}
+
+	if target.State == "closed" {
+		return errors.Newf("cannot attach to session %q: session is closed", target.ID)
 	}
 
 	client := &daemonSessionClient{}

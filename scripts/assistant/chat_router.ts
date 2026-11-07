@@ -639,11 +639,12 @@ async function handleSessionsCommand(): Promise<string> {
 function getAgentChannelHelp(): string {
   return [
     `**Agent channel commands** (anything starting with \`.\` is handled by Clara):`,
+    `- \`.clear\` — reinitialize the agent process and start with fresh context`,
     `- \`.model [id]\` — show or change the model (only while idle)`,
     `- \`.stop\` — interrupt the running turn (queued prompts continue)`,
     `- \`.kill\` — close the session and delete this channel`,
     `- \`.help\` — this message`,
-    `- \`./<command>\` — send \`/<command>\` to the agent (e.g. \`./clear\`)`,
+    `- \`./<command>\` — send \`/<command>\` to the agent`,
     `- Anything else is queued as a prompt for the agent. Global commands (\`.status\`, \`.sync\`, \`.sessions\`, \`.spawn\`) run in #agents.`,
   ].join("\n");
 }
@@ -658,6 +659,7 @@ function getHelpMarkdown(): string {
     `- \`.platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
     `- \`.sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
     `- \`.spawn <name> [agy|opencode] [dir] [model=<id>]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
+    `- \`.resume [agy|opencode] [session_id]\` — Discover or adopt an existing native agent conversation into ACP`,
     `- \`.spawn <name> <shell cmd>\` / \`.spawn sophia:<name>\` — Legacy \`tmux\` session`,
     `- \`.send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
     `- \`.capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
@@ -1137,8 +1139,8 @@ async function main() {
       const adapter = getPlatformAdapter(platform);
 
       // Anything starting with `.` is Clara's and never reaches the agent. The
-      // Discord-style `/kill`, `/stop`, `/model` forms are kept as aliases.
-      const slashAlias = lower.match(/^\/(kill|stop|interrupt|model)(?:\s+([\s\S]*))?$/);
+      // Discord-style `/kill`, `/stop`, `/model`, `/clear` forms are kept as aliases.
+      const slashAlias = lower.match(/^\/(kill|stop|interrupt|model|clear)(?:\s+([\s\S]*))?$/);
       const cmd = parseDotCommand(normalized) ||
         (slashAlias ? { name: slashAlias[1], args: (slashAlias[2] || "").trim() } : null);
 
@@ -1148,6 +1150,14 @@ async function main() {
             await callAgent(agentHost, "agent.session.close", { session });
             await sendReply(platform, targetId, `🛑 Closed agent session \`${session}\`. Deleting channel...`, isDryRun);
             await adapter.deleteChannel(targetId);
+            return;
+          case "clear":
+            try {
+              await callAgent(agentHost, "agent.session.clear", { session });
+              await sendReply(platform, targetId, "🧹 Agent session reinitialized with fresh context.", isDryRun);
+            } catch (err: any) {
+              await sendReply(platform, targetId, `⚠️ Could not clear session: ${err.message}`, isDryRun);
+            }
             return;
           case "stop":
           case "interrupt":
@@ -1547,6 +1557,55 @@ async function main() {
           ? `✅ Trigger \`${targetTrigger}\` completed.\n\`\`\`text\n${stdout.trim().slice(-800)}\n\`\`\``
           : `❌ Trigger \`${targetTrigger}\` failed (exit ${code}):\n\`\`\`text\n${(stderr || stdout).trim().slice(-800)}\n\`\`\``;
       await sendReply(platform, targetId, summary, isDryRun);
+      return;
+    }
+
+    if (strippedLower === "resume" || strippedLower.startsWith("resume ")) {
+      const rest = normalized.replace(/^[./]?resume\s*/i, "").trim();
+      const parts = rest.split(/\s+/).filter(Boolean);
+      const agent = parts[0] || "opencode";
+      const nativeId = parts[1];
+
+      if (!nativeId) {
+        try {
+          const res = (await callAgent(undefined, "agent.session.discover", { agent })) as any;
+          const sessions = res?.sessions || [];
+          if (sessions.length === 0) {
+            await sendReply(platform, targetId, `No resumable native **${agent}** sessions found.`, isDryRun);
+            return;
+          }
+          const rows = sessions.slice(0, 10).map((s: any) =>
+            `- \`${s.id}\`: **${s.title || "(no title)"}** (\`${s.dir}\`)`
+          );
+          await sendReply(
+            platform,
+            targetId,
+            `### Resumable ${agent} sessions:\n${rows.join("\n")}\n\nResume with \`.resume ${agent} <session_id>\``,
+            isDryRun
+          );
+        } catch (err: any) {
+          await sendReply(platform, targetId, `⚠️ Failed to discover sessions: ${err.message}`, isDryRun);
+        }
+        return;
+      }
+
+      try {
+        const created = (await callAgent(undefined, "agent.session.resume", { agent, native_id: nativeId })) as any;
+        const sessionId = String(created?.session || "");
+        const primary = getPrimaryAdapter();
+        const info = (await callAgent(undefined, "agent.session.get", { session: sessionId })) as any;
+        const sessionHost = info?.session?.host || LOCAL_HOST_PREFIX;
+        const title = info?.session?.title || `${agent}-${nativeId.slice(-4)}`;
+        const ch = await primary.ensureAgentChannel(sessionHost, sessionId, title);
+        await sendReply(
+          platform,
+          targetId,
+          `Adopted **${agent}** native session \`${nativeId}\` as managed session \`${sessionId}\`. Channel: **\`${ch.name}\`**.`,
+          isDryRun
+        );
+      } catch (err: any) {
+        await sendReply(platform, targetId, `⚠️ Failed to resume session: ${err.message}`, isDryRun);
+      }
       return;
     }
 
