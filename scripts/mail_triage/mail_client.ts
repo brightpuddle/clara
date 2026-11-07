@@ -1,21 +1,43 @@
 // scripts/mail_triage/mail_client.ts
-// Mail Client Abstraction supporting both Clara MCP Bridge and direct osascript execution.
+// Mail Client Abstraction supporting both local and remote (Sophia satellite) Apple Mail MCP tools.
 
 import type { MailSummary, MailDetail } from "./types.ts";
 import { callTool } from "../clara.ts";
+import { callToolWithTimeout, DEFAULT_SATELLITE_TIMEOUT_MS } from "./satellite.ts";
+
+export type MailTargetHost = "local" | "laptop";
 
 export class AppleMailClient {
+  private targetHost: MailTargetHost;
+
+  constructor(targetHost: MailTargetHost = "local") {
+    this.targetHost = targetHost;
+  }
+
+  public getTargetHost(): MailTargetHost {
+    return this.targetHost;
+  }
+
+  public setTargetHost(target: MailTargetHost) {
+    this.targetHost = target;
+  }
+
+  private toolName(baseTool: string): string {
+    return this.targetHost === "laptop" ? `laptop.${baseTool}` : baseTool;
+  }
+
   /**
    * List unread messages in the inbox across an account (or default inbox).
    */
   public async listInbox(limit: number = 50, accountName?: string, unreadOnly: boolean = true): Promise<MailSummary[]> {
     try {
-      // Try Clara MCP tool first
-      const res = await callTool("macos.mail_list_inbox" as any, {
+      const tool = this.toolName("macos.mail_list_inbox");
+      const res = await callToolWithTimeout(tool, {
         limit,
         account_name: accountName,
         unread: unreadOnly,
-      });
+      }, this.targetHost === "laptop" ? 10000 : 5000);
+
       if (Array.isArray(res) && res.length > 0) {
         return res.map(m => ({
           id: String(m.ID ?? m.id),
@@ -27,8 +49,14 @@ export class AppleMailClient {
           account_name: accountName,
         }));
       }
-    } catch {
-      // Standalone osascript fallback for local testing / direct execution
+      if (Array.isArray(res) && res.length === 0) {
+        return [];
+      }
+    } catch (err: any) {
+      if (this.targetHost === "laptop") {
+        console.warn(`[mail_client] Remote satellite error on listInbox: ${err.message}`);
+        throw err; // Propagate disconnect so engine halts gracefully
+      }
     }
 
     return this.execAppleScriptListInbox(limit, accountName, unreadOnly);
@@ -39,9 +67,11 @@ export class AppleMailClient {
    */
   public async getMessage(messageId: string, accountName?: string): Promise<MailDetail> {
     try {
-      const res = await callTool("macos.mail_get_message" as any, {
+      const tool = this.toolName("macos.mail_get_message");
+      const res = await callToolWithTimeout(tool, {
         message_id: messageId,
-      });
+      }, this.targetHost === "laptop" ? 10000 : 5000);
+
       if (res && (res.id !== undefined || res.ID !== undefined) && res.subject !== undefined) {
         const rawMsgId = res.message_id ? String(res.message_id).replace(/^<|>$/g, "").trim() : undefined;
         return {
@@ -55,8 +85,11 @@ export class AppleMailClient {
           account_name: accountName,
         };
       }
-    } catch {
-      // Standalone osascript fallback
+    } catch (err: any) {
+      if (this.targetHost === "laptop") {
+        console.warn(`[mail_client] Remote satellite error on getMessage (${messageId}): ${err.message}`);
+        throw err;
+      }
     }
 
     return this.execAppleScriptGetMessage(messageId, accountName);
@@ -67,16 +100,21 @@ export class AppleMailClient {
    */
   public async moveMessage(messageId: string, targetMailbox: string, accountName: string): Promise<boolean> {
     try {
-      const res = await callTool("macos.mail_move" as any, {
+      const tool = this.toolName("macos.mail_move");
+      const res = await callToolWithTimeout(tool, {
         message_id: messageId,
         target_mailbox: targetMailbox,
         account_name: accountName,
-      });
+      }, this.targetHost === "laptop" ? 10000 : 5000);
+
       if (res && (res.moved || res.status === "moved")) {
         return true;
       }
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      if (this.targetHost === "laptop") {
+        console.warn(`[mail_client] Remote satellite error on moveMessage (${messageId}): ${err.message}`);
+        throw err;
+      }
     }
 
     return this.execAppleScriptMove(messageId, targetMailbox, accountName);
@@ -87,14 +125,19 @@ export class AppleMailClient {
    */
   public async deleteMessage(messageId: string): Promise<boolean> {
     try {
-      const res = await callTool("macos.mail_delete" as any, {
+      const tool = this.toolName("macos.mail_delete");
+      const res = await callToolWithTimeout(tool, {
         message_id: messageId,
-      });
+      }, this.targetHost === "laptop" ? 10000 : 5000);
+
       if (res && (res.deleted || res.status === "deleted")) {
         return true;
       }
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      if (this.targetHost === "laptop") {
+        console.warn(`[mail_client] Remote satellite error on deleteMessage (${messageId}): ${err.message}`);
+        throw err;
+      }
     }
 
     return this.execAppleScriptDelete(messageId);
@@ -137,14 +180,22 @@ export class AppleMailClient {
    */
   public async getMailboxes(accountName?: string): Promise<{ name: string; account: string }[]> {
     try {
-      const res = await callTool("mail_get_mailboxes" as any, {
+      const tool = this.toolName("macos.mail_get_mailboxes");
+      const res = await callToolWithTimeout(tool, {
         account_name: accountName,
-      });
+      }, this.targetHost === "laptop" ? 10000 : 5000);
+
       if (Array.isArray(res) && res.length > 0) {
         return res;
       }
-    } catch {
-      // Fallback
+      if (Array.isArray(res) && res.length === 0) {
+        return [];
+      }
+    } catch (err: any) {
+      if (this.targetHost === "laptop") {
+        console.warn(`[mail_client] Remote satellite error on getMailboxes: ${err.message}`);
+        throw err;
+      }
     }
 
     return this.execAppleScriptGetMailboxes(accountName);

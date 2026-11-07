@@ -15,6 +15,7 @@ const { values } = parseArgs({
     execute: { type: "boolean", default: false },
     limit: { type: "string", default: "25" },
     account: { type: "string" },
+    target: { type: "string", default: "auto" }, // "local" | "laptop" | "auto"
     rules: { type: "boolean", default: false },
     stats: { type: "boolean", default: false },
     "rules-file": { type: "string" },
@@ -35,6 +36,7 @@ Options:
   --execute           Enable active moving and trashing of mail
   --limit <N>         Maximum unread emails to process per account (default: 25)
   --account <name>    Process only a specific account (e.g. "Exchange", "Google")
+  --target <target>   Target host: "auto" (default), "laptop" (Sophia), or "local" (Eve)
   --rules             List all loaded YAML rules from ~/.config/clara/mail_rules.yaml
   --stats             Display cumulative database stats and triage telemetry
   --rules-file <path> Custom path to mail_rules.yaml file
@@ -105,12 +107,14 @@ const engine = new TriageEngine(config, db, rulesLoader);
 console.log("=========================================");
 console.log(` Clara Mail Triage Engine (${isShadow ? "🛡️ SHADOW MODE" : "🚀 LIVE EXECUTION"})`);
 console.log(` Rules Source: ${rulesLoader.getPrimaryRulesPath()}`);
+console.log(` Target Host:  ${values.target.toUpperCase()}`);
 console.log("=========================================");
 
 const metrics = await engine.run({
   accountName: values.account,
   limit,
   shadowMode: isShadow,
+  targetHost: values.target as any,
 });
 
 console.log("\n=========================================");

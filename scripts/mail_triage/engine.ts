@@ -12,7 +12,8 @@ import type {
 import { TriageAuditDatabase } from "./db.ts";
 import { DeterministicEngine } from "./deterministic.ts";
 import { SemanticClassifier } from "./llm.ts";
-import { AppleMailClient } from "./mail_client.ts";
+import { AppleMailClient, type MailTargetHost } from "./mail_client.ts";
+import { isSatelliteMailAvailable } from "./satellite.ts";
 import { YamlRulesLoader } from "./rules_loader.ts";
 import { callTool } from "../clara.ts";
 
@@ -40,10 +41,34 @@ export class TriageEngine {
     accountName?: string;
     limit?: number;
     shadowMode?: boolean;
+    targetHost?: "local" | "laptop" | "auto";
   } = {}): Promise<TriageRunMetrics[]> {
     const shadow = options.shadowMode ?? this.config.shadowMode;
     const limit = options.limit ?? this.config.maxBatchSize;
-    const startTime = Date.now();
+    const requestedTarget = options.targetHost || "auto";
+
+    // Determine target host
+    let activeHost: MailTargetHost = "local";
+    if (requestedTarget === "laptop") {
+      const available = await isSatelliteMailAvailable();
+      if (!available) {
+        console.warn(`⚠️ [SATELLITE] Sophia satellite is not currently responsive. Skipping run.`);
+        return [];
+      }
+      activeHost = "laptop";
+    } else if (requestedTarget === "auto") {
+      // If satellite is available, prefer satellite so Cisco Exchange is accessible!
+      const available = await isSatelliteMailAvailable();
+      if (available) {
+        console.log(`🌐 [SATELLITE] Sophia satellite detected online! Using remote Mail capability.`);
+        activeHost = "laptop";
+      } else {
+        console.log(`🏠 [LOCAL] Sophia satellite offline. Falling back to local Eve Mail capability.`);
+        activeHost = "local";
+      }
+    }
+
+    this.mailClient.setTargetHost(activeHost);
 
     let accountsToProcess: { name: string; email: string }[] = [];
     if (options.accountName) {
@@ -52,11 +77,16 @@ export class TriageEngine {
       accountsToProcess = this.config.accounts.filter(a => a.enabled !== false);
     } else {
       // Auto-discover accounts from Mail.app
-      const mailboxes = await this.mailClient.getMailboxes();
-      const uniqueAccounts = Array.from(new Set(mailboxes.map(m => m.account).filter(a => a.length > 0)));
-      if (uniqueAccounts.length > 0) {
-        accountsToProcess = uniqueAccounts.map(name => ({ name, email: "" }));
-      } else {
+      try {
+        const mailboxes = await this.mailClient.getMailboxes();
+        const uniqueAccounts = Array.from(new Set(mailboxes.map(m => m.account).filter(a => a.length > 0)));
+        if (uniqueAccounts.length > 0) {
+          accountsToProcess = uniqueAccounts.map(name => ({ name, email: "" }));
+        } else {
+          accountsToProcess = [{ name: "", email: "" }];
+        }
+      } catch (err: any) {
+        console.warn(`[engine] Could not list mailboxes on ${activeHost}: ${err.message}. Retrying with default.`);
         accountsToProcess = [{ name: "", email: "" }];
       }
     }
@@ -64,8 +94,17 @@ export class TriageEngine {
     const allMetrics: TriageRunMetrics[] = [];
 
     for (const acc of accountsToProcess) {
-      const accMetrics = await this.processAccount(acc.name, limit, shadow);
-      allMetrics.push(accMetrics);
+      try {
+        const accMetrics = await this.processAccount(acc.name, limit, shadow);
+        allMetrics.push(accMetrics);
+      } catch (err: any) {
+        console.warn(`[engine] Processing interrupted for [${acc.name || "Default"}]: ${err.message}`);
+        // If satellite disconnected mid-run, exit loop gracefully
+        if (activeHost === "laptop") {
+          console.warn(`⚠️ [SATELLITE] Disconnected mid-run. Successfully processed remaining items will resume on reconnect.`);
+          break;
+        }
+      }
     }
 
     return allMetrics;

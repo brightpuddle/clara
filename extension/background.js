@@ -207,7 +207,16 @@ async function handleNavigate({ url, tab_id, background = true, foreground = fal
       tab = await chrome.tabs.create({ windowId, url, active: false });
     }
   } else {
-    tab = await chrome.tabs.create({ url, active: true });
+    try {
+      tab = await chrome.tabs.create({ url, active: true });
+    } catch (e) {
+      if (e && e.message && (e.message.includes('No current window') || e.message.includes('no current window'))) {
+        const win = await chrome.windows.create({ url, focused: true, type: 'normal' });
+        tab = win.tabs && win.tabs.length > 0 ? win.tabs[0] : await chrome.tabs.create({ windowId: win.id, url, active: true });
+      } else {
+        throw e;
+      }
+    }
   }
   const { ownedTabIds = [] } = await chrome.storage.local.get('ownedTabIds');
   if (!ownedTabIds.includes(tab.id)) {

@@ -263,6 +263,10 @@ func (s *MCPServer) connectHTTP(ctx context.Context, r *Registry) error {
 	s.httpConnected.Store(true)
 	s.setStatus(StatusRunning)
 	s.log.Info().Str("url", s.url).Msg("HTTP MCP server connected")
+	r.EmitNotification("mcp.server", "connected", map[string]any{
+		"server": s.name,
+		"url":    s.url,
+	})
 	return nil
 }
 
