@@ -74,15 +74,15 @@ One Go app inside the `clara` binary, lazygit-style. Plan: `plans/2026-11-04-ter
 
 ### Track C: Daily priorities automation (interleaved with B)
 Original goal: automatically handle incoming priorities (mail, Webex, reminders,
-calendar). Mail triage engine and daily digest exist as scripts; their current
-validation state should be confirmed before building more. Plan:
-`plans/2026-11-04-daily-priorities.md` (to be written when B1 lands).
-- C1 Mail triage: shadow mode review, then `--execute` for high-confidence rules;
-  trigger on a schedule; summary to `#notify`.
-- C2 Webex triage: same pattern (rules + LLM fallback + audit).
-- C3 Reminders and calendar ingestion into one prioritised daily view.
-- C4 Daily digest unifies C1-C3 and open agent attentions (from B2).
-- C5 Agent-assisted escalation: items that need thought become agent sessions.
+calendar).
+- [x] C1 Mail triage: live execution with 116+ deterministic YAML rules + AI semantic
+      fall-through; dynamic rule learning; Sophia satellite routing for Cisco Exchange;
+      Apple Reminders creation with deep `message://` links and deduplication; running on schedule
+      (`apple-mail-triage`, `apple-mail-unread-sweep`, `satellite-mail-triage`).
+- [ ] C2 Webex triage: same pattern (rules + LLM fallback + audit).
+- [ ] C3 Reminders and calendar ingestion into one prioritised daily view.
+- [ ] C4 Daily digest unifies C1-C3 and open agent attentions (from B2).
+- [ ] C5 Agent-assisted escalation: items that need thought become agent sessions.
 - Daily-driver check: morning digest is read and acted on for a week.
 
 ### Track D: Federation (Stage 2 of the agent plan)
