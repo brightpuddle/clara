@@ -130,9 +130,25 @@ type AgentsConfig struct {
 	// both agy and opencode are enabled with binaries resolved from PATH.
 	Adapters map[string]AgentAdapterConfig `yaml:"adapters"`
 
+	// OpencodeService mirrors the opencode background service (ADR 0008). When
+	// enabled it replaces the ACP opencode adapter.
+	OpencodeService OpencodeServiceConfig `yaml:"opencode_service"`
+
 	// RemoteHosts are other machines running the agent core whose logs this
 	// hub pulls through their mounted MCP tools (for example sophia).
 	RemoteHosts []AgentRemoteHost `yaml:"remote_hosts"`
+}
+
+// OpencodeServiceConfig configures the opencode service peer client.
+type OpencodeServiceConfig struct {
+	Enabled bool `yaml:"enabled"`
+
+	// StateFile overrides the service registration file
+	// (default ~/.local/state/opencode/service.json).
+	StateFile string `yaml:"state_file"`
+
+	// AutoStart runs `opencode service start` when the service is not running.
+	AutoStart bool `yaml:"auto_start"`
 }
 
 // AgentRemoteHost names a remote agent host reachable as an MCP namespace.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	agentmanager "github.com/brightpuddle/clara/internal/agents/manager"
+	"github.com/brightpuddle/clara/internal/agents/opencode"
 	agentbuiltin "github.com/brightpuddle/clara/internal/builtin/agent"
 	clarabuiltin "github.com/brightpuddle/clara/internal/builtin/clara"
 	dbbuiltin "github.com/brightpuddle/clara/internal/builtin/db"
@@ -140,6 +141,15 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 			return errors.Wrap(err, "start agent core")
 		}
 		agentMgr.SetDefaultModels(cfg.Agents.DefaultModels())
+		if oc := cfg.Agents.OpencodeService; oc.Enabled {
+			ocCfg := opencode.Config{StateFile: oc.StateFile}
+			if oc.AutoStart {
+				ocCfg.Start = opencode.StartService
+			}
+			if err := agentMgr.AttachOpencode(ocCfg); err != nil {
+				return errors.Wrap(err, "attach opencode service")
+			}
+		}
 		defer agentMgr.Wait()
 		defer shutdown()
 	}

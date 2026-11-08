@@ -14,6 +14,7 @@ import (
 	"github.com/brightpuddle/clara/internal/agents"
 	"github.com/brightpuddle/clara/internal/agents/adapter"
 	hostlog "github.com/brightpuddle/clara/internal/agents/log"
+	"github.com/brightpuddle/clara/internal/agents/opencode"
 	"github.com/brightpuddle/clara/internal/agents/projection"
 	"github.com/brightpuddle/clara/internal/agents/runner"
 )
@@ -23,7 +24,9 @@ var ErrNoSession = errors.New("no such running session")
 
 type Manager struct {
 	ctx      context.Context
+	db       *sql.DB
 	host     string
+	peer     *opencode.Mirror
 	j        *runner.Journal
 	adapters map[string]adapter.Adapter
 	opts     runner.Options
@@ -55,6 +58,7 @@ func New(
 	}
 	m := &Manager{
 		ctx:      ctx,
+		db:       db,
 		host:     host,
 		j:        runner.NewJournal(host, l, proj),
 		adapters: adapters,
@@ -233,6 +237,9 @@ func (m *Manager) ReadEvents(
 }
 
 func (m *Manager) Send(session, text, origin string) (string, error) {
+	if m.isPeer(session) {
+		return "", m.peer.Send(m.ctx, session, text)
+	}
 	r, err := m.runner(session)
 	if err != nil {
 		return "", err
@@ -249,6 +256,9 @@ func (m *Manager) CancelPrompt(session, promptID string) error {
 }
 
 func (m *Manager) Interrupt(ctx context.Context, session string) error {
+	if m.isPeer(session) {
+		return m.peer.Interrupt(ctx, session)
+	}
 	r, err := m.runner(session)
 	if err != nil {
 		return err
@@ -289,4 +299,60 @@ func (m *Manager) Clear(ctx context.Context, session string) error {
 		return err
 	}
 	return r.Clear(ctx)
+}
+
+// AttachOpencode starts mirroring the opencode background service into the host
+// log (ADR 0008). Sessions it mirrors are driven through the service API, not
+// through runners. Call at most once, before serving commands.
+func (m *Manager) AttachOpencode(cfg opencode.Config) error {
+	st, err := opencode.NewSQLStore(m.db)
+	if err != nil {
+		return err
+	}
+	cfg.Host, cfg.Recorder, cfg.Store = m.host, m.j, st
+	cfg.OpenForms = map[string]string{}
+	for _, a := range m.j.OpenAttentions() {
+		if a.Native == nil || a.Native.FormID == "" {
+			continue
+		}
+		if s, ok := m.j.Session(a.Session); ok && s.Agent == opencode.AgentName {
+			cfg.OpenForms[a.Native.FormID] = a.Session
+		}
+	}
+	peer := opencode.New(cfg)
+	m.mu.Lock()
+	m.peer = peer
+	m.mu.Unlock()
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		if err := peer.Run(m.ctx); err != nil && m.ctx.Err() == nil {
+			m.log.Error().Err(err).Msg("opencode mirror stopped")
+		}
+	}()
+	return nil
+}
+
+func (m *Manager) isPeer(session string) bool {
+	m.mu.Lock()
+	peer := m.peer
+	_, managed := m.runners[session]
+	m.mu.Unlock()
+	if peer == nil || managed {
+		return false
+	}
+	s, ok := m.j.Session(session)
+	return ok && s.Agent == opencode.AgentName
+}
+
+// ReplyAttention answers a question attention raised by the opencode service.
+// opencode.ErrResolved means another client answered first.
+func (m *Manager) ReplyAttention(ctx context.Context, id, answer, by string) error {
+	m.mu.Lock()
+	peer := m.peer
+	m.mu.Unlock()
+	if peer == nil {
+		return errors.New("opencode service is not attached")
+	}
+	return peer.Reply(ctx, id, answer, by)
 }

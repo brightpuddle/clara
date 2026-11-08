@@ -2,6 +2,13 @@ package manager_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +18,7 @@ import (
 	"github.com/brightpuddle/clara/internal/agents"
 	"github.com/brightpuddle/clara/internal/agents/adapter"
 	"github.com/brightpuddle/clara/internal/agents/manager"
+	"github.com/brightpuddle/clara/internal/agents/opencode"
 	"github.com/brightpuddle/clara/internal/store"
 )
 
@@ -187,4 +195,77 @@ func TestCreateKeepsTitleAndDefaultModel(t *testing.T) {
 	if s.Title != "test-session" || s.Model != "m-default" {
 		t.Fatalf("title=%q model=%q", s.Title, s.Model)
 	}
+}
+
+func TestOpencodePeerSessionsAreMirroredAndDrivenThroughTheService(t *testing.T) {
+	var mu sync.Mutex
+	var prompts []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, pw, ok := r.BasicAuth(); !ok || pw != "pw" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.URL.Path == "/api/event":
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: {\"type\":\"server.connected\",\"data\":{}}\n\n")
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case r.URL.Path == "/api/session":
+			fmt.Fprint(w, `{"data":[{"id":"ses_1","title":"t","location":{"directory":"/w"}}]}`)
+		case r.URL.Path == "/api/session/active":
+			fmt.Fprint(w, `{"data":{}}`)
+		case r.URL.Path == "/api/form":
+			fmt.Fprint(w, `{"data":[]}`)
+		case strings.HasSuffix(r.URL.Path, "/message"):
+			fmt.Fprint(w, `{"data":[],"cursor":{}}`)
+		case strings.HasSuffix(r.URL.Path, "/prompt"):
+			var b struct{ Text string }
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			mu.Lock()
+			prompts = append(prompts, b.Text)
+			mu.Unlock()
+			fmt.Fprint(w, `{}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	state := filepath.Join(t.TempDir(), "service.json")
+	b, _ := json.Marshal(map[string]any{"url": srv.URL, "pid": os.Getpid(), "password": "pw"})
+	if err := os.WriteFile(state, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	m, err := manager.New(ctx, "eve", db.DB(), map[string]adapter.Adapter{}, zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.AttachOpencode(opencode.Config{StateFile: state, Backoff: 10 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, func() bool { _, ok := m.Get("ses_1"); return ok })
+	s, _ := m.Get("ses_1")
+	if s.Agent != "opencode" || s.Dir != "/w" {
+		t.Fatalf("session = %+v", s)
+	}
+	if _, err := m.Send("ses_1", "hello", "test"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	if len(prompts) != 1 || prompts[0] != "hello" {
+		t.Fatalf("prompts = %q", prompts)
+	}
+	mu.Unlock()
+	if err := m.ReplyAttention(ctx, "frm_none", "x", "test"); err == nil {
+		t.Fatal("reply to an unknown attention succeeded")
+	}
+	cancel()
+	m.Wait()
 }

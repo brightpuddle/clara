@@ -14,7 +14,9 @@ import (
 	"github.com/brightpuddle/clara/internal/agents"
 )
 
-const agentName = "opencode"
+// AgentName is the agent label of mirrored sessions.
+const AgentName = "opencode"
+const agentName = AgentName
 
 // Recorder is the write side of the host log; runner.Journal satisfies it.
 type Recorder interface {
@@ -32,9 +34,11 @@ type Config struct {
 	Seen map[string]map[string]bool
 	// OpenForms maps form ids with an open attention in the log to their session.
 	OpenForms map[string]string
-	HTTP      *http.Client
-	Backoff   time.Duration               // reconnect delay; defaults to 2s
-	Start     func(context.Context) error // starts the service when absent; optional
+	// Store persists Seen across Clara restarts; optional.
+	Store   Store
+	HTTP    *http.Client
+	Backoff time.Duration               // reconnect delay; defaults to 2s
+	Start   func(context.Context) error // starts the service when absent; optional
 }
 
 // Mirror keeps the Clara log in step with the opencode service and relays
@@ -95,6 +99,22 @@ func New(cfg Config) *Mirror {
 // Run mirrors until ctx ends, reconnecting with fresh credentials after any
 // failure. It returns ctx.Err().
 func (m *Mirror) Run(ctx context.Context) error {
+	if m.cfg.Store != nil {
+		seen, err := m.cfg.Store.LoadSeen(ctx)
+		if err != nil {
+			return err
+		}
+		for id, ids := range seen {
+			st := m.sess[id]
+			if st == nil {
+				st = &sessState{seen: map[string]bool{}}
+				m.sess[id] = st
+			}
+			for mid := range ids {
+				st.seen[mid] = true
+			}
+		}
+	}
 	for ctx.Err() == nil {
 		err := m.c.stream(ctx, "/api/event", func(data []byte) error { return m.onEvent(ctx, data) })
 		if ctx.Err() != nil {
@@ -115,6 +135,12 @@ func (m *Mirror) Run(ctx context.Context) error {
 func (m *Mirror) Send(ctx context.Context, session, text string) error {
 	return m.c.do(ctx, http.MethodPost, "/api/session/"+url.PathEscape(session)+"/prompt",
 		map[string]any{"text": text}, nil)
+}
+
+// Interrupt cancels the running turn of a session.
+func (m *Mirror) Interrupt(ctx context.Context, session string) error {
+	return m.c.do(ctx, http.MethodPost,
+		"/api/session/"+url.PathEscape(session)+"/interrupt", nil, nil)
 }
 
 // Reply answers a single-field question form. ErrResolved means another client
@@ -157,6 +183,15 @@ func (m *Mirror) resolve(ctx context.Context, id, by, answer string) {
 	m.mu.Unlock()
 	m.record(ctx, session, agents.TypeAttentionResolved,
 		agents.AttentionResolved{AttentionID: id, By: by, Answer: answer})
+}
+
+func (m *Mirror) markSeen(ctx context.Context, session, id string) {
+	if m.cfg.Store == nil {
+		return
+	}
+	if err := m.cfg.Store.MarkSeen(ctx, session, id); err != nil {
+		log.Error().Err(err).Str("session", session).Msg("opencode mirror: persist seen failed")
+	}
 }
 
 func (m *Mirror) record(ctx context.Context, session string, typ agents.EventType, payload any) {
@@ -234,6 +269,7 @@ func (m *Mirror) register(ctx context.Context, s apiSession) {
 		return
 	}
 	m.sess[s.ID] = &sessState{seen: map[string]bool{}}
+	m.markSeen(ctx, s.ID, "")
 	m.record(ctx, s.ID, agents.TypeSessionCreated, agents.SessionCreated{
 		Agent: agentName, Dir: s.Location.Directory, Title: s.Title,
 		Kind: agents.KindLongLived, Model: s.Model.String(),

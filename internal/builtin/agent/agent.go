@@ -14,6 +14,7 @@ import (
 	"github.com/brightpuddle/clara/internal/agents"
 	"github.com/brightpuddle/clara/internal/agents/adapter"
 	"github.com/brightpuddle/clara/internal/agents/manager"
+	"github.com/brightpuddle/clara/internal/agents/opencode"
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/supervisor"
@@ -28,6 +29,9 @@ func BuildAdapters(cfg config.AgentsConfig, log zerolog.Logger) map[string]adapt
 		bin := c.Bin
 		if bin == "" {
 			bin = name
+		}
+		if name == "opencode" && cfg.OpencodeService.Enabled {
+			continue
 		}
 		switch name {
 		case "agy":
@@ -115,6 +119,12 @@ func Register(
 	add("agent.prompt.cancel", "Remove a queued prompt that has not been sent.", s.cancelPrompt,
 		mcp.WithString("session", req("Session id.")...),
 		mcp.WithString("prompt_id", req("Prompt id.")...))
+	add("agent.attention.reply",
+		"Answer a question attention from the opencode service. Fails with already resolved if "+
+			"another client answered first.", s.replyAttention,
+		mcp.WithString("attention", req("Attention id (the form id).")...),
+		mcp.WithString("answer", req("Answer text or option value.")...),
+		mcp.WithString("by", str("Who answered (for display), e.g. discord.")...))
 	add("agent.turn.interrupt", "Cancel the running turn; queued prompts continue.", s.interrupt,
 		mcp.WithString("session", req("Session id.")...))
 	add("agent.events.read", "Read logged events after a host_seq cursor.", s.readEvents,
@@ -350,4 +360,29 @@ func (s *service) readEvents(ctx context.Context, args map[string]any) (any, err
 		next = evs[n-1].HostSeq
 	}
 	return map[string]any{"events": evs, "next": next}, nil
+}
+
+func (s *service) replyAttention(ctx context.Context, args map[string]any) (any, error) {
+	if err := s.check(); err != nil {
+		return nil, err
+	}
+	id, err := requireStr(args, "agent.attention.reply", "attention")
+	if err != nil {
+		return nil, err
+	}
+	answer, err := requireStr(args, "agent.attention.reply", "answer")
+	if err != nil {
+		return nil, err
+	}
+	by := argStr(args, "by")
+	if by == "" {
+		by = "tool"
+	}
+	if err := s.mgr.ReplyAttention(ctx, id, answer, by); err != nil {
+		if errors.Is(err, opencode.ErrResolved) {
+			return map[string]any{"attention": id, "resolved": false, "reason": "already resolved"}, nil
+		}
+		return nil, err
+	}
+	return map[string]any{"attention": id, "resolved": true}, nil
 }

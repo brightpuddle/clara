@@ -16,8 +16,10 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/rs/zerolog"
 
 	"github.com/brightpuddle/clara/internal/agents"
+	"github.com/brightpuddle/clara/internal/store"
 )
 
 const (
@@ -109,7 +111,9 @@ type fakeService struct {
 	prompts  []string
 	replies  []string
 	replyErr int
-	auths    int
+
+	interrupts []string
+	auths      int
 }
 
 func newFakeService(t *testing.T) *fakeService {
@@ -202,6 +206,9 @@ func (f *fakeService) session(w http.ResponseWriter, r *http.Request, parts []st
 		writeJSON(w, map[string]any{"data": s})
 	case parts[1] == "message":
 		writeJSON(w, map[string]any{"data": f.messages[id], "cursor": map[string]string{}})
+	case parts[1] == "interrupt":
+		f.interrupts = append(f.interrupts, id)
+		writeJSON(w, map[string]any{})
 	case parts[1] == "prompt":
 		var b struct{ Text string }
 		_ = json.NewDecoder(r.Body).Decode(&b)
@@ -331,6 +338,12 @@ func (f *fakeService) logCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.logCalls
+}
+
+func (f *fakeService) interruptsSent() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.interrupts...)
 }
 
 func (f *fakeService) promptsSent() []string {
@@ -744,5 +757,93 @@ func TestTextDeltasAreForwardedLive(t *testing.T) {
 	d := rec.of(agents.TypeMessageDelta)[0].Payload.(agents.MessageDelta)
 	if d.MessageID != "msg_a9" || d.Text != "par" {
 		t.Fatalf("delta = %+v", d)
+	}
+}
+
+type memStore struct {
+	mu   sync.Mutex
+	seen map[string]map[string]bool
+}
+
+func (s *memStore) LoadSeen(context.Context) (map[string]map[string]bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]map[string]bool{}
+	for k, v := range s.seen {
+		out[k] = map[string]bool{}
+		for id := range v {
+			out[k][id] = true
+		}
+	}
+	return out, nil
+}
+
+func (s *memStore) MarkSeen(_ context.Context, session, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.seen == nil {
+		s.seen = map[string]map[string]bool{}
+	}
+	if s.seen[session] == nil {
+		s.seen[session] = map[string]bool{}
+	}
+	s.seen[session][id] = true
+	return nil
+}
+
+func TestStoreMakesCatchUpIdempotentAcrossClaraRestarts(t *testing.T) {
+	f, st := spikeService(t), &memStore{}
+	rec1 := &fakeRecorder{}
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	m1 := newMirror(t, f, rec1, func(c *Config) { c.Store = st })
+	go func() { defer close(done); _ = m1.Run(ctx1) }()
+	rec1.waitType(t, agents.TypeTurnEnded, 1)
+	waitFor(t, "stream", func() bool { return f.streamCount() >= 1 })
+	cancel1()
+	<-done
+
+	rec2 := &fakeRecorder{}
+	run(t, newMirror(t, f, rec2, func(c *Config) { c.Store = st }))
+	waitFor(t, "second stream", func() bool { return f.streamCount() >= 2 })
+	time.Sleep(50 * time.Millisecond)
+	if got := rec2.types(); len(got) != 0 {
+		t.Fatalf("restarted mirror re-recorded %v", got)
+	}
+}
+
+func TestSQLStoreRoundTrip(t *testing.T) {
+	db, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	s, err := NewSQLStore(db.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, id := range []string{"", "m1", "m1", "m2"} {
+		if err := s.MarkSeen(ctx, "ses_a", id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.LoadSeen(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got["ses_a"]) != 3 || !got["ses_a"]["m2"] || !got["ses_a"][""] {
+		t.Fatalf("seen = %v", got)
+	}
+}
+
+func TestInterruptPostsToSession(t *testing.T) {
+	f := spikeService(t)
+	m := newMirror(t, f, &fakeRecorder{}, nil)
+	if err := m.Interrupt(context.Background(), spikeSession); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.interruptsSent(); len(got) != 1 || got[0] != spikeSession {
+		t.Fatalf("interrupts = %q", got)
 	}
 }

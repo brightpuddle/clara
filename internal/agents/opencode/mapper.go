@@ -131,6 +131,7 @@ func (m *Mirror) catchUp(ctx context.Context, id string) error {
 			}
 			m.mapMessage(ctx, id, st, msg)
 			st.seen[msg.ID] = true
+			m.markSeen(ctx, id, msg.ID)
 		}
 		if len(page.Data) < pageSize || page.Cursor.Next == "" {
 			return nil
