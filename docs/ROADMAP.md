@@ -2,7 +2,7 @@
 
 Master index of where Clara is going and in what order. Detailed task lists live in
 `docs/superpowers/plans/`; this file is the map. Update it whenever direction changes
-(and add an ADR for any reversal). Last revised: 2026-11-04.
+(and add an ADR for any reversal). Last revised: 2026-11-07.
 
 ## Principles
 
@@ -56,21 +56,21 @@ Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
 - [ ] A5 Put live `~/.config/clara/scripts` under version control (or symlink from the repo).
 - Daily-driver check: all new agent sessions for a week are managed, none via tmux.
 
-### Track B: Terminal cockpit (next; see ADR 0007)
-One Go app inside the `clara` binary, lazygit-style. Plan: `plans/2026-11-04-terminal-cockpit.md`.
-- B1 `clara agent attach <session>`: interactive client. `Ctrl-G` or `/edit` opens
-  `$EDITOR` (Neovim) for the prompt; header shows session, agent, model, git branch
-  and dirty state, state (idle/busy/needs you), queue depth; live event stream; slash
-  command and model completion from the ACP-advertised commands; resume by session id.
-- B2 Attention signals: notification (and optional tmux/WezTerm status text) when any
-  session goes `busy -> needs_you/done/failed`. Fixes the "eight agents silently
-  waiting" problem.
-- B3 `clara cockpit`: full-screen dashboard of all sessions on all hosts (state, dir,
-  branch, model, last message, age), fzf-style filter, `Enter` opens the B1 client
-  full screen and `q`/`Esc` returns. Same binary, shared components.
-- B4 Polish: shell prompt/status helpers, `new` flow (host, dir, agent, model),
-  git actions (status/diff/commit helper) if wanted.
-- Daily-driver check: for a week, no tmux window hopping to see agent state.
+### Track B: opencode peer-client adapter (next; see ADR 0008, supersedes 0007)
+The desk client is stock `opencode attach` (Neovim via `ctrl-x e`). Clara does not
+build a conversation TUI. Clara is a peer client of the opencode service.
+- [ ] B0 Close spike items: endpoint/auth discovery from Go, remote access auth
+      (Tailscale-only vs `serve` auth), forms across service restart, log endpoint
+      stability.
+- [ ] B1 opencode service adapter: SSE plus `/session/{id}/log?after=seq` catch-up in,
+      prompts and form replies out, first-reply-wins on races, pinned version, fixtures.
+- [ ] B2 Mirror check: a prompt typed in the TUI appears in Discord/Webex and vice
+      versa, with formatting preserved. Attention (needs you/done/failed) notifications.
+- [ ] B3 Session picker: `clara agent list --json` plus a Neovim (Telescope/fzf) picker
+      and a lualine status component. No dashboard TUI.
+- [ ] B4 Freeze and then remove agy paths (ACP managed, hooks) once unused.
+- Daily-driver check: for a week all sessions run on opencode and the remote surfaces
+  stay in sync without tmux scraping.
 
 ### Track C: Daily priorities automation (interleaved with B)
 Original goal: automatically handle incoming priorities (mail, Webex, reminders,
@@ -87,19 +87,18 @@ calendar).
 
 ### Track D: Federation (Stage 2 of the agent plan)
 Sophia runs the same core; Eve's hub aggregates. Mostly built; needs live testing
-over the tunnel and sleep/wake validation. Surfaces in B3 as multi-host rows.
+over the tunnel and sleep/wake validation. Surfaces in the B3 picker as multi-host rows.
 
 ### Track E: Mobile (Stages 3 and 4 of the agent plan)
 Priority may bubble up after B1/B2 (user, 2026-11-04); Discord covers mobile until then.
 Client API (`/v1/snapshot|sync|stream|commands`), device registry, APNs, then the
 iOS app (inbox first, session thread, dictation composer). Until then Discord is the
-mobile client. Starts after B3, so the desk side is settled and the API is proven by
-the terminal client first (the terminal client should consume the same hub API where
-practical, so E is "add iOS" rather than "design the protocol").
+mobile client. Starts after B2, so the desk side is settled. Cheap first step: try `opencode web`
+over Tailscale and Discord buttons for approvals before building a PWA or native app.
 
 ### Track F: Retire Discord/Webex for agent sessions (Stage 5)
 Only after iOS is a reliable daily driver. Discord can stay for non-agent
-notifications. The macOS native app is dropped in favour of Track B (ADR 0007).
+notifications. The macOS native app is dropped in favour of stock opencode (ADR 0008).
 
 ### Track G: Lucia (parked)
 `~/src/lucia/main`: type-safe constraints for AI-written code. Revisit once B and C
@@ -108,16 +107,12 @@ ADRs) so agents are guided correctly.
 
 ## Immediate order of work
 
-1. A1 (restart and verify), A5.
-2. B1 attach client (first code), then B2.
-3. C1 mail triage shadow review and go-live (small, high daily value).
-4. B3 cockpit dashboard.
-5. A2-A4 and D as dogfooding surfaces issues.
-6. C2-C5, then E.
+1. B0 spike items, then B1 adapter, then B2 mirror check.
+2. B3 picker, A1/A5, and C1 mail triage go-live (small, high daily value).
+3. A2-A4 and D as dogfooding surfaces issues.
+4. B4 agy removal, C2-C5, then E.
 
 ## Decisions pending
 
-- TUI stack for B (proposed: Go with Bubble Tea/Bubbles; AGENTS.md notes the old
-  TUI was deleted, this is a new, narrower app). See the B plan.
-- Whether `attach` talks to the daemon over IPC/MCP now or directly to the hub API
-  (proposed: via existing MCP tools first, hub API when Track E lands).
+- Remote access to the opencode service: Tailscale-only binding vs `serve` auth.
+- Mobile surface after Discord buttons: `opencode web` over Tailscale vs a Clara PWA.
