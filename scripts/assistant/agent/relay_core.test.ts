@@ -111,3 +111,45 @@ test("session.created triggers ensureChannel on chat", async () => {
   await r.handle(ev("session.created", { agent: "agy", dir: "/path" }, "S123"));
   expect(ensured).toEqual([{ host: "eve", session: "S123", payload: { agent: "agy", dir: "/path" } }]);
 });
+
+test("TUI prompts are mirrored, chat prompts are not", async () => {
+  const { chat, posts } = fakeChat();
+  const r = new Relay(memStore(), chat);
+  await r.handle(ev("message.user", { message_id: "U1", text: "typed in tui", origin: "opencode" }));
+  await r.handle(ev("message.user", { message_id: "U2", text: "from chat", origin }));
+  expect(posts).toEqual(["🖥️ **TUI:**\ntyped in tui"]);
+});
+
+test("form attentions invite a reply and resolution elsewhere is announced", async () => {
+  const { chat, posts } = fakeChat();
+  const r = new Relay(memStore(), chat);
+  await r.handle(
+    ev("attention.requested", {
+      attention_id: "F1",
+      kind: "question",
+      title: "Which db?",
+      options: [{ id: "pg", label: "Postgres" }],
+      native: { form_id: "F1" },
+    })
+  );
+  await r.handle(ev("attention.resolved", { attention_id: "F1", by: "discord", answer: "pg" }));
+  await r.handle(ev("attention.resolved", { attention_id: "F1", by: "opencode", answer: "pg" }));
+  expect(posts[0]).toContain("1. Postgres");
+  expect(posts[0]).toContain("Reply in this channel");
+  expect(posts).toHaveLength(2);
+  expect(posts[1]).toContain("answered in opencode");
+});
+
+import { attentionAnswer } from "./relay_core.ts";
+
+test("attentionAnswer maps numbers, labels and free text", () => {
+  const att = [
+    { id: "F1", session: "S1", open: true, native: { form_id: "F1" }, allow_text: true,
+      options: [{ id: "pg", label: "Postgres" }, { id: "my", label: "MySQL" }] },
+  ];
+  expect(attentionAnswer(att, "S1", "2")).toEqual({ id: "F1", answer: "my" });
+  expect(attentionAnswer(att, "S1", "postgres")).toEqual({ id: "F1", answer: "pg" });
+  expect(attentionAnswer(att, "S1", "something else")).toEqual({ id: "F1", answer: "something else" });
+  expect(attentionAnswer(att, "S2", "2")).toBeNull();
+  expect(attentionAnswer([{ ...att[0], allow_text: false }], "S1", "nope")).toBeNull();
+});

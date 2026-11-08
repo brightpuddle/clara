@@ -91,6 +91,14 @@ export class Relay {
         }
         return;
       }
+      case "message.user": {
+        // Prompts typed in the opencode TUI have no chat origin; show them in the
+        // bound channel. Chat-originated prompts are already visible there.
+        if (p.origin !== "opencode") return;
+        const text = String(p.text || "").trim();
+        if (text) await this.notice(ev, `🖥️ **TUI:**\n${text}`);
+        return;
+      }
       case "message.assistant": {
         const text = String(p.text || "").trim();
         if (!text) return;
@@ -129,7 +137,17 @@ export class Relay {
       case "attention.requested": {
         if (p.kind !== "question") return;
         const opts = (p.options || []).map((o: any, i: number) => `${i + 1}. ${o.label}`).join("\n");
-        await this.notice(ev, `❓ ${p.title || "The agent needs input."}${opts ? `\n${opts}` : ""}`);
+        const hint = p.native?.form_id
+          ? `\n_Reply in this channel${opts ? " with a number or text" : ""} to answer._`
+          : "";
+        await this.notice(ev, `❓ ${p.title || "The agent needs input."}${opts ? `\n${opts}` : ""}${hint}`);
+        return;
+      }
+      case "attention.resolved": {
+        // Answers given from chat are already visible; announce the others.
+        if (p.by === "discord" || p.by === "webex") return;
+        const how = p.by === "cancelled" ? "cancelled" : `answered in ${p.by || "another client"}`;
+        await this.notice(ev, `✔️ Question ${how}${p.answer ? `: ${p.answer}` : ""}`);
         return;
       }
     }
@@ -154,4 +172,36 @@ export class Relay {
       console.warn(`[agent_relay] status update failed: ${err.message}`);
     }
   }
+}
+
+export interface OpenAttention {
+  id: string;
+  session: string;
+  open?: boolean;
+  options?: Array<{ id: string; label: string }>;
+  allow_text?: boolean;
+  native?: { form_id?: string } | null;
+}
+
+/**
+ * Maps a chat message to an answer for the session's open form attention.
+ * Returns null when no attention is open or the text can't answer it, so the
+ * message is sent to the agent as an ordinary prompt instead.
+ */
+export function attentionAnswer(
+  attentions: OpenAttention[],
+  session: string,
+  text: string
+): { id: string; answer: string } | null {
+  const a = attentions.find((x) => x.session === session && x.open !== false && x.native?.form_id);
+  if (!a) return null;
+  const t = text.trim();
+  const opts = a.options || [];
+  if (/^\d+$/.test(t) && Number(t) >= 1 && Number(t) <= opts.length) {
+    return { id: a.id, answer: opts[Number(t) - 1].id };
+  }
+  const byLabel = opts.find((o) => o.label.toLowerCase() === t.toLowerCase() || o.id === t);
+  if (byLabel) return { id: a.id, answer: byLabel.id };
+  if (opts.length === 0 || a.allow_text) return { id: a.id, answer: t };
+  return null;
 }

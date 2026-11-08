@@ -47,6 +47,7 @@ import type { BoundSessionInfo, PlatformType } from "./platform/types.ts";
 import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./platform/discord.ts";
 
 import { formatOrigin } from "./agent/binding.ts";
+import { attentionAnswer } from "./agent/relay_core.ts";
 import { parseDotCommand } from "./agent/commands.ts";
 import { REMOTE_HOSTS, agentToolFor, splitHost } from "./agent/hosts.ts";
 import { formatHistory } from "./agent/history.ts";
@@ -1195,6 +1196,30 @@ async function main() {
             );
             return;
         }
+      }
+
+      // A chat message answers the session's open question, if there is one.
+      try {
+        const res = (await callAgent(agentHost, "agent.attention.list", {})) as any;
+        const hit = attentionAnswer(res?.attentions || [], session, normalized);
+        if (hit) {
+          const r = (await callAgent(agentHost, "agent.attention.reply", {
+            attention: hit.id,
+            answer: hit.answer,
+            by: platform,
+          })) as any;
+          await sendReply(
+            platform,
+            targetId,
+            r?.resolved === false
+              ? "⚠️ That question was already answered elsewhere."
+              : `✅ Answered: ${hit.answer}`,
+            isDryRun
+          );
+          return;
+        }
+      } catch (err: any) {
+        console.warn(`[chat_router] attention lookup failed: ${err.message}`);
       }
 
       // `./clear` reaches the agent as `/clear`
