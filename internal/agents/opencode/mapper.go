@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/brightpuddle/clara/internal/agents"
 )
@@ -146,10 +147,19 @@ func (m *Mirror) catchUp(ctx context.Context, id string) error {
 func (m *Mirror) mapMessage(ctx context.Context, id string, st *sessState, msg apiMessage) {
 	switch msg.Type {
 	case "user":
-		m.record(ctx, id, agents.TypeMessageUser,
-			agents.MessageUser{MessageID: msg.ID, Text: msg.Text, Origin: agentName})
+		origin, promptID := agentName, ""
+		if p, ok := m.takePending(id, strings.TrimSpace(msg.Text)); ok && p.origin != "" {
+			origin, promptID = p.origin, msg.ID
+			m.record(ctx, id, agents.TypePromptQueued,
+				agents.PromptQueued{PromptID: promptID, Text: msg.Text, Origin: origin})
+			m.record(ctx, id, agents.TypePromptSent, agents.PromptSent{PromptID: promptID})
+		}
+		m.record(ctx, id, agents.TypeMessageUser, agents.MessageUser{
+			MessageID: msg.ID, Text: msg.Text, Origin: origin, PromptID: promptID,
+		})
 		st.activeTurn, st.tools = msg.ID, nil
-		m.record(ctx, id, agents.TypeTurnStarted, agents.TurnStarted{TurnID: msg.ID})
+		m.record(ctx, id, agents.TypeTurnStarted,
+			agents.TurnStarted{TurnID: msg.ID, PromptID: promptID})
 		m.record(ctx, id, agents.TypeSessionStatus,
 			agents.SessionStatus{State: agents.StateRunning})
 	case "assistant":

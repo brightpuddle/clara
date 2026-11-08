@@ -62,9 +62,15 @@ type Mirror struct {
 	work sync.Mutex // serialises event handling and CreateSession; guards sess
 	sess map[string]*sessState
 
-	mu   sync.Mutex // guards atts
+	mu   sync.Mutex // guards atts and pending
 	atts map[string]*attention
+
+	// pending holds prompts sent by Clara clients awaiting their echo from the
+	// service, so the mirrored user message keeps the sender's origin.
+	pending map[string][]pendingSend
 }
+
+type pendingSend struct{ text, origin string }
 
 type sessState struct {
 	seen       map[string]bool
@@ -91,10 +97,11 @@ func New(cfg Config) *Mirror {
 		hc = &http.Client{}
 	}
 	m := &Mirror{
-		cfg:  cfg,
-		c:    &client{stateFile: cfg.StateFile, start: cfg.Start, hc: hc},
-		sess: map[string]*sessState{},
-		atts: map[string]*attention{},
+		cfg:     cfg,
+		c:       &client{stateFile: cfg.StateFile, start: cfg.Start, hc: hc},
+		sess:    map[string]*sessState{},
+		atts:    map[string]*attention{},
+		pending: map[string][]pendingSend{},
 	}
 	for id, s := range cfg.Seen {
 		seen := map[string]bool{}
@@ -144,10 +151,32 @@ func (m *Mirror) Run(ctx context.Context) error {
 }
 
 // Send submits a prompt to a session. The resulting user message is mirrored
-// into the log when opencode delivers it, so Send records nothing itself.
-func (m *Mirror) Send(ctx context.Context, session, text string) error {
-	return m.c.do(ctx, http.MethodPost, "/api/session/"+url.PathEscape(session)+"/prompt",
+// into the log when opencode delivers it (tagged with origin, so chat relays
+// can tell it from a prompt typed in the TUI), so Send records nothing itself.
+func (m *Mirror) Send(ctx context.Context, session, text, origin string) error {
+	m.mu.Lock()
+	m.pending[session] = append(m.pending[session], pendingSend{strings.TrimSpace(text), origin})
+	m.mu.Unlock()
+	err := m.c.do(ctx, http.MethodPost, "/api/session/"+url.PathEscape(session)+"/prompt",
 		map[string]any{"text": text}, nil)
+	if err != nil {
+		m.takePending(session, strings.TrimSpace(text))
+	}
+	return err
+}
+
+// takePending removes and returns the oldest pending send with this text.
+func (m *Mirror) takePending(session, text string) (pendingSend, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q := m.pending[session]
+	for i, p := range q {
+		if p.text == text {
+			m.pending[session] = append(q[:i:i], q[i+1:]...)
+			return p, true
+		}
+	}
+	return pendingSend{}, false
 }
 
 // CreateSession starts a new service session and registers it in the log before
@@ -182,7 +211,7 @@ func (m *Mirror) CreateSession(
 	}
 	m.work.Unlock()
 	if prompt != "" {
-		if err := m.Send(ctx, out.Data.ID, prompt); err != nil {
+		if err := m.Send(ctx, out.Data.ID, prompt, "create"); err != nil {
 			return out.Data.ID, err
 		}
 	}

@@ -63,7 +63,7 @@ func TestContractAgainstLiveService(t *testing.T) {
 	rec.waitType(t, agents.TypeSessionCreated, 1)
 
 	// Prompt round trip: user, assistant text and turn end are mirrored from messages.
-	if err := m.Send(ctx, sid, "Reply with exactly: ok"); err != nil {
+	if err := m.Send(ctx, sid, "Reply with exactly: ok", "test"); err != nil {
 		t.Fatal(err)
 	}
 	waitForLong(t, "turn end", func() bool { return len(rec.of(agents.TypeTurnEnded)) >= 1 })

@@ -691,13 +691,13 @@ func TestReplyLosingTheRaceReturnsErrResolved(t *testing.T) {
 func TestSendPostsPrompt(t *testing.T) {
 	f, rec := spikeService(t), &fakeRecorder{}
 	m := newMirror(t, f, rec, nil)
-	if err := m.Send(context.Background(), spikeSession, "do the thing"); err != nil {
+	if err := m.Send(context.Background(), spikeSession, "do the thing", "test"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.promptsSent(); len(got) != 1 || got[0] != "do the thing" {
 		t.Fatalf("prompts = %q", got)
 	}
-	if err := m.Send(context.Background(), "ses_missing", "x"); err == nil {
+	if err := m.Send(context.Background(), "ses_missing", "x", "t"); err == nil {
 		t.Fatal("send to a missing session succeeded")
 	}
 }
@@ -959,5 +959,36 @@ func TestCloseInterruptsRecordsClosedAndStopsMirroring(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if n := len(rec.of(agents.TypeSessionCreated)) + len(rec.of(agents.TypeMessageUser)); n != 0 {
 		t.Fatalf("closed session still mirrored (%d events)", n)
+	}
+}
+
+func TestPromptFromClaraKeepsOriginAndTUIPromptDoesNot(t *testing.T) {
+	f, rec := spikeService(t), &fakeRecorder{}
+	m := newMirror(t, f, rec, nil)
+	runSynced(t, f, rec, m)
+
+	if err := m.Send(context.Background(), spikeSession, "from discord", "discord:c1:m1"); err != nil {
+		t.Fatal(err)
+	}
+	f.appendMessages(spikeSession,
+		json.RawMessage(`{"id":"msg_u3","type":"user","time":{"created":5},"text":"from discord"}`),
+		json.RawMessage(`{"id":"msg_u4","type":"user","time":{"created":6},"text":"from the TUI"}`),
+	)
+	f.push(fmt.Sprintf(`{"id":"e3","type":"session.execution.started",
+"data":{"sessionID":%q},"durable":{"aggregateID":%q,"seq":10,"version":1}}`,
+		spikeSession, spikeSession))
+
+	waitFor(t, "both user messages", func() bool { return len(rec.of(agents.TypeMessageUser)) >= 3 })
+	users := rec.of(agents.TypeMessageUser)
+	d, tui := users[len(users)-2].Payload.(agents.MessageUser), users[len(users)-1].Payload.(agents.MessageUser)
+	if d.Origin != "discord:c1:m1" || d.PromptID != "msg_u3" {
+		t.Fatalf("discord prompt = %+v", d)
+	}
+	if tui.Origin != agentName || tui.PromptID != "" {
+		t.Fatalf("tui prompt = %+v", tui)
+	}
+	q := rec.of(agents.TypePromptQueued)
+	if len(q) != 1 || q[0].Payload.(agents.PromptQueued).Origin != "discord:c1:m1" {
+		t.Fatalf("queued = %+v", q)
 	}
 }

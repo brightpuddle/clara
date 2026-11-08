@@ -242,7 +242,7 @@ func (m *Manager) ReadEvents(
 
 func (m *Manager) Send(session, text, origin string) (string, error) {
 	if m.isPeer(session) {
-		return "", m.peer.Send(m.ctx, session, text)
+		return "", m.peer.Send(m.ctx, session, text, origin)
 	}
 	r, err := m.runner(session)
 	if err != nil {
