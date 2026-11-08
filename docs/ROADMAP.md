@@ -62,8 +62,10 @@ build a conversation TUI. Clara is a peer client of the opencode service.
 - [x] B0 Close spike items (see spike doc, B0 findings): endpoint/auth discovery from Go, remote access auth
       (Tailscale-only vs `serve` auth), forms across service restart, log endpoint
       stability.
-- [ ] B1 opencode service adapter: SSE plus `/session/{id}/log?after=seq` catch-up in,
-      prompts and form replies out, first-reply-wins on races, pinned version, fixtures.
+- [~] B1 opencode service client and mirror (new package `internal/agents/opencode`, not the
+      ACP `adapter`): service lifecycle and discovery, `/api/event` SSE plus message-list
+      catch-up (the `/log` endpoint does not replay in 2.2.6, see spike), prompts and form
+      replies out, first-reply-wins on races, pinned version, fixtures.
 - [ ] B2 Mirror check: a prompt typed in the TUI appears in Discord/Webex and vice
       versa, with formatting preserved. Attention (needs you/done/failed) notifications.
 - [ ] B3 Session picker: `clara agent list --json` plus a Neovim (Telescope/fzf) picker

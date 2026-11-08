@@ -1,0 +1,156 @@
+{
+ "data": [
+  {
+   "id": "msg_1a7859223001RvIgSBvCmj2AOQ",
+   "time": {
+    "created": 1793811911266
+   },
+   "text": "Use your question tool to ask me whether I prefer red or blue (offer those two options). After I answer, reply with exactly one sentence stating my answer.",
+   "type": "user"
+  },
+  {
+   "id": "msg_1a7859264001q5mI9sgKScakQB",
+   "time": {
+    "created": 1793811911270,
+    "streamed": 1793811913946,
+    "completed": 1793811914608
+   },
+   "type": "assistant",
+   "agent": "build",
+   "model": {
+    "id": "gemini-3.8-flash",
+    "providerID": "github-copilot",
+    "variant": "default"
+   },
+   "content": [
+    {
+     "type": "reasoning",
+     "text": "**Drafting Question Prompt**\n\nI'm considering how best to phrase the question about color preference. My current focus is on crafting a clear and concise query using the `question` tool, ensuring the user understands the limited choices of \"red\" or \"blue.\"\n\n",
+     "time": {
+      "created": 1793811913455,
+      "completed": 1793811913928
+     }
+    },
+    {
+     "type": "tool",
+     "id": "call_MHw4TXZURVhsUzNuczFjWTg5eEw",
+     "name": "question",
+     "executed": false,
+     "state": {
+      "status": "completed",
+      "input": {
+       "questions": [
+        {
+         "header": "Color Preference",
+         "options": [
+          {
+           "description": "You prefer the color red",
+           "label": "Red"
+          },
+          {
+           "description": "You prefer the color blue",
+           "label": "Blue"
+          }
+         ],
+         "question": "Do you prefer red or blue?"
+        }
+       ]
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "User has answered your questions: \"Do you prefer red or blue?\"=\"Red\". You can now continue with the user's answers in mind."
+       }
+      ],
+      "metadata": {
+       "answers": [
+        [
+         "Red"
+        ]
+       ],
+       "truncated": false
+      }
+     },
+     "time": {
+      "created": 1793811913931,
+      "ran": 1793811913932,
+      "completed": 1793811914607
+     }
+    }
+   ],
+   "finish": "tool-calls",
+   "rawFinish": "tool_calls",
+   "cost": 0.0028800749999999997,
+   "tokens": {
+    "input": 3146,
+    "output": 65,
+    "reasoning": 0,
+    "cache": {
+     "read": 3691,
+     "write": 0
+    }
+   }
+  },
+  {
+   "id": "msg_1a7859f78001HuUUFTzPK4a0qk",
+   "metadata": {
+    "notice": "instructions",
+    "instructionSources": [
+     "core/codemode",
+     "core/mcp-guidance"
+    ]
+   },
+   "time": {
+    "created": 1793811914616
+   },
+   "type": "system",
+   "text": "(instructions elided)",
+   "description": "Instructions updated: core/codemode, core/mcp-guidance"
+  },
+  {
+   "id": "msg_1a7859f7a001yj6XC195ut3Ee7",
+   "time": {
+    "created": 1793811914620,
+    "streamed": 1793811916189,
+    "completed": 1793811916189
+   },
+   "type": "assistant",
+   "agent": "build",
+   "model": {
+    "id": "gemini-3.8-flash",
+    "providerID": "github-copilot",
+    "variant": "default"
+   },
+   "content": [
+    {
+     "type": "text",
+     "text": "You prefer red."
+    }
+   ],
+   "finish": "stop",
+   "rawFinish": "stop",
+   "cost": 0.00509505,
+   "tokens": {
+    "input": 6394,
+    "output": 4,
+    "reasoning": 0,
+    "cache": {
+     "read": 3794,
+     "write": 0
+    }
+   }
+  },
+  {
+   "id": "msg_1a785a5a0001ywEgqc7E16H1qa",
+   "time": {
+    "created": 1793811916192
+   },
+   "type": "idle",
+   "outcome": "succeeded"
+  }
+ ],
+ "cursor": {
+  "previous": "eyJpZCI6Im1zZ18xYTc4NTkyMjMwMDFSdklnU0J2Q21qMkFPUSIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoicHJldmlvdXMifQ",
+  "next": "eyJpZCI6Im1zZ18xYTc4NWE1YTAwMDF5d0VncWM3RTE2SDFxYSIsIm9yZGVyIjoiYXNjIiwiZGlyZWN0aW9uIjoibmV4dCJ9"
+ }
+}

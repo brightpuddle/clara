@@ -328,3 +328,32 @@ difference is visible.
   `POST .../permission/{requestID}/reply`; `POST .../interrupt` cancels a turn.
 
 B0 is closed.
+
+## B1 probe: the log endpoint does not replay (2026-11-08, opencode 2.2.6)
+
+Probed with fresh sessions on `github-copilot/gemini-3.8-flash` (one trivial prompt).
+
+- `GET /api/experimental/session/{id}/log` returns **only** `log.synced {aggregateID, seq}`
+  (the head seq) for every `after` value (0, 3, 15, 80, omitted) and for `follow=true|false`.
+  A live `follow=true` tail opened before a prompt delivered no durable events either. The
+  frame format is SSE `data: {json}`; `after=-1` is a 400. The earlier assumption that this
+  endpoint gives lossless catch-up is **wrong for 2.2.6**. Do not build on it.
+- What does work: `GET /api/session/{id}/message` returns the typed durable history
+  (`user`, `assistant` with `content[]`, `idle` with `outcome`, ...), each with a stable
+  message `id` and `time.{created,streamed,completed}`. Query: `limit`, `order=asc|desc`,
+  opaque `cursor`, `type` filter.
+- `GET /api/event` (SSE) still carries live durable events with `durable.seq`, so a gap is
+  detectable per session even though the log cannot fill it.
+
+Consequences for the B1 design:
+
+1. Live path: `/api/event`, tracking `durable.seq` per session.
+2. Catch-up (start, reconnect after `server.connected`, or a seq gap): list
+   `/session/{id}/message?order=asc` and ingest messages not yet seen, keyed by message id
+   (idempotent). Granularity is messages, not events: tool calls and text come from the
+   assistant message `content[]`; deltas are live-only anyway.
+3. Reconcile forms from `GET /api/form` and `GET /api/session/active` after every
+   reconnect.
+4. The contract test (tag `integration`) must assert message-list catch-up, and also that
+   `/log` still does not replay, so an opencode upgrade that fixes it is noticed.
+
