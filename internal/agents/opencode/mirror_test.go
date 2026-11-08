@@ -847,3 +847,17 @@ func TestInterruptPostsToSession(t *testing.T) {
 		t.Fatalf("interrupts = %q", got)
 	}
 }
+
+func TestFilterSkipsSessionsOutsideWindow(t *testing.T) {
+	f, rec := spikeService(t), &fakeRecorder{}
+	f.addSession("ses_old", "old", "/work/old")
+	run(t, newMirror(t, f, rec, func(c *Config) {
+		c.Filter = func(si SessionInfo) bool { return si.ID == spikeSession }
+	}))
+	rec.waitType(t, agents.TypeTurnEnded, 1)
+	for _, e := range rec.snapshot() {
+		if e.Session == "ses_old" {
+			t.Fatalf("filtered session was mirrored: %+v", e)
+		}
+	}
+}

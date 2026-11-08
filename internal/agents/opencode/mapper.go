@@ -23,9 +23,12 @@ func (m apiModel) String() string {
 }
 
 type apiSession struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Model    apiModel
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Model apiModel
+	Time  struct {
+		Updated int64 `json:"updated"`
+	} `json:"time"`
 	Location struct {
 		Directory string `json:"directory"`
 	} `json:"location"`

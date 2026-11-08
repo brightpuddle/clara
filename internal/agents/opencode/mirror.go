@@ -34,6 +34,9 @@ type Config struct {
 	Seen map[string]map[string]bool
 	// OpenForms maps form ids with an open attention in the log to their session.
 	OpenForms map[string]string
+	// Filter limits which not-yet-registered sessions are mirrored (for example
+	// to recently active ones). Registered sessions are always followed.
+	Filter func(SessionInfo) bool
 	// Store persists Seen across Clara restarts; optional.
 	Store   Store
 	HTTP    *http.Client
@@ -43,6 +46,14 @@ type Config struct {
 
 // Mirror keeps the Clara log in step with the opencode service and relays
 // prompts and form replies back. Session ids are opencode's native ids.
+// SessionInfo describes a service session for Config.Filter.
+type SessionInfo struct {
+	ID      string
+	Title   string
+	Dir     string
+	Updated time.Time
+}
+
 type Mirror struct {
 	cfg Config
 	c   *client
@@ -259,14 +270,24 @@ func (m *Mirror) refresh(ctx context.Context, id string) error {
 			}
 			return err
 		}
-		m.register(ctx, out.Data)
+		if !m.register(ctx, out.Data) {
+			return nil
+		}
 	}
 	return m.catchUp(ctx, id)
 }
 
-func (m *Mirror) register(ctx context.Context, s apiSession) {
+// register records session.created for a session not seen before. It reports
+// whether the session is (now) mirrored.
+func (m *Mirror) register(ctx context.Context, s apiSession) bool {
 	if _, ok := m.sess[s.ID]; ok {
-		return
+		return true
+	}
+	if f := m.cfg.Filter; f != nil && !f(SessionInfo{
+		ID: s.ID, Title: s.Title, Dir: s.Location.Directory,
+		Updated: time.UnixMilli(s.Time.Updated),
+	}) {
+		return false
 	}
 	m.sess[s.ID] = &sessState{seen: map[string]bool{}}
 	m.markSeen(ctx, s.ID, "")
@@ -275,6 +296,7 @@ func (m *Mirror) register(ctx context.Context, s apiSession) {
 		Kind: agents.KindLongLived, Model: s.Model.String(),
 		Origin: agents.OriginManaged, NativeID: s.ID,
 	})
+	return true
 }
 
 // sync reconciles everything after a (re)connect: sessions and history, forms
@@ -287,7 +309,9 @@ func (m *Mirror) sync(ctx context.Context) error {
 		return err
 	}
 	for _, s := range list.Data {
-		m.register(ctx, s)
+		if !m.register(ctx, s) {
+			continue
+		}
 		if err := m.catchUp(ctx, s.ID); err != nil {
 			return err
 		}

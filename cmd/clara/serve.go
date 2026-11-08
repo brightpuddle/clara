@@ -143,6 +143,13 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		agentMgr.SetDefaultModels(cfg.Agents.DefaultModels())
 		if oc := cfg.Agents.OpencodeService; oc.Enabled {
 			ocCfg := opencode.Config{StateFile: oc.StateFile}
+			maxAge := oc.MaxSessionAge
+			if maxAge <= 0 {
+				maxAge = 7 * 24 * time.Hour
+			}
+			ocCfg.Filter = func(si opencode.SessionInfo) bool {
+				return time.Since(si.Updated) <= maxAge
+			}
 			if oc.AutoStart {
 				ocCfg.Start = opencode.StartService
 			}

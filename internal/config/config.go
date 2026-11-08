@@ -147,6 +147,10 @@ type OpencodeServiceConfig struct {
 	// (default ~/.local/state/opencode/service.json).
 	StateFile string `yaml:"state_file"`
 
+	// MaxSessionAge limits mirroring to sessions updated within this window
+	// (default 168h). Sessions already mirrored are always followed.
+	MaxSessionAge time.Duration `yaml:"max_session_age"`
+
 	// AutoStart runs `opencode service start` when the service is not running.
 	AutoStart bool `yaml:"auto_start"`
 }
