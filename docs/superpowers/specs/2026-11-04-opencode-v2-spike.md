@@ -304,9 +304,27 @@ difference is visible.
   `server.connected` then heartbeats, so reconnect handling can key off that event.
 - **CLI equivalent:** `opencode api GET /api/session` uses the same service; handy for
   fixtures and manual probes.
-- **Still open:**
-  - Remote access: `opencode serve --hostname --port --cors` exists; auth for
-    non-loopback binding not yet tested. Default plan is Tailscale-only binding.
-  - Forms across a service restart (needs a deliberate restart test).
-  - Log endpoint stability across releases (pin the version, keep fixtures).
-  - Whether `password` rotates on service restart (assume yes; re-read the file).
+- **Restart behaviour (isolated `serve` instance, tested 2026-11-07):**
+  - The password is regenerated on every start; the old one returns 401. Clara must
+    re-read `service.json` (or reconfigure) on reconnect, never cache credentials.
+  - Sessions persist across a restart; **forms do not** (`GET /api/form` is empty after
+    restart). A form pending at restart is lost, along with the blocked turn. The
+    adapter should emit `attention_resolved(cancelled)` for forms it knew about that
+    vanish after `server.connected`, and surface the session as interrupted.
+- **Remote binding:** `opencode serve --hostname 0.0.0.0` enforces Basic auth on the LAN
+  address (401 without, 200 with the password), so non-loopback is not open. The
+  password is per-start, so a remote client cannot hold a static secret. `POST /api/pair`
+  returns a 5-minute one-time code for `GET /auth/connect/{code}`. **Decision:** bind to
+  loopback and reach it over Tailscale (tailscale serve or the ssh tunnel Clara already
+  uses); use `/api/pair` only for `opencode web` on the phone.
+- **Log endpoint:** the durable log lives at `/api/experimental/session/{id}/log`
+  (`?after=seq`, SSE; emits `log.synced` with `seq` when caught up). It is under
+  `experimental`, so it may change. Mitigation: pin the opencode version in Clara, add
+  an opt-in `integration` contract test that exercises session create, form create,
+  log catch-up, and `/api/event`, and run it on every opencode upgrade.
+- **Useful API facts for B1:** `/openapi.json` (authenticated) is the machine-readable
+  spec; forms can be created via `POST /api/session/{id}/form`, so adapter tests need
+  no model; replies are `POST .../form/{formID}/reply {answer}` and
+  `POST .../permission/{requestID}/reply`; `POST .../interrupt` cancels a turn.
+
+B0 is closed.

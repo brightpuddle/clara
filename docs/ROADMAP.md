@@ -59,7 +59,7 @@ Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
 ### Track B: opencode peer-client adapter (next; see ADR 0008, supersedes 0007)
 The desk client is stock `opencode attach` (Neovim via `ctrl-x e`). Clara does not
 build a conversation TUI. Clara is a peer client of the opencode service.
-- [ ] B0 Close spike items: endpoint/auth discovery from Go, remote access auth
+- [x] B0 Close spike items (see spike doc, B0 findings): endpoint/auth discovery from Go, remote access auth
       (Tailscale-only vs `serve` auth), forms across service restart, log endpoint
       stability.
 - [ ] B1 opencode service adapter: SSE plus `/session/{id}/log?after=seq` catch-up in,
