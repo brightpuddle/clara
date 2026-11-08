@@ -411,6 +411,7 @@ func (m *Mirror) registerAlways(ctx context.Context, s apiSession) {
 		Kind: agents.KindLongLived, Model: s.Model.String(),
 		Origin: agents.OriginManaged, NativeID: s.ID,
 	})
+	m.record(ctx, s.ID, agents.TypeSessionStatus, agents.SessionStatus{State: agents.StateIdle})
 }
 
 // sync reconciles everything after a (re)connect: sessions and history, forms

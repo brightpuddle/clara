@@ -507,7 +507,7 @@ func TestCatchUpMapsHistory(t *testing.T) {
 	run(t, newMirror(t, f, rec, nil))
 
 	want := []agents.EventType{
-		agents.TypeSessionCreated,
+		agents.TypeSessionCreated, agents.TypeSessionStatus,
 		agents.TypeMessageUser, agents.TypeTurnStarted, agents.TypeSessionStatus,
 		agents.TypeToolCall, agents.TypeToolUpdate,
 		agents.TypeMessageAssistant,
@@ -532,31 +532,31 @@ func TestCatchUpMapsHistory(t *testing.T) {
 		created.Model != "github-copilot/gemini-3.8-flash" {
 		t.Fatalf("session.created = %+v", created)
 	}
-	if u := evs[1].Payload.(agents.MessageUser); u.MessageID != spikeUserMsg ||
+	if u := evs[2].Payload.(agents.MessageUser); u.MessageID != spikeUserMsg ||
 		!strings.HasPrefix(u.Text, "Use your question tool") {
 		t.Fatalf("message.user = %+v", u)
 	}
-	if ts := evs[2].Payload.(agents.TurnStarted); ts.TurnID != spikeUserMsg {
+	if ts := evs[3].Payload.(agents.TurnStarted); ts.TurnID != spikeUserMsg {
 		t.Fatalf("turn.started = %+v", ts)
 	}
-	if st := evs[3].Payload.(agents.SessionStatus); st.State != agents.StateRunning {
+	if st := evs[4].Payload.(agents.SessionStatus); st.State != agents.StateRunning {
 		t.Fatalf("status after turn.started = %+v", st)
 	}
-	if tc := evs[4].Payload.(agents.ToolCall); tc.Name != "question" || tc.TurnID != spikeUserMsg {
+	if tc := evs[5].Payload.(agents.ToolCall); tc.Name != "question" || tc.TurnID != spikeUserMsg {
 		t.Fatalf("tool.call = %+v", tc)
 	}
-	if tu := evs[5].Payload.(agents.ToolUpdate); tu.Status != "completed" {
+	if tu := evs[6].Payload.(agents.ToolUpdate); tu.Status != "completed" {
 		t.Fatalf("tool.update = %+v", tu)
 	}
-	if a := evs[6].Payload.(agents.MessageAssistant); a.Text != "You prefer red." {
+	if a := evs[7].Payload.(agents.MessageAssistant); a.Text != "You prefer red." {
 		t.Fatalf("message.assistant = %+v", a)
 	}
-	te := evs[7].Payload.(agents.TurnEnded)
+	te := evs[8].Payload.(agents.TurnEnded)
 	if te.TurnID != spikeUserMsg || te.StopReason != agents.StopEndTurn ||
 		te.ToolsSummary.Count != 1 {
 		t.Fatalf("turn.ended = %+v", te)
 	}
-	if st := evs[8].Payload.(agents.SessionStatus); st.State != agents.StateIdle {
+	if st := evs[9].Payload.(agents.SessionStatus); st.State != agents.StateIdle {
 		t.Fatalf("final status = %+v", st)
 	}
 	if n := f.logCallCount(); n != 0 {
