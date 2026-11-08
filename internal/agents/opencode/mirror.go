@@ -70,6 +70,7 @@ type sessState struct {
 	seen       map[string]bool
 	activeTurn string
 	tools      []string
+	closed     bool
 }
 
 type attention struct {
@@ -194,6 +195,41 @@ func (m *Mirror) Interrupt(ctx context.Context, session string) error {
 		"/api/session/"+url.PathEscape(session)+"/interrupt", nil, nil)
 }
 
+// SetModel switches the session's model (model is "provider/id") and records it.
+func (m *Mirror) SetModel(ctx context.Context, session, model string) error {
+	prov, id, ok := strings.Cut(model, "/")
+	if !ok || prov == "" || id == "" {
+		return errors.Newf("model %q must be provider/id", model)
+	}
+	err := m.c.do(ctx, http.MethodPost, "/api/session/"+url.PathEscape(session)+"/model",
+		map[string]any{"model": map[string]string{"providerID": prov, "id": id}}, nil)
+	if err != nil {
+		return err
+	}
+	m.record(ctx, session, agents.TypeSessionUpdated, agents.SessionUpdated{Model: model})
+	return nil
+}
+
+// Close stops mirroring a session in Clara. The opencode session and its
+// history are left intact (the TUI keeps working); a running turn is
+// interrupted first.
+func (m *Mirror) Close(ctx context.Context, session string) error {
+	if err := m.Interrupt(ctx, session); err != nil && !isStatus(err, http.StatusNotFound) {
+		log.Debug().Err(err).Str("session", session).Msg("opencode mirror: interrupt on close")
+	}
+	m.work.Lock()
+	st := m.sess[session]
+	if st == nil {
+		st = &sessState{seen: map[string]bool{}}
+		m.sess[session] = st
+	}
+	st.closed = true
+	m.work.Unlock()
+	m.record(ctx, session, agents.TypeSessionStatus,
+		agents.SessionStatus{State: agents.StateClosed, Reason: "closed by clara"})
+	return nil
+}
+
 // Reply answers a single-field question form. ErrResolved means another client
 // answered first; nothing is recorded in that case.
 func (m *Mirror) Reply(ctx context.Context, attentionID, answer, by string) error {
@@ -277,6 +313,9 @@ func (m *Mirror) onEvent(ctx context.Context, raw []byte) error {
 	}
 	_ = json.Unmarshal(ev.Data, &d)
 
+	if st := m.sess[d.SessionID]; st != nil && st.closed {
+		return nil
+	}
 	switch ev.Type {
 	case "server.connected":
 		return m.sync(ctx)
@@ -355,6 +394,9 @@ func (m *Mirror) sync(ctx context.Context) error {
 		return err
 	}
 	for _, s := range list.Data {
+		if st := m.sess[s.ID]; st != nil && st.closed {
+			continue
+		}
 		if !m.register(ctx, s) {
 			continue
 		}
@@ -393,6 +435,9 @@ func (m *Mirror) sync(ctx context.Context) error {
 		return err
 	}
 	for id, st := range m.sess {
+		if st.closed {
+			continue
+		}
 		if _, running := active.Data[id]; st.activeTurn != "" && !running {
 			m.interrupt(ctx, id, st)
 		}

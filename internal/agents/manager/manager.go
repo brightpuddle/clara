@@ -272,6 +272,9 @@ func (m *Manager) Interrupt(ctx context.Context, session string) error {
 
 // SetModel switches the model of a running session.
 func (m *Manager) SetModel(ctx context.Context, session, model string) error {
+	if m.isPeer(session) {
+		return m.peer.SetModel(ctx, session, model)
+	}
 	r, err := m.runner(session)
 	if err != nil {
 		return err
@@ -287,6 +290,9 @@ func (m *Manager) SetDefaultModels(models map[string]string) {
 }
 
 func (m *Manager) Close(ctx context.Context, session string) error {
+	if m.isPeer(session) {
+		return m.peer.Close(ctx, session)
+	}
 	r, err := m.runner(session)
 	if err != nil {
 		return err

@@ -113,6 +113,7 @@ type fakeService struct {
 	replyErr int
 
 	interrupts   []string
+	models       []string
 	createdModel string
 	auths        int
 }
@@ -222,6 +223,13 @@ func (f *fakeService) session(w http.ResponseWriter, r *http.Request, parts []st
 		writeJSON(w, map[string]any{"data": s})
 	case parts[1] == "message":
 		writeJSON(w, map[string]any{"data": f.messages[id], "cursor": map[string]string{}})
+	case parts[1] == "model":
+		var b struct {
+			Model struct{ ID, ProviderID string }
+		}
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		f.models = append(f.models, id+"="+b.Model.ProviderID+"/"+b.Model.ID)
+		writeJSON(w, map[string]any{})
 	case parts[1] == "interrupt":
 		f.interrupts = append(f.interrupts, id)
 		writeJSON(w, map[string]any{})
@@ -905,5 +913,51 @@ func TestCreateSessionRegistersImmediatelyAndSendsFirstPrompt(t *testing.T) {
 	}
 	if _, err := m.CreateSession(context.Background(), "/x", "", "badmodel", ""); err == nil {
 		t.Fatal("model without provider accepted")
+	}
+}
+
+func TestSetModelPostsAndRecords(t *testing.T) {
+	f, rec := spikeService(t), &fakeRecorder{}
+	m := newMirror(t, f, rec, nil)
+	if err := m.SetModel(context.Background(), spikeSession, "github-copilot/gpt-x"); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	got := append([]string(nil), f.models...)
+	f.mu.Unlock()
+	if len(got) != 1 || got[0] != spikeSession+"=github-copilot/gpt-x" {
+		t.Fatalf("models = %q", got)
+	}
+	u := rec.of(agents.TypeSessionUpdated)
+	if len(u) != 1 || u[0].Payload.(agents.SessionUpdated).Model != "github-copilot/gpt-x" {
+		t.Fatalf("updated = %+v", u)
+	}
+	if err := m.SetModel(context.Background(), spikeSession, "nomodel"); err == nil {
+		t.Fatal("model without provider accepted")
+	}
+}
+
+func TestCloseInterruptsRecordsClosedAndStopsMirroring(t *testing.T) {
+	f, rec := spikeService(t), &fakeRecorder{}
+	m := newMirror(t, f, rec, nil)
+	if err := m.Close(context.Background(), spikeSession); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.interruptsSent(); len(got) != 1 {
+		t.Fatalf("interrupts = %q", got)
+	}
+	var closed bool
+	for _, e := range rec.of(agents.TypeSessionStatus) {
+		if e.Payload.(agents.SessionStatus).State == agents.StateClosed {
+			closed = true
+		}
+	}
+	if !closed {
+		t.Fatal("no closed status recorded")
+	}
+	run(t, m)
+	time.Sleep(200 * time.Millisecond)
+	if n := len(rec.of(agents.TypeSessionCreated)) + len(rec.of(agents.TypeMessageUser)); n != 0 {
+		t.Fatalf("closed session still mirrored (%d events)", n)
 	}
 }

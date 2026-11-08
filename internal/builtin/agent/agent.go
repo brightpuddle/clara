@@ -15,6 +15,7 @@ import (
 	"github.com/brightpuddle/clara/internal/agents/adapter"
 	"github.com/brightpuddle/clara/internal/agents/manager"
 	"github.com/brightpuddle/clara/internal/agents/opencode"
+	"github.com/brightpuddle/clara/internal/agents/projection"
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
 	"github.com/brightpuddle/clara/internal/supervisor"
@@ -119,6 +120,8 @@ func Register(
 	add("agent.prompt.cancel", "Remove a queued prompt that has not been sent.", s.cancelPrompt,
 		mcp.WithString("session", req("Session id.")...),
 		mcp.WithString("prompt_id", req("Prompt id.")...))
+	add("agent.attention.list", "List open attentions (questions waiting for an answer).",
+		s.listAttentions)
 	add("agent.attention.reply",
 		"Answer a question attention from the opencode service. Fails with already resolved if "+
 			"another client answered first.", s.replyAttention,
@@ -360,6 +363,17 @@ func (s *service) readEvents(ctx context.Context, args map[string]any) (any, err
 		next = evs[n-1].HostSeq
 	}
 	return map[string]any{"events": evs, "next": next}, nil
+}
+
+func (s *service) listAttentions(_ context.Context, _ map[string]any) (any, error) {
+	if err := s.check(); err != nil {
+		return nil, err
+	}
+	atts := s.mgr.Attentions()
+	if atts == nil {
+		atts = []projection.Attention{}
+	}
+	return map[string]any{"attentions": atts}, nil
 }
 
 func (s *service) replyAttention(ctx context.Context, args map[string]any) (any, error) {

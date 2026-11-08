@@ -25,6 +25,7 @@ var (
 	agentTailAfter   int64
 	agentTailFlw     bool
 	agentListAll     bool
+	agentListJSON    bool
 	agentHost        string
 	agentStatusShort bool
 )
@@ -109,7 +110,93 @@ var agentResumeCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
+var agentAttentionCmd = &cobra.Command{
+	Use:          "attention",
+	Aliases:      []string{"att"},
+	Short:        "List open attentions (questions waiting for an answer)",
+	Args:         cobra.NoArgs,
+	RunE:         runAgentAttentionList,
+	SilenceUsage: true,
+}
+
+var agentReplyCmd = &cobra.Command{
+	Use:   "reply <attention> <answer>",
+	Short: "Answer an open attention; first reply wins across all clients",
+	Args:  cobra.ExactArgs(2),
+	RunE:  runAgentReply,
+
+	SilenceUsage: true,
+}
+
+var agentCloseCmd = &cobra.Command{
+	Use:          "close <session>",
+	Short:        "Stop managing a session (opencode sessions stay intact in the service)",
+	Args:         cobra.ExactArgs(1),
+	RunE:         runAgentSessionClose,
+	SilenceUsage: true,
+}
+
+var agentModelCmd = &cobra.Command{
+	Use:          "model <session> <model>",
+	Short:        "Switch a session's model (opencode: provider/id)",
+	Args:         cobra.ExactArgs(2),
+	RunE:         runAgentSessionModel,
+	SilenceUsage: true,
+}
+
+func runAgentAttentionList(_ *cobra.Command, _ []string) error {
+	out, err := callAgentTool("agent.attention.list", nil)
+	if err != nil {
+		return err
+	}
+	atts, _ := out["attentions"].([]any)
+	if len(atts) == 0 {
+		fmt.Println("no open attentions")
+		return nil
+	}
+	for _, v := range atts {
+		a, _ := v.(map[string]any)
+		fmt.Printf("%s  session=%v  %v\n", a["id"], a["session"], a["title"])
+		if opts, _ := a["options"].([]any); len(opts) > 0 {
+			for _, o := range opts {
+				om, _ := o.(map[string]any)
+				fmt.Printf("    - %v\n", om["id"])
+			}
+		}
+	}
+	return nil
+}
+
+func runAgentReply(_ *cobra.Command, args []string) error {
+	out, err := callAgentTool("agent.attention.reply", map[string]any{
+		"attention": args[0], "answer": args[1], "by": "cli",
+	})
+	if err != nil {
+		return err
+	}
+	if out["resolved"] == false {
+		return errors.Newf("attention %s was already answered elsewhere", args[0])
+	}
+	fmt.Printf("Replied to %s.\n", args[0])
+	return nil
+}
+
+func runAgentSessionClose(_ *cobra.Command, args []string) error {
+	if _, err := callAgentTool("agent.session.close", map[string]any{"session": args[0]}); err != nil {
+		return err
+	}
+	fmt.Printf("Closed session %s.\n", args[0])
+	return nil
+}
+
+func runAgentSessionModel(_ *cobra.Command, args []string) error {
+	_, err := callAgentTool("agent.session.model",
+		map[string]any{"session": args[0], "model": args[1]})
+	return err
+}
+
 func init() {
+	agentListCmd.Flags().BoolVar(&agentListJSON, "json", false, "print sessions as JSON")
 	agentListCmd.Flags().BoolVarP(&agentListAll, "all", "a", false, "include closed sessions")
 	agentNewCmd.Flags().StringVar(&agentNewDir, "dir", "", "working directory (default: current)")
 	agentNewCmd.Flags().StringVar(&agentNewModel, "model", "", "model override")
@@ -120,7 +207,8 @@ func init() {
 	agentStatusCmd.Flags().BoolVarP(&agentStatusShort, "short", "s", false, "print concise one-line status (tmux/wezterm)")
 	agentCmd.PersistentFlags().StringVar(&agentHost, "host", "",
 		"agent host to act on (default: this machine; see agents.remote_hosts)")
-	agentCmd.AddCommand(agentListCmd, agentStatusCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd, agentClearCmd, agentResumeCmd)
+	agentCmd.AddCommand(agentListCmd, agentStatusCmd, agentNewCmd, agentSendCmd, agentTailCmd, agentCancelCmd, agentClearCmd, agentResumeCmd,
+		agentAttentionCmd, agentReplyCmd, agentCloseCmd, agentModelCmd)
 }
 
 // agentToolPrefix maps a host name to the tool namespace prefix of its agent
@@ -188,6 +276,20 @@ func runAgentSessionList(_ *cobra.Command, _ []string) error {
 		return err
 	}
 	sessions, _ := out["sessions"].([]any)
+	if agentListJSON {
+		kept := []any{}
+		for _, v := range sessions {
+			if s, _ := v.(map[string]any); agentListAll || s["state"] != "closed" {
+				kept = append(kept, v)
+			}
+		}
+		b, err := json.Marshal(kept)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
+	}
 	shown := 0
 	for _, v := range sessions {
 		s, _ := v.(map[string]any)
