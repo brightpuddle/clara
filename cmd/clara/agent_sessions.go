@@ -263,7 +263,13 @@ func runAgentSessionStatus(_ *cobra.Command, _ []string) error {
 	}
 
 	if agentStatusShort {
-		fmt.Println(cockpit.FormatStatusShort(summaries))
+		line := cockpit.FormatStatusShort(summaries)
+		if att, err := callAgentTool("agent.attention.list", nil); err == nil {
+			if n, _ := att["attentions"].([]any); len(n) > 0 {
+				line = fmt.Sprintf("%d need you, %s", len(n), line)
+			}
+		}
+		fmt.Println(line)
 		return nil
 	}
 
