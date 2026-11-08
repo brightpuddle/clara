@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,7 +59,7 @@ type Mirror struct {
 	cfg Config
 	c   *client
 
-	// run-goroutine only
+	work sync.Mutex // serialises event handling and CreateSession; guards sess
 	sess map[string]*sessState
 
 	mu   sync.Mutex // guards atts
@@ -148,6 +149,45 @@ func (m *Mirror) Send(ctx context.Context, session, text string) error {
 		map[string]any{"text": text}, nil)
 }
 
+// CreateSession starts a new service session and registers it in the log before
+// returning, so commands can address it immediately. model is "provider/id" or
+// empty for the service default; prompt, if set, is sent as the first prompt.
+func (m *Mirror) CreateSession(
+	ctx context.Context, dir, title, model, prompt string,
+) (string, error) {
+	body := map[string]any{"location": map[string]string{"directory": dir}}
+	if title != "" {
+		body["title"] = title
+	}
+	if model != "" {
+		prov, id, ok := strings.Cut(model, "/")
+		if !ok {
+			return "", errors.Newf("model %q must be provider/id", model)
+		}
+		body["model"] = map[string]string{"providerID": prov, "id": id}
+	}
+	var out struct {
+		Data apiSession `json:"data"`
+	}
+	if err := m.c.do(ctx, http.MethodPost, "/api/session", body, &out); err != nil {
+		return "", err
+	}
+	if out.Data.ID == "" {
+		return "", errors.New("opencode created a session without an id")
+	}
+	m.work.Lock()
+	if _, ok := m.sess[out.Data.ID]; !ok {
+		m.registerAlways(ctx, out.Data)
+	}
+	m.work.Unlock()
+	if prompt != "" {
+		if err := m.Send(ctx, out.Data.ID, prompt); err != nil {
+			return out.Data.ID, err
+		}
+	}
+	return out.Data.ID, nil
+}
+
 // Interrupt cancels the running turn of a session.
 func (m *Mirror) Interrupt(ctx context.Context, session string) error {
 	return m.c.do(ctx, http.MethodPost,
@@ -221,6 +261,8 @@ type sseEvent struct {
 }
 
 func (m *Mirror) onEvent(ctx context.Context, raw []byte) error {
+	m.work.Lock()
+	defer m.work.Unlock()
 	var ev sseEvent
 	if err := json.Unmarshal(raw, &ev); err != nil {
 		return nil
@@ -289,6 +331,11 @@ func (m *Mirror) register(ctx context.Context, s apiSession) bool {
 	}) {
 		return false
 	}
+	m.registerAlways(ctx, s)
+	return true
+}
+
+func (m *Mirror) registerAlways(ctx context.Context, s apiSession) {
 	m.sess[s.ID] = &sessState{seen: map[string]bool{}}
 	m.markSeen(ctx, s.ID, "")
 	m.record(ctx, s.ID, agents.TypeSessionCreated, agents.SessionCreated{
@@ -296,7 +343,6 @@ func (m *Mirror) register(ctx context.Context, s apiSession) bool {
 		Kind: agents.KindLongLived, Model: s.Model.String(),
 		Origin: agents.OriginManaged, NativeID: s.ID,
 	})
-	return true
 }
 
 // sync reconciles everything after a (re)connect: sessions and history, forms

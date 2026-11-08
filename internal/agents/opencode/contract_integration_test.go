@@ -140,3 +140,28 @@ func waitForLong(t *testing.T, what string, cond func() bool) {
 	}
 	t.Fatalf("timed out waiting for %s", what)
 }
+
+func TestContractCreateSession(t *testing.T) {
+	if _, err := Discover(DefaultStateFile()); err != nil {
+		t.Skipf("no opencode service: %v", err)
+	}
+	rec := &fakeRecorder{}
+	m := New(Config{Host: "contract", Recorder: rec})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	id, err := m.CreateSession(ctx, t.TempDir(), "clara contract create",
+		"github-copilot/gemini-3.8-flash", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = m.c.do(context.Background(), http.MethodDelete, "/api/session/"+id, nil, nil)
+	})
+	cs := rec.of(agents.TypeSessionCreated)
+	if len(cs) != 1 || cs[0].Session != id {
+		t.Fatalf("created = %+v", cs)
+	}
+	if got := cs[0].Payload.(agents.SessionCreated).Model; got != "github-copilot/gemini-3.8-flash" {
+		t.Errorf("model = %q", got)
+	}
+}

@@ -133,6 +133,16 @@ func (m *Manager) Wait() { m.wg.Wait() }
 // Create starts a new managed session and returns its id. If req.Prompt is set
 // it is queued as the first prompt.
 func (m *Manager) Create(ctx context.Context, req agents.SessionCreate) (string, error) {
+	m.mu.Lock()
+	peer := m.peer
+	model := req.Model
+	if model == "" {
+		model = m.defaults[req.Agent]
+	}
+	m.mu.Unlock()
+	if peer != nil && req.Agent == opencode.AgentName {
+		return peer.CreateSession(ctx, req.Dir, req.Title, model, req.Prompt)
+	}
 	ad, err := m.adapter(req.Agent)
 	if err != nil {
 		return "", err
@@ -140,12 +150,6 @@ func (m *Manager) Create(ctx context.Context, req agents.SessionCreate) (string,
 	kind := req.Kind
 	if kind == "" {
 		kind = agents.KindLongLived
-	}
-	model := req.Model
-	if model == "" {
-		m.mu.Lock()
-		model = m.defaults[req.Agent]
-		m.mu.Unlock()
 	}
 	return m.open(ctx, ad, adapter.OpenSpec{Dir: req.Dir, Model: model}, kind, req.Prompt, req.Title)
 }

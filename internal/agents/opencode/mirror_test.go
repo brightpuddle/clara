@@ -112,8 +112,9 @@ type fakeService struct {
 	replies  []string
 	replyErr int
 
-	interrupts []string
-	auths      int
+	interrupts   []string
+	createdModel string
+	auths        int
 }
 
 func newFakeService(t *testing.T) *fakeService {
@@ -164,6 +165,21 @@ func (f *fakeService) handle(w http.ResponseWriter, r *http.Request) {
 		f.logCalls++
 		f.mu.Unlock()
 		http.Error(w, "unused", http.StatusGone)
+	case path == "/api/session" && r.Method == http.MethodPost:
+		var b struct {
+			Title    string
+			Model    struct{ ID, ProviderID string }
+			Location struct{ Directory string }
+		}
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		f.mu.Lock()
+		f.createdModel = b.Model.ProviderID + "/" + b.Model.ID
+		f.mu.Unlock()
+		f.addSession("ses_created", b.Title, b.Location.Directory)
+		f.mu.Lock()
+		raw := f.sessions["ses_created"]
+		f.mu.Unlock()
+		writeJSON(w, map[string]any{"data": raw})
 	case path == "/api/session" && r.Method == http.MethodGet:
 		f.mu.Lock()
 		var list []json.RawMessage
@@ -859,5 +875,35 @@ func TestFilterSkipsSessionsOutsideWindow(t *testing.T) {
 		if e.Session == "ses_old" {
 			t.Fatalf("filtered session was mirrored: %+v", e)
 		}
+	}
+}
+
+func TestCreateSessionRegistersImmediatelyAndSendsFirstPrompt(t *testing.T) {
+	f, rec := spikeService(t), &fakeRecorder{}
+	m := newMirror(t, f, rec, nil)
+	id, err := m.CreateSession(context.Background(), "/work/new", "my task",
+		"github-copilot/gemini-3.8-flash", "start here")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "ses_created" {
+		t.Fatalf("id = %q", id)
+	}
+	cs := rec.of(agents.TypeSessionCreated)
+	if len(cs) != 1 || cs[0].Session != id ||
+		cs[0].Payload.(agents.SessionCreated).Dir != "/work/new" {
+		t.Fatalf("created events = %+v", cs)
+	}
+	if got := f.promptsSent(); len(got) != 1 || got[0] != "start here" {
+		t.Fatalf("prompts = %q", got)
+	}
+	f.mu.Lock()
+	model := f.createdModel
+	f.mu.Unlock()
+	if model != "github-copilot/gemini-3.8-flash" {
+		t.Fatalf("model sent = %q", model)
+	}
+	if _, err := m.CreateSession(context.Background(), "/x", "", "badmodel", ""); err == nil {
+		t.Fatal("model without provider accepted")
 	}
 }

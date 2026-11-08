@@ -211,6 +211,8 @@ func TestOpencodePeerSessionsAreMirroredAndDrivenThroughTheService(t *testing.T)
 			fmt.Fprint(w, "data: {\"type\":\"server.connected\",\"data\":{}}\n\n")
 			w.(http.Flusher).Flush()
 			<-r.Context().Done()
+		case r.URL.Path == "/api/session" && r.Method == http.MethodPost:
+			fmt.Fprint(w, `{"data":{"id":"ses_2","title":"made","location":{"directory":"/m"}}}`)
 		case r.URL.Path == "/api/session":
 			fmt.Fprint(w, `{"data":[{"id":"ses_1","title":"t","location":{"directory":"/w"}}]}`)
 		case r.URL.Path == "/api/session/active":
@@ -260,6 +262,18 @@ func TestOpencodePeerSessionsAreMirroredAndDrivenThroughTheService(t *testing.T)
 	}
 	mu.Lock()
 	if len(prompts) != 1 || prompts[0] != "hello" {
+		t.Fatalf("prompts = %q", prompts)
+	}
+	mu.Unlock()
+	id, err := m.Create(ctx, agents.SessionCreate{Agent: "opencode", Dir: "/m", Prompt: "go"})
+	if err != nil || id != "ses_2" {
+		t.Fatalf("create = %q, %v", id, err)
+	}
+	if s, ok := m.Get("ses_2"); !ok || s.Agent != "opencode" {
+		t.Fatalf("created session not visible: %+v %v", s, ok)
+	}
+	mu.Lock()
+	if len(prompts) != 2 || prompts[1] != "go" {
 		t.Fatalf("prompts = %q", prompts)
 	}
 	mu.Unlock()
