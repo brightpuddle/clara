@@ -62,18 +62,19 @@ build a conversation TUI. Clara is a peer client of the opencode service.
 - [x] B0 Close spike items (see spike doc, B0 findings): endpoint/auth discovery from Go, remote access auth
       (Tailscale-only vs `serve` auth), forms across service restart, log endpoint
       stability.
-- [~] B1 opencode service client and mirror (new package `internal/agents/opencode`, not the
-      ACP `adapter`): service lifecycle and discovery, `/api/event` SSE plus message-list
-      catch-up (the `/log` endpoint does not replay in 2.2.6, see spike), prompts and form
-      replies out, first-reply-wins on races, pinned version, fixtures.
-      Done: client, mirror, store, daemon wiring (`agents.opencode_service`), `agent.attention.reply`,
-      contract test (`-tags integration`, passes on 2.2.6). `agent.session.create`
-      on the service. Left: `clara agent` reply command, cancel/close/model for mirrored
-      sessions, first live run on Eve.
-- [ ] B2 Mirror check: a prompt typed in the TUI appears in Discord/Webex and vice
-      versa, with formatting preserved. Attention (needs you/done/failed) notifications.
-- [ ] B3 Session picker: `clara agent list --json` plus a Neovim (Telescope/fzf) picker
-      and a lualine status component. No dashboard TUI.
+- [x] B1 opencode service client and mirror (new package `internal/agents/opencode`, not the
+      ACP `adapter`): discovery/lifecycle, `/api/event` SSE plus message-list catch-up,
+      prompts, form replies (first reply wins), interrupt, close (stops mirroring, leaves
+      the opencode session intact), model switch, `agent.session.create`, pinned 2.2.6,
+      fixtures, contract test. CLI: `clara agent {attention,reply,close,model,list --json}`.
+- [x] B2 Mirror check: TUI prompts appear in the session channel (`🖥️ **TUI:**`), chat prompts
+      keep their origin through the service (reactions work), questions are posted with
+      numbered options and answered by replying in the channel (`attentionAnswer` in
+      `relay_core.ts`, router calls `agent.attention.reply`); resolution elsewhere is
+      announced. Live on Eve (`agents.opencode_service`, `max_session_age: 2h`): create,
+      form, reply, prompt, model switch and close verified end to end.
+- [x] B3 Session picker: `clara agent list --json`, `editors/nvim/clara_agents.lua`
+      (picker `<leader>aa`, lualine component, copy to `~/.config/nvim/lua`).
 - [ ] B4 Freeze and then remove agy paths (ACP managed, hooks) once unused.
 - Daily-driver check: for a week all sessions run on opencode and the remote surfaces
   stay in sync without tmux scraping.
