@@ -33,11 +33,11 @@ export async function listAllAgentSessions(): Promise<SessionInfo[]> {
     hosts.map(async (h) => {
       try {
         const tool = agentToolFor(h, "agent.session.list");
-        const list = (await callTool(tool as any, {})) as any[];
-        if (Array.isArray(list)) {
-          for (const s of list) {
-            sessions.push({ ...s, host: h });
-          }
+        const res = (await callTool(tool as any, {})) as any;
+        // The tool returns {sessions: [...]}; tolerate a bare array for safety.
+        const list = Array.isArray(res) ? res : res?.sessions ?? [];
+        for (const s of list) {
+          sessions.push({ ...s, host: h });
         }
       } catch {
         // Satellite or host may be temporarily unreachable / sleeping

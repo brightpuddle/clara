@@ -76,11 +76,16 @@ export function repoFromDir(dir?: string): string {
   return basename(norm);
 }
 
-/** A readable, mostly-unique channel name for a session. */
+/**
+ * A readable, mostly-unique channel name for a session.
+ *
+ * Sessions in the same repo with no title would otherwise collide on the repo
+ * name, so the no-title fallbacks always append a short id suffix to stay unique.
+ */
 export function sessionLabel(s: SessionInfo): string {
   const title = s.title?.trim().slice(0, 40).trim();
   if (title) return title;
   const repo = repoFromDir(s.dir);
-  if (repo) return repo;
-  return `${basename(s.dir) || s.agent}-${s.id.slice(-4).toLowerCase()}`;
+  const stem = repo || basename(s.dir) || s.agent;
+  return `${stem}-${s.id.slice(-4).toLowerCase()}`;
 }

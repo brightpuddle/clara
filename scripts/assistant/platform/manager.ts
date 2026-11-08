@@ -15,6 +15,7 @@ import type { BoundSessionInfo, ChatPlatformAdapter, ManagedChannel, PlatformTyp
 import { DiscordAdapter, resolveDiscordBoundTmuxSession, sanitizeChannelSuffix } from "./discord.ts";
 import { WebexAdapter, resolveWebexBoundTmuxSession } from "./webex.ts";
 import { parseAgentTopic, parseAgentWebexTitle, type AgentBinding } from "../agent/binding.ts";
+import { legacyTmuxTargets, parseTmuxPanes } from "../agent/tmux_targets.ts";
 
 const CONFIG_PATH = join(homedir(), ".config/clara/config.yaml");
 
@@ -123,8 +124,8 @@ export async function syncSessionChannels(
   }
 
   // Discover all running tmux sessions and panes across eve and sophia
-  // When a session contains multiple agent panes (agy, antigravity, opencode),
-  // each agent pane is surfaced as an independent target: e.g. "clara:0", "clara:1".
+  // Sessions hosting opencode are excluded: they are mirrored via the opencode service.
+  // Multiple agy panes in one session surface as independent targets, e.g. "clara:0".
   const activeSessions: { host: "eve" | "sophia"; sessionName: string }[] = [];
 
   // Query eve sessions and panes directly via tmux CLI
@@ -140,37 +141,8 @@ export async function syncSessionChannels(
       { stdout: "pipe", stderr: "pipe" }
     );
     const text = (await new Response(proc.stdout).text()).trim();
-    if (text) {
-      const agentPanesBySession = new Map<string, string[]>();
-      const allSessions = new Set<string>();
-
-      for (const line of text.split("\n")) {
-        if (!line.trim()) continue;
-        const [sName, _winIdx, paneIdx, _paneId, cmd] = line.split("|");
-        if (!sName) continue;
-        allSessions.add(sName);
-
-        const c = (cmd || "").toLowerCase();
-        const isAgent =
-          c.includes("agy") || c.includes("antigravity") || c.includes("opencode");
-        if (isAgent) {
-          if (!agentPanesBySession.has(sName)) agentPanesBySession.set(sName, []);
-          agentPanesBySession.get(sName)!.push(paneIdx);
-        }
-      }
-
-      for (const sName of allSessions) {
-        const agentPanes = agentPanesBySession.get(sName) || [];
-        if (agentPanes.length > 1) {
-          // Multiple agents running in panes: surface each pane as session:paneIndex
-          for (const pIdx of agentPanes) {
-            activeSessions.push({ host: "eve", sessionName: `${sName}:${pIdx}` });
-          }
-        } else {
-          // Single agent or standard session
-          activeSessions.push({ host: "eve", sessionName: sName });
-        }
-      }
+    for (const sessionName of legacyTmuxTargets(parseTmuxPanes(text))) {
+      activeSessions.push({ host: "eve", sessionName });
     }
   } catch (err: any) {
     console.warn(`[platform/manager] Failed to list eve tmux panes directly: ${err.message}`);

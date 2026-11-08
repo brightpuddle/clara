@@ -33,3 +33,9 @@ test("agent channels are invisible to the tmux resolver (so .sync keeps them)", 
   expect(resolveDiscordBoundTmuxSession("eve-dev", agentTopic("eve", "01ABC"))).toBeNull();
   expect(resolveDiscordBoundTmuxSession("eve-dev", "")).toEqual({ host: "eve", sessionName: "dev" });
 });
+
+test("hyphenated tmux session names are not truncated", () => {
+  expect(
+    resolveDiscordBoundTmuxSession("eve-ims-resolver", "tmux:eve:ims-resolver — Type directly")
+  ).toEqual({ host: "eve", sessionName: "ims-resolver" });
+});

@@ -13,8 +13,8 @@ test("creates missing, removes closed and unknown, keeps live", () => {
 
 test("label uses title or git repo name", () => {
   expect(sessionLabel({ ...s("01ABCDWXYZ"), title: "Fix bug" })).toBe("Fix bug");
-  expect(sessionLabel(s("01ABCDWXYZ", "idle", "/Users/nathan/src/clara/main"))).toBe("clara");
-  expect(sessionLabel(s("01ABCDWXYZ", "idle", "/a/proj"))).toBe("proj");
+  expect(sessionLabel(s("01ABCDWXYZ", "idle", "/Users/nathan/src/clara/main"))).toBe("clara-wxyz");
+  expect(sessionLabel(s("01ABCDWXYZ", "idle", "/a/proj"))).toBe("proj-wxyz");
 });
 
 test("repoFromDir resolves git repo and bare worktree paths", () => {

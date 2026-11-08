@@ -32,14 +32,16 @@ export function resolveDiscordBoundTmuxSession(
   channelTopic: string
 ): BoundSessionInfo | null {
   if (parseAgentTopic(channelTopic)) return null;
-  const topicHostMatch = String(channelTopic || "").match(/^tmux:(eve|sophia):([^\s—-]+)/i);
+  // Session names may contain hyphens; stop at whitespace or the em-dash
+  // separator, not at a hyphen.
+  const topicHostMatch = String(channelTopic || "").match(/^tmux:(eve|sophia):([^\s—]+)/i);
   if (topicHostMatch?.[1] && topicHostMatch?.[2]) {
     return {
       host: topicHostMatch[1].toLowerCase() as "eve" | "sophia",
       sessionName: topicHostMatch[2].trim(),
     };
   }
-  const legacyTopicMatch = String(channelTopic || "").match(/^tmux:([^\s:—-]+)/i);
+  const legacyTopicMatch = String(channelTopic || "").match(/^tmux:([^\s:—]+)/i);
   if (legacyTopicMatch?.[1]) {
     return { host: "eve", sessionName: legacyTopicMatch[1].trim() };
   }
