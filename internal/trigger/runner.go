@@ -72,12 +72,21 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 		}
 	}
 
+	// Worker triggers run supervised long-lived processes with their own
+	// restart lifecycle; only event/schedule/manual actions get the default
+	// timeout. A worker without an explicit timeout runs until its context ends.
 	timeout := def.Action.Timeout
-	if timeout <= 0 {
+	if timeout <= 0 && def.Type != TypeWorker {
 		timeout = r.defaultTimeout
 	}
 
-	execCtx, cancel := context.WithTimeout(ctx, timeout)
+	var execCtx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		execCtx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		execCtx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 
 	cmdArgs := append([]string{}, def.Action.Args...)
