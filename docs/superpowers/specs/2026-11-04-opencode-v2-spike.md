@@ -291,3 +291,22 @@ difference is visible.
 4. **Attach tool-call summaries to every turn end**, so "left running"
    shows up.
 5. **Per-agent model selection** goes through a small quirk table.
+
+## B0 findings: endpoint discovery and auth (2026-11-07, opencode 2.2.6)
+
+- **Discovery:** the background service writes `~/.local/state/opencode/service.json`
+  (mode 0600) with `{id, version, url, pid, password}`. The URL is loopback
+  (`http://127.0.0.1:<port>`, port varies per start). Clara reads this file, checks
+  `pid` is alive, and re-reads on connection failure (the file is rewritten when the
+  service restarts).
+- **Auth:** HTTP Basic with username `opencode` and the `password` from the file.
+  Bearer and empty-username Basic return 401. `GET /api/event` (SSE) returns
+  `server.connected` then heartbeats, so reconnect handling can key off that event.
+- **CLI equivalent:** `opencode api GET /api/session` uses the same service; handy for
+  fixtures and manual probes.
+- **Still open:**
+  - Remote access: `opencode serve --hostname --port --cors` exists; auth for
+    non-loopback binding not yet tested. Default plan is Tailscale-only binding.
+  - Forms across a service restart (needs a deliberate restart test).
+  - Log endpoint stability across releases (pin the version, keep fixtures).
+  - Whether `password` rotates on service restart (assume yes; re-read the file).
