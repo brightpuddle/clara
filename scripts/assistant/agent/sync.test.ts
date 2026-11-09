@@ -11,6 +11,18 @@ test("creates missing, removes closed and unknown, keeps live", () => {
   expect(plan.keep.map((x) => x.session)).toEqual(["B"]);
 });
 
+test("removes duplicate channels bound to the same session", () => {
+  const plan = planSync(
+    [s("B")],
+    [
+      { id: "c1", name: "n", host: "eve", session: "B" },
+      { id: "c2", name: "n", host: "eve", session: "B" },
+    ]
+  );
+  expect(plan.keep.map((x) => x.id)).toEqual(["c1"]);
+  expect(plan.remove.map((x) => x.id)).toEqual(["c2"]);
+});
+
 test("label uses title or git repo name", () => {
   expect(sessionLabel({ ...s("01ABCDWXYZ"), title: "Fix bug" })).toBe("Fix bug");
   expect(sessionLabel(s("01ABCDWXYZ", "idle", "/Users/nathan/src/clara/main"))).toBe("clara-wxyz");

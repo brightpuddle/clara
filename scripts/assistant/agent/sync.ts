@@ -33,12 +33,27 @@ export interface SyncPlan {
 export function planSync(sessions: SessionInfo[], channels: AgentChannel[]): SyncPlan {
   const open = sessions.filter((s) => s.state !== "closed");
   const openKey = new Set(open.map((s) => `${s.host}:${s.id}`));
-  const have = new Set(channels.map((c) => `${c.host}:${c.session}`));
-  return {
-    create: open.filter((s) => !have.has(`${s.host}:${s.id}`)),
-    remove: channels.filter((c) => !openKey.has(`${c.host}:${c.session}`)),
-    keep: channels.filter((c) => openKey.has(`${c.host}:${c.session}`)),
-  };
+  const have = new Set<string>();
+  const create: SessionInfo[] = [];
+  const keep: AgentChannel[] = [];
+  const remove: AgentChannel[] = [];
+
+  // Keep the first channel per (host, session); drop the rest as duplicates.
+  for (const c of channels) {
+    const key = `${c.host}:${c.session}`;
+    if (!openKey.has(key)) {
+      remove.push(c);
+    } else if (have.has(key)) {
+      remove.push(c);
+    } else {
+      have.add(key);
+      keep.push(c);
+    }
+  }
+  for (const s of open) {
+    if (!have.has(`${s.host}:${s.id}`)) create.push(s);
+  }
+  return { create, remove, keep };
 }
 
 /**

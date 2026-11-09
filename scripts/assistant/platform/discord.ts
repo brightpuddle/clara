@@ -61,6 +61,10 @@ export function resolveDiscordBoundTmuxSession(
 export class DiscordAdapter implements ChatPlatformAdapter {
   readonly platform: PlatformType = "discord";
 
+  // Serializes concurrent channel creation for the same session so the
+  // reconciler and the relay's on-demand path can't race into duplicates.
+  private inflightAgent = new Map<string, Promise<ManagedAgentChannel>>();
+
   async listManagedChannels(): Promise<ManagedChannel[]> {
     const rawChannels = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
     const result: ManagedChannel[] = [];
@@ -140,6 +144,21 @@ export class DiscordAdapter implements ChatPlatformAdapter {
       (c) => c.host === host && c.session === session
     );
     if (existing) return existing;
+    const key = `${host}:${session}`;
+    const pending = this.inflightAgent.get(key);
+    if (pending) return pending;
+    const creating = this.createAgentChannel(host, session, name).finally(() => {
+      this.inflightAgent.delete(key);
+    });
+    this.inflightAgent.set(key, creating);
+    return creating;
+  }
+
+  private async createAgentChannel(
+    host: string,
+    session: string,
+    name: string
+  ): Promise<ManagedAgentChannel> {
     const chName = `${host}-${sanitizeChannelSuffix(name)}`;
     const created = (await callTool("discord.channel.create" as any, {
       name: chName,
