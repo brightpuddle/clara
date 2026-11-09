@@ -96,15 +96,22 @@ calendar).
 Sophia runs the same core; Eve's hub aggregates. Mostly built; needs live testing
 over the tunnel and sleep/wake validation. Surfaces in the B3 picker as multi-host rows.
 
-### Track E: Mobile (Stages 3 and 4 of the agent plan)
-Priority may bubble up after B1/B2 (user, 2026-11-04); Discord covers mobile until then.
-Client API (`/v1/snapshot|sync|stream|commands`), device registry, APNs, then the
-iOS app (inbox first, session thread, dictation composer). Until then Discord is the
-mobile client. Starts after B2, so the desk side is settled. Access is over Tailscale to Eve
-(ADR 0009). Cheap first step: try `opencode web` over Tailscale and Discord buttons for approvals before building a PWA or native app.
+### Track E: Mobile (revised 2026-11-09; ADR 0009, ADR 0010)
+The opencode web UI is the mobile client. Verified on Eve (service plus `opencode pair`):
+it organises sessions and projects the way we want. Clara does not build a PWA, a native
+app or the `/v1` client API for now. Wait for the official opencode iOS app rather than
+building one.
+- [ ] E1 Install Tailscale on Eve (key expiry off, no sleep, unattended recovery) and
+      expose the service with `tailscale serve`. Pair the phone and add to Home Screen.
+- [ ] E2 Notifications: Discord/Webex attention pings carry deep links into the web UI.
+- [ ] E3 Sophia sessions: its service is only reachable over the SSH tunnel (Tailscale
+      conflicts with Cisco VPN). Proxy it through Eve or accept a separate entry point.
+- Known gaps: iOS web push and background reconnect are weak; Discord stays the
+  notification channel.
+- Daily-driver check: a week of triaging and answering agent sessions from the phone.
 
 ### Track F: Retire Discord/Webex for agent sessions (Stage 5)
-Only after iOS is a reliable daily driver. Discord can stay for non-agent
+Only after the opencode web or iOS client is a reliable daily driver. Discord can stay for non-agent
 notifications. The macOS native app is dropped in favour of stock opencode (ADR 0008).
 
 ### Track G: Lucia (parked)
@@ -123,4 +130,5 @@ ADRs) so agents are guided correctly.
 
 - Remote access to the opencode service: decided, Tailscale-only (ADR 0009). Sophia keeps
   the SSH tunnel because Tailscale does not work with Cisco VPN.
-- Mobile surface after Discord buttons: `opencode web` over Tailscale vs a Clara PWA.
+- Mobile surface: decided, opencode web UI (ADR 0010). Revisit when the official opencode
+  iOS app ships.
