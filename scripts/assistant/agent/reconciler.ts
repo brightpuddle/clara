@@ -92,7 +92,7 @@ export async function reconcileAgentSessions(): Promise<{ created: number; remov
 
   for (const sess of plan.create) {
     try {
-      const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir);
+      const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir, Boolean(sess.title?.trim()));
       await backfillAgentChannelHistory(ch.id, sess.host, sess.id);
       createdCount++;
       console.log(`[reconciler] Auto-created channel ${ch.name} for ${sess.host}:${sess.id}`);

@@ -5,6 +5,8 @@
  * Abstracts Discord and Webex so channels/spaces can be managed interchangeably.
  */
 
+import type { NameSource } from "../agent/naming.ts";
+
 export type PlatformType = "discord" | "webex";
 
 export interface BoundSessionInfo {
@@ -58,8 +60,15 @@ export interface ChatPlatformAdapter {
     host: string,
     session: string,
     name: string,
-    dir?: string
+    dir?: string,
+    titled?: boolean
   ): Promise<ManagedAgentChannel>;
+
+  /**
+   * Rename an agent channel/thread/space. Applied only when `source` is allowed
+   * to replace the current name (see agent/naming.ts).
+   */
+  renameAgentChannel?(channelId: string, name: string, source: NameSource): Promise<void>;
 
   /**
    * Remove channels left over from older layouts, once their sessions have been

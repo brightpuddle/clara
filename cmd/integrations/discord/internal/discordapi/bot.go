@@ -633,3 +633,12 @@ func (b *Bot) SetArchived(id string, archived bool) error {
 	_, err := b.sess.ChannelEditComplex(id, &discordgo.ChannelEdit{Archived: &archived})
 	return err
 }
+
+// RenameChannel changes the name of a channel or thread.
+func (b *Bot) RenameChannel(id, name string) error {
+	if len(name) > 100 {
+		name = name[:100]
+	}
+	_, err := b.sess.ChannelEditComplex(id, &discordgo.ChannelEdit{Name: name})
+	return err
+}

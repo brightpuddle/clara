@@ -7,6 +7,7 @@
  */
 
 import { parseOrigin, type Origin } from "./binding.ts";
+import { NAME_PROMPT, NAME_TITLE, promptName, titleName, type NameSource } from "./naming.ts";
 
 export interface HostEvent {
   /** Global hub sequence (the relay cursor). */
@@ -45,6 +46,8 @@ export interface Chat {
   channelFor(host: string, session: string): Promise<ChannelRef | null>;
   ensureChannel?(host: string, session: string, payload: any): Promise<ChannelRef | null>;
   post(ch: ChannelRef, text: string): Promise<void>;
+  /** Renames the session's channel/thread; the platform decides whether the source may replace the current name. */
+  rename?(host: string, session: string, name: string, source: NameSource): Promise<void>;
   /** Replaces the status emoji prev with next; returns a new indicator id if the platform has one. */
   setStatus(
     origin: Origin,
@@ -76,7 +79,14 @@ export class Relay {
         }
         return;
       }
+      case "session.updated": {
+        const name = titleName(p.title);
+        if (name) await this.chat.rename?.(ev.host, ev.session, name, NAME_TITLE);
+        return;
+      }
       case "prompt.queued": {
+        const name = promptName(p.text);
+        if (name) await this.chat.rename?.(ev.host, ev.session, name, NAME_PROMPT);
         const origin = parseOrigin(p.origin);
         const rec: PromptRecord = { session: ev.session, origin };
         this.store.putPrompt(p.prompt_id, rec);
@@ -92,6 +102,10 @@ export class Relay {
         return;
       }
       case "message.user": {
+        if (p.origin === "opencode") {
+          const name = promptName(p.text);
+          if (name) await this.chat.rename?.(ev.host, ev.session, name, NAME_PROMPT);
+        }
         // Prompts typed in the opencode TUI have no chat origin; show them in the
         // bound channel. Chat-originated prompts are already visible there.
         if (p.origin !== "opencode") return;

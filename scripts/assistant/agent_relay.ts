@@ -125,7 +125,7 @@ const chat: Chat = {
         title: payload?.title,
         state: "starting",
       });
-      const ch = await primary.ensureAgentChannel(host, session, label, payload?.dir);
+      const ch = await primary.ensureAgentChannel(host, session, label, payload?.dir, Boolean(payload?.title?.trim()));
       const ref: ChannelRef = { platform: primary.platform, channelId: ch.id };
       channels.set(host, session, ref);
       return ref;
@@ -136,6 +136,11 @@ const chat: Chat = {
   },
   async post(ch, text) {
     await getPlatformAdapter(ch.platform).sendMessage(ch.channelId, text);
+  },
+  async rename(host, session, name, source) {
+    const ref = await channels.find(host, session);
+    if (!ref) return;
+    await getPlatformAdapter(ref.platform).renameAgentChannel?.(ref.channelId, name, source);
   },
   async setStatus(origin: Origin, prev, next) {
     const a = getPlatformAdapter(origin.platform);

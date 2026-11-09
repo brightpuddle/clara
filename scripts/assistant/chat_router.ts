@@ -566,7 +566,7 @@ async function syncAgentSessions(): Promise<string> {
   const plan = planSync(sessions, await primary.listAgentChannels());
   const lines: string[] = [];
   for (const sess of plan.create) {
-    const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir);
+    const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir, Boolean(sess.title?.trim()));
     await backfillAgentHistory(ch.id, sess.host, sess.id);
     lines.push(`- Created **${ch.name}** for ${sess.agent} \`${sess.id}\` (history restored)`);
   }

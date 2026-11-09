@@ -16,6 +16,7 @@ import type {
 import { parseAgentTopic } from "../agent/binding.ts";
 import { repoFromDir } from "../agent/sync.ts";
 import { threadStore } from "../agent/threads.ts";
+import { NAME_FALLBACK, NAME_TITLE, type NameSource } from "../agent/naming.ts";
 
 export const LOCAL_HOST_PREFIX = "eve";
 export const LAPTOP_HOST_PREFIX = "sophia";
@@ -166,7 +167,8 @@ export class DiscordAdapter implements ChatPlatformAdapter {
     host: string,
     session: string,
     name: string,
-    dir?: string
+    dir?: string,
+    titled: boolean = true
   ): Promise<ManagedAgentChannel> {
     const existing = (await this.listAgentChannels()).find(
       (c) => c.host === host && c.session === session
@@ -175,7 +177,7 @@ export class DiscordAdapter implements ChatPlatformAdapter {
     const key = `${host}:${session}`;
     const pending = this.inflightAgent.get(key);
     if (pending) return pending;
-    const creating = this.createAgentThread(host, session, name, dir).finally(() => {
+    const creating = this.createAgentThread(host, session, name, dir, titled).finally(() => {
       this.inflightAgent.delete(key);
     });
     this.inflightAgent.set(key, creating);
@@ -186,7 +188,8 @@ export class DiscordAdapter implements ChatPlatformAdapter {
     host: string,
     session: string,
     name: string,
-    dir?: string
+    dir?: string,
+    titled: boolean = true
   ): Promise<ManagedAgentChannel> {
     const project = (dir ? repoFromDir(dir) : "") || "misc";
     const parent = (await callTool("discord.channel.create" as any, {
@@ -206,9 +209,19 @@ export class DiscordAdapter implements ChatPlatformAdapter {
       session,
       project,
       name: threadName,
+      nameSource: titled ? NAME_TITLE : NAME_FALLBACK,
     };
     threadStore().put(binding);
     return { id: binding.threadId, name: threadName, host, session };
+  }
+
+  async renameAgentChannel(channelId: string, name: string, source: NameSource): Promise<void> {
+    if (!threadStore().applyName(channelId, name, source)) return;
+    try {
+      await callTool("discord.channel.rename" as any, { channel_id: channelId, name });
+    } catch (err: any) {
+      console.warn(`[discord] rename of ${channelId} failed: ${err.message}`);
+    }
   }
 
   /** Channels from the one-channel-per-session layout, bound by topic. */

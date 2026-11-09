@@ -153,3 +153,18 @@ test("attentionAnswer maps numbers, labels and free text", () => {
   expect(attentionAnswer(att, "S2", "2")).toBeNull();
   expect(attentionAnswer([{ ...att[0], allow_text: false }], "S1", "nope")).toBeNull();
 });
+
+test("titles and first prompts rename the session channel", async () => {
+  const { chat } = fakeChat();
+  const renames: Array<[string, number]> = [];
+  chat.rename = async (_h, _s, name, source) => void renames.push([name, source]);
+  const relay = new Relay(memStore(), chat);
+  await relay.handle(ev("prompt.queued", { prompt_id: "P1", text: "Fix the debounce bug", origin }));
+  await relay.handle(ev("session.updated", { title: "Debounce fix" }));
+  await relay.handle(ev("session.updated", { model: "x" }));
+  await relay.handle(ev("prompt.queued", { prompt_id: "P2", text: "/plan", origin }));
+  expect(renames).toEqual([
+    ["Fix the debounce bug", 1],
+    ["Debounce fix", 2],
+  ]);
+});

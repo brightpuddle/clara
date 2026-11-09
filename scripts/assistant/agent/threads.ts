@@ -9,6 +9,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { NAME_TITLE, shouldRename, type NameSource } from "./naming.ts";
 
 export interface ThreadBinding {
   threadId: string;
@@ -17,6 +18,7 @@ export interface ThreadBinding {
   session: string;
   project: string;
   name: string;
+  nameSource: number;
 }
 
 export class ThreadStore {
@@ -32,14 +34,29 @@ export class ThreadStore {
       );
       CREATE INDEX IF NOT EXISTS agent_threads_session ON agent_threads (host, session);
     `);
+    try {
+      db.exec("ALTER TABLE agent_threads ADD COLUMN name_source INTEGER NOT NULL DEFAULT 2");
+    } catch {
+      // column already present
+    }
   }
 
   put(b: ThreadBinding): void {
     this.db
       .query(
-        "INSERT OR REPLACE INTO agent_threads (thread_id, parent_id, host, session, project, name) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT OR REPLACE INTO agent_threads (thread_id, parent_id, host, session, project, name, name_source) VALUES (?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(b.threadId, b.parentId, b.host, b.session, b.project, b.name);
+      .run(b.threadId, b.parentId, b.host, b.session, b.project, b.name, b.nameSource);
+  }
+
+  /** Records a new name if its source allows replacing the current one; true if it changed. */
+  applyName(threadId: string, name: string, source: NameSource): boolean {
+    const cur = this.byThread(threadId);
+    if (!cur || !shouldRename(cur.nameSource, source, cur.name === name)) return false;
+    this.db
+      .query("UPDATE agent_threads SET name = ?, name_source = ? WHERE thread_id = ?")
+      .run(name, source, threadId);
+    return true;
   }
 
   byThread(threadId: string): ThreadBinding | null {
@@ -64,6 +81,7 @@ function rowToBinding(r: any): ThreadBinding {
     session: r.session,
     project: r.project,
     name: r.name,
+    nameSource: Number(r.name_source ?? NAME_TITLE),
   };
 }
 

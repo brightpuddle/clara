@@ -143,6 +143,12 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Channel or thread ID.")),
 		),
 		mcp.NewTool(
+			"channel.rename",
+			mcp.WithDescription("Rename a channel or thread."),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Channel or thread ID.")),
+			mcp.WithString("name", mcp.Required(), mcp.Description("New name (max 100 chars).")),
+		),
+		mcp.NewTool(
 			"thread.set_archived",
 			mcp.WithDescription("Archive or unarchive a thread."),
 			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Thread ID.")),
@@ -200,6 +206,8 @@ func (d *Discord) CallTool(name string, args []byte) ([]byte, error) {
 		return d.callThreadCreate(args)
 	case "channel.get":
 		return d.callChannelGet(args)
+	case "channel.rename":
+		return d.callChannelRename(args)
 	case "thread.set_archived":
 		return d.callThreadSetArchived(args)
 	case "channel.delete":
@@ -409,6 +417,26 @@ func (d *Discord) callChannelGet(args []byte) ([]byte, error) {
 		return nil, errors.Wrap(err, "discord channel.get")
 	}
 	return json.Marshal(info)
+}
+
+func (d *Discord) callChannelRename(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string `json:"channel_id"`
+		Name      string `json:"name"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord channel.rename: unmarshal")
+	}
+	if a.ChannelID == "" || a.Name == "" {
+		return nil, errors.New("channel_id and name are required")
+	}
+	if err := d.bot.RenameChannel(a.ChannelID, a.Name); err != nil {
+		return nil, errors.Wrap(err, "discord channel.rename")
+	}
+	return json.Marshal(map[string]bool{"ok": true})
 }
 
 func (d *Discord) callThreadSetArchived(args []byte) ([]byte, error) {
