@@ -48,12 +48,12 @@ import { LOCAL_HOST_PREFIX, LAPTOP_HOST_PREFIX, sanitizeChannelSuffix } from "./
 
 import { formatOrigin } from "./agent/binding.ts";
 import { attentionAnswer } from "./agent/relay_core.ts";
-import { parseDotCommand } from "./agent/commands.ts";
+import { parseSlashCommand } from "./agent/commands.ts";
 import { REMOTE_HOSTS, agentToolFor, splitHost } from "./agent/hosts.ts";
 import { formatHistory } from "./agent/history.ts";
 import { planSync, sessionLabel, type SessionInfo } from "./agent/sync.ts";
 
-// Set CLARA_AGENT_MANAGED=false to make `.spawn` create tmux sessions again.
+// Set CLARA_AGENT_MANAGED=false to make `/spawn` create tmux sessions again.
 // Existing channels fall back individually by switching their topic to `tmux:...`.
 const AGENT_MANAGED_DEFAULT = process.env.CLARA_AGENT_MANAGED !== "false";
 const MANAGED_AGENTS = new Set(["agy", "opencode"]);
@@ -597,7 +597,7 @@ async function syncAgentSessions(): Promise<string> {
 async function handleAgentSessionsCommand(): Promise<string> {
   const open = (await listAgentSessions()).filter((x) => x.state !== "closed");
   if (open.length === 0) {
-    return "No managed agent sessions. Use `.spawn <name> [agy|opencode] [dir] [model=<id>]`.";
+    return "No managed agent sessions. Use `/spawn <name> [agy|opencode] [dir] [model=<id>]`.";
   }
   const rows = open.map(
     (x: any) =>
@@ -639,14 +639,14 @@ async function handleSessionsCommand(): Promise<string> {
 
 function getAgentChannelHelp(): string {
   return [
-    `**Agent channel commands** (anything starting with \`.\` is handled by Clara):`,
-    `- \`.clear\` — reinitialize the agent process and start with fresh context`,
-    `- \`.model [id]\` — show or change the model (only while idle)`,
-    `- \`.stop\` — interrupt the running turn (queued prompts continue)`,
-    `- \`.kill\` — close the session and delete this channel`,
-    `- \`.help\` — this message`,
-    `- \`./<command>\` — send \`/<command>\` to the agent`,
-    `- Anything else is queued as a prompt for the agent. Global commands (\`.status\`, \`.sync\`, \`.sessions\`, \`.spawn\`) run in #agents.`,
+    `**Agent channel commands:**`,
+    `- \`/new\` or \`/clear\` — reinitialize the agent process and start with fresh context`,
+    `- \`/model [id]\` — show or change the model (only while idle)`,
+    `- \`/stop\` — interrupt the running turn (queued prompts continue)`,
+    `- \`/kill\` — close the session and delete this channel`,
+    `- \`/help\` — this message`,
+    `- Any other \`/<command>\` (e.g. \`/plan\`, \`/compact\`) is sent to the agent as-is.`,
+    `- Anything else is queued as a prompt for the agent. Global commands (\`/status\`, \`/sync\`, \`/sessions\`, \`/spawn\`) run in #agents.`,
   ].join("\n");
 }
 
@@ -654,26 +654,26 @@ function getHelpMarkdown(): string {
   const currentPlat = getPrimaryPlatform().toUpperCase();
   return [
     `### Clara Conversational & Session Control Plane`,
-    `**Fast Commands (Prefix with \`.\` to avoid Discord slash-command conflicts):**`,
-    `- \`.status\` (or \`status\`) — System health, triggers, and Laptop (\`sophia\`) VPN status`,
-    `- \`.sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated channels/spaces on **${currentPlat}**`,
-    `- \`.platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
-    `- \`.sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
-    `- \`.spawn <name> [agy|opencode] [dir] [model=<id>]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
-    `- \`.resume [agy|opencode] [session_id]\` — Discover or adopt an existing native agent conversation into ACP`,
-    `- \`.spawn <name> <shell cmd>\` / \`.spawn sophia:<name>\` — Legacy \`tmux\` session`,
-    `- \`.send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
-    `- \`.capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
-    `- \`.runs\` / \`.triggers\` / \`.run <id>\` — Inspect or trigger Clara workflows`,
-    `- \`.code <prompt>\` — Run headless \`opencode\` task in \`~/.config/clara\``,
-    `- \`.new\` / \`.reset\` — Reset chat memory for this channel`,
+    `**Commands (native slash commands on Discord, typed `/` commands on Webex):**`,
+    `- \`/status\` (or \`status\`) — System health, triggers, and Laptop (\`sophia\`) VPN status`,
+    `- \`/sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated channels/spaces on **${currentPlat}**`,
+    `- \`/platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
+    `- \`/sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
+    `- \`/spawn <name> [agy|opencode] [dir] [model=<id>]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
+    `- \`/resume [agy|opencode] [session_id]\` — Discover or adopt an existing native agent conversation into ACP`,
+    `- \`/spawn <name> <shell cmd>\` / \`/spawn sophia:<name>\` — Legacy \`tmux\` session`,
+    `- \`/send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
+    `- \`/capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
+    `- \`/runs\` / \`/triggers\` / \`/run <id>\` — Inspect or trigger Clara workflows`,
+    `- \`/code <prompt>\` — Run headless \`opencode\` task in \`~/.config/clara\``,
+    `- \`/new\` — Reset chat memory for this channel (fresh context in agent channels)`,
     ``,
     `**Inside an Agent Session Channel/Space (\`#eve-*\`, \`[Clara:eve] *\`):**`,
     `- Type or record a **Voice Message** to send input directly to that \`tmux\` session`,
-    `- Send \`./<command>\` (e.g. \`./clear\`, \`./plan\`) to pass a slash command cleanly to the agent`,
+    `- Send \`//<command>\` (e.g. \`//clear\`, \`//plan\`) to pass a slash command cleanly to the agent`,
     `- Prefix with \`? <question>\` to ask AI about that session's terminal output`,
-    `- In a managed agent channel: \`.model [id]\` shows/changes the model, \`.stop\` interrupts`,
-    `- Type \`.kill\` or \`/kill\` to terminate the session and delete the space/channel`,
+    `- In a managed agent channel: \`/model [id]\`, \`/stop\`, \`/clear\`, \`/help\``,
+    `- Type \`/kill\` to terminate the session and delete the space/channel`,
   ].join("\n");
 }
 
@@ -1139,11 +1139,8 @@ async function main() {
       const { session, host: agentHost } = boundAgent;
       const adapter = getPlatformAdapter(platform);
 
-      // Anything starting with `.` is Clara's and never reaches the agent. The
-      // Discord-style `/kill`, `/stop`, `/model`, `/clear` forms are kept as aliases.
-      const slashAlias = lower.match(/^\/(kill|stop|interrupt|model|clear)(?:\s+([\s\S]*))?$/);
-      const cmd = parseDotCommand(normalized) ||
-        (slashAlias ? { name: slashAlias[1], args: (slashAlias[2] || "").trim() } : null);
+      // Clara's own slash commands never reach the agent; any other `/cmd` does.
+      const cmd = parseSlashCommand(normalized);
 
       if (cmd) {
         switch (cmd.name) {
@@ -1152,6 +1149,7 @@ async function main() {
             await sendReply(platform, targetId, `🛑 Closed agent session \`${session}\`. Deleting channel...`, isDryRun);
             await adapter.deleteChannel(targetId);
             return;
+          case "new":
           case "clear":
             try {
               await callAgent(agentHost, "agent.session.clear", { session });
@@ -1179,7 +1177,7 @@ async function main() {
               await sendReply(
                 platform,
                 targetId,
-                `🧠 Model: \`${cur}\`. Change with \`.model <id>\` (only while idle). With no model set, the agent's own default applies.`,
+                `🧠 Model: \`${cur}\`. Change with \`/model <id>\` (only while idle). With no model set, the agent's own default applies.`,
                 isDryRun
               );
             }
@@ -1188,12 +1186,6 @@ async function main() {
             await sendReply(platform, targetId, getAgentChannelHelp(), isDryRun);
             return;
           default:
-            await sendReply(
-              platform,
-              targetId,
-              `❓ Unknown command \`.${cmd.name}\`. Commands starting with \`.\` are handled by Clara and not sent to the agent.\n\n${getAgentChannelHelp()}`,
-              isDryRun
-            );
             return;
         }
       }
@@ -1222,8 +1214,7 @@ async function main() {
         console.warn(`[chat_router] attention lookup failed: ${err.message}`);
       }
 
-      // `./clear` reaches the agent as `/clear`
-      const promptText = normalized.startsWith("./") ? normalized.slice(1) : normalized;
+      const promptText = normalized;
       // The reply, reactions and queue feedback come back through agent_relay.ts.
       await callAgent(agentHost, "agent.prompt.send", {
         session,
@@ -1245,7 +1236,7 @@ async function main() {
       const sendKeysTool = host === "sophia" ? "laptop.tmux.pane.send_keys" : "tmux.pane.send_keys";
       const adapter = getPlatformAdapter(platform);
 
-      if (lower === "/kill" || lower === "kill" || lower === ".kill") {
+      if (lower === "/kill" || lower === "kill") {
         await callTool(killTool as any, { name: sessionName });
         await sendReply(
           platform,
@@ -1257,7 +1248,7 @@ async function main() {
         return;
       }
 
-      if (lower === "capture" || lower === "/capture" || lower === ".capture") {
+      if (lower === "capture" || lower === "/capture") {
         const cap = (await callTool(captureTool as any, {
           name: sessionName,
           limit: 40,
@@ -1271,14 +1262,11 @@ async function main() {
         return;
       }
 
-      const tmuxDot = parseDotCommand(normalized);
-      if (tmuxDot) {
+      if (lower === "/help") {
         await sendReply(
           platform,
           targetId,
-          tmuxDot.name === "help"
-            ? "**tmux session channel:** \`.kill\` ends the session, \`.capture\` shows the pane, \`? <question>\` asks the AI about it, \`./<cmd>\` sends \`/<cmd>\`. Everything else is typed into the terminal."
-            : `❓ Unknown command \`.${tmuxDot.name}\`. Commands starting with \`.\` are handled by Clara and not typed into the terminal. Try \`.help\`.`,
+          "**tmux session channel:** \`/kill\` ends the session, \`/capture\` shows the pane, \`/help\` shows this, \`? <question>\` asks the AI about it. Everything else (including other \`/<cmd>\`) is typed into the terminal.",
           isDryRun
         );
         return;
@@ -1296,12 +1284,7 @@ async function main() {
         return;
       }
 
-      // Handle slash-command forwarding:
-      // If user typed `./clear`, strip the leading '.' so the session receives `/clear`
-      let sessionInput = normalized;
-      if (sessionInput.startsWith("./")) {
-        sessionInput = sessionInput.slice(1);
-      }
+      const sessionInput = normalized;
 
       // Record prompt hash in agy_prompt_mirror so agy_prompt_hook doesn't echo it back to the channel
       try {
@@ -1485,9 +1468,9 @@ async function main() {
 
     // ========================================================
     // 2. Global Fast-Path Commands (Webex & Discord)
-    // Supports commands starting with `.` (preferred), `/`, or no prefix.
+    // Supports commands starting with `/` or no prefix.
     // ========================================================
-    const strippedLower = lower.replace(/^[./]/, "");
+    const strippedLower = lower.replace(/^\//, "");
 
     if (strippedLower === "help" || strippedLower === "?") {
       await sendReply(platform, targetId, getHelpMarkdown(), isDryRun);
@@ -1535,7 +1518,7 @@ async function main() {
       await sendReply(
         platform,
         targetId,
-        `Current primary agent development platform is **${cur.toUpperCase()}**.\nTo switch, run \`.platform webex\` or \`.platform discord\`.`,
+        `Current primary agent development platform is **${cur.toUpperCase()}**.\nTo switch, run \`/platform webex\` or \`/platform discord\`.`,
         isDryRun
       );
       return;
@@ -1605,7 +1588,7 @@ async function main() {
           await sendReply(
             platform,
             targetId,
-            `### Resumable ${agent} sessions:\n${rows.join("\n")}\n\nResume with \`.resume ${agent} <session_id>\``,
+            `### Resumable ${agent} sessions:\n${rows.join("\n")}\n\nResume with \`/resume ${agent} <session_id>\``,
             isDryRun
           );
         } catch (err: any) {
@@ -1698,7 +1681,7 @@ async function main() {
       const rest = normalized.replace(/^[./]?send\s+/i, "").trim();
       const firstSpace = rest.indexOf(" ");
       if (firstSpace === -1) {
-        await sendReply(platform, targetId, "Usage: `.send <session_name> <text>`", isDryRun);
+        await sendReply(platform, targetId, "Usage: `/send <session_name> <text>`", isDryRun);
         return;
       }
       const sessionName = rest.slice(0, firstSpace).trim();

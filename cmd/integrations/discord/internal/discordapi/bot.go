@@ -48,6 +48,7 @@ func NewBot(cfg Config, router *Router, log zerolog.Logger) (*Bot, error) {
 		discordgo.IntentMessageContent
 
 	b := &Bot{cfg: cfg, sess: sess, router: router, log: log}
+	sess.AddHandler(b.registerCommands)
 	sess.AddHandler(b.onInteractionCreate)
 	sess.AddHandler(b.onMessageCreate)
 
@@ -157,6 +158,8 @@ func (b *Bot) SendInteractive(channelID, machine, requestID, title, description 
 
 func (b *Bot) onInteractionCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	switch i.Type {
+	case discordgo.InteractionApplicationCommand:
+		b.onSlashCommand(s, i)
 	case discordgo.InteractionMessageComponent:
 		customID := i.MessageComponentData().CustomID
 		parts := strings.SplitN(customID, ":", 5)
@@ -288,35 +291,42 @@ func (b *Bot) onMessageCreate(s *discordgo.Session, m *discordgo.MessageCreate) 
 	if m.Author == nil || m.Author.Bot {
 		return
 	}
-	channelName := ""
-	channelTopic := ""
-	if ch, err := s.State.Channel(m.ChannelID); err == nil && ch != nil {
-		channelName = ch.Name
-		channelTopic = ch.Topic
-	} else if ch, err := s.Channel(m.ChannelID); err == nil && ch != nil {
-		channelName = ch.Name
-		channelTopic = ch.Topic
-	}
-
 	attachmentURL := ""
 	attachmentType := ""
 	if len(m.Attachments) > 0 {
 		attachmentURL = m.Attachments[0].URL
 		attachmentType = m.Attachments[0].ContentType
 	}
+	b.publishMessage(
+		m.ChannelID, m.GuildID, m.ID, m.Author.Username, m.Content, attachmentURL, attachmentType,
+	)
+}
+
+// publishMessage broadcasts a message_created event; intents filter by channel_id.
+func (b *Bot) publishMessage(
+	channelID, guildID, messageID, user, content, attachmentURL, attachmentType string,
+) {
+	channelName := ""
+	channelTopic := ""
+	if ch, err := b.sess.State.Channel(channelID); err == nil && ch != nil {
+		channelName = ch.Name
+		channelTopic = ch.Topic
+	} else if ch, err := b.sess.Channel(channelID); err == nil && ch != nil {
+		channelName = ch.Name
+		channelTopic = ch.Topic
+	}
 
 	data, _ := json.Marshal(map[string]string{
-		"channel_id":      m.ChannelID,
+		"channel_id":      channelID,
 		"channel_name":    channelName,
 		"channel_topic":   channelTopic,
-		"guild_id":        m.GuildID,
-		"message_id":      m.ID,
-		"user":            m.Author.Username,
-		"content":         m.Content,
+		"guild_id":        guildID,
+		"message_id":      messageID,
+		"user":            user,
+		"content":         content,
 		"attachment_url":  attachmentURL,
 		"attachment_type": attachmentType,
 	})
-	// Broadcast to all subscribers — intents filter by channel_id.
 	b.router.Publish("", Event{Type: "message_created", Data: data})
 }
 
