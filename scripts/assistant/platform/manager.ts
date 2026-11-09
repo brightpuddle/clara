@@ -152,15 +152,28 @@ export async function syncSessionChannels(
     }
   }
 
-  // Sophia (satellite) sessions
+  // Sophia (satellite) sessions — filter opencode panes the same way, by running
+  // the tmux pane listing through the satellite shell tool.
   try {
-    const res = await callTool("laptop.tmux.session.list" as any, {});
-    if (Array.isArray(res)) {
-      for (const s of res) {
+    const res = (await callTool("laptop.shell.run" as any, {
+      command:
+        '/opt/homebrew/bin/tmux list-panes -a -F "#{session_name}|#{window_index}|#{pane_index}|#{pane_id}|#{pane_current_command}"',
+    })) as any;
+    const text = typeof res?.output === "string" ? res.output : "";
+    if (!text) throw new Error("empty tmux pane list");
+    for (const sessionName of legacyTmuxTargets(parseTmuxPanes(text))) {
+      activeSessions.push({ host: "sophia", sessionName });
+    }
+  } catch {
+    // Fall back to the unfiltered session list if shell access is unavailable.
+    try {
+      const res = (await callTool("laptop.tmux.session.list" as any, {})) as any;
+      const list = Array.isArray(res) ? res : res?.sessions ?? [];
+      for (const s of list) {
         activeSessions.push({ host: "sophia", sessionName: s.name });
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   const existingChannels = await primaryAdapter.listManagedChannels();
   const activeKeys = new Set(activeSessions.map((s) => `${s.host}:${s.sessionName.toLowerCase()}`));
