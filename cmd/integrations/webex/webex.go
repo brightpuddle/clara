@@ -161,6 +161,12 @@ func (w *Webex) Tools() ([]byte, error) {
 			mcp.WithBoolean("invite_bot", mcp.Description("Whether to automatically add the configured Clara bot to the space (default true).")),
 		),
 		mcp.NewTool(
+			"room.update",
+			mcp.WithDescription("Rename a Webex space using the user account."),
+			mcp.WithString("room_id", mcp.Required(), mcp.Description("Webex room ID.")),
+			mcp.WithString("title", mcp.Required(), mcp.Description("New space title.")),
+		),
+		mcp.NewTool(
 			"room.delete",
 			mcp.WithDescription("Delete a Webex space by room_id or title."),
 			mcp.WithString("room_id", mcp.Description("Webex room ID to delete.")),
@@ -188,6 +194,8 @@ func (w *Webex) CallTool(name string, args []byte) ([]byte, error) {
 		return w.callRoomsList(args)
 	case "room.create":
 		return w.callRoomCreate(args)
+	case "room.update":
+		return w.callRoomUpdate(args)
 	case "room.delete":
 		return w.callRoomDelete(args)
 	case "membership.create":
@@ -265,6 +273,26 @@ func (w *Webex) callRoomCreate(args []byte) ([]byte, error) {
 	}
 
 	return json.Marshal(room)
+}
+
+func (w *Webex) callRoomUpdate(args []byte) ([]byte, error) {
+	if w.user == nil {
+		return nil, errors.New("webex user account not configured")
+	}
+	var a struct {
+		RoomID string `json:"room_id"`
+		Title  string `json:"title"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "unmarshal args")
+	}
+	if a.RoomID == "" || a.Title == "" {
+		return nil, errors.New("room_id and title required")
+	}
+	if err := w.user.UpdateRoomTitle(a.RoomID, a.Title); err != nil {
+		return nil, errors.Wrap(err, "update room")
+	}
+	return json.Marshal(map[string]any{"updated": true, "room_id": a.RoomID})
 }
 
 func (w *Webex) callRoomDelete(args []byte) ([]byte, error) {

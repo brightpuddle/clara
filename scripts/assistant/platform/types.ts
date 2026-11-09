@@ -71,6 +71,14 @@ export interface ChatPlatformAdapter {
   renameAgentChannel?(channelId: string, name: string, source: NameSource): Promise<void>;
 
   /**
+   * Move channels from an older naming/binding scheme to the current one, keeping
+   * their history. Returns the new names.
+   */
+  migrateLegacyAgentChannels?(
+    sessions: Array<{ id: string; host: string; dir: string; title?: string }>
+  ): Promise<string[]>;
+
+  /**
    * Remove channels left over from older layouts, once their sessions have been
    * recreated in the current layout. Returns the removed channel names.
    */

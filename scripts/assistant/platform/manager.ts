@@ -92,11 +92,11 @@ export function resolveAnyBoundAgentSession(
   topic: string = "",
   channelId: string = ""
 ): AgentBinding | null {
-  if (platform !== "discord") return parseAgentWebexTitle(nameOrTitle);
-  const byTopic = parseAgentTopic(topic);
-  if (byTopic) return byTopic;
-  const thread = channelId ? threadStore().byThread(channelId) : null;
-  return thread ? { host: thread.host, session: thread.session } : null;
+  const direct =
+    platform === "discord" ? parseAgentTopic(topic) : parseAgentWebexTitle(nameOrTitle);
+  if (direct) return direct;
+  const row = channelId ? threadStore().byThread(channelId) : null;
+  return row ? { host: row.host, session: row.session } : null;
 }
 
 /**

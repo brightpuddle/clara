@@ -13,7 +13,21 @@ import type {
   ManagedChannel,
   PlatformType,
 } from "./types.ts";
-import { parseAgentWebexTitle, webexAgentTitle } from "../agent/binding.ts";
+import { parseAgentWebexTitle } from "../agent/binding.ts";
+import { NAME_FALLBACK, NAME_TITLE, type NameSource } from "../agent/naming.ts";
+import { repoFromDir } from "../agent/sync.ts";
+import { threadStore } from "../agent/threads.ts";
+
+/** Webex spaces have no parent; this marks their rows in the shared binding table. */
+export const WEBEX_ROOM_PARENT = "webex";
+
+export function shortId(session: string): string {
+  return session.slice(-4).toLowerCase();
+}
+
+export function webexSpaceTitle(host: string, project: string, label: string): string {
+  return `${host}-${project}-${label}`.slice(0, 120);
+}
 
 export const WEBEX_SPACE_PREFIX_EVE = "[Clara:eve]";
 export const WEBEX_SPACE_PREFIX_SOPHIA = "[Clara:sophia]";
@@ -34,6 +48,9 @@ export function resolveWebexBoundTmuxSession(title: string): BoundSessionInfo | 
 
 export class WebexAdapter implements ChatPlatformAdapter {
   readonly platform: PlatformType = "webex";
+
+  // Serializes concurrent space creation for the same session.
+  private inflightAgent = new Map<string, Promise<ManagedAgentChannel>>();
 
   async listManagedChannels(): Promise<ManagedChannel[]> {
     const rawRooms = ((await callTool("webex.rooms.list" as any, { max: 100 })) || []) as any[];
@@ -88,37 +105,144 @@ export class WebexAdapter implements ChatPlatformAdapter {
     };
   }
 
+  /**
+   * Agent spaces are titled `<host>-<project>-<name>` and bound through the
+   * assistant state database. Spaces with the older `[Clara:host] … agent:id`
+   * title are still recognised until migrated.
+   */
   async listAgentChannels(): Promise<ManagedAgentChannel[]> {
-    const rooms = ((await callTool("webex.rooms.list" as any, { max: 100 })) || []) as any[];
+    const store = threadStore();
+    const rooms = await this.listGroupRooms();
+    const byId = new Map(rooms.list.map((r) => [String(r.id), r]));
     const out: ManagedAgentChannel[] = [];
-    for (const r of rooms) {
-      if (r.type !== "group") continue;
-      const b = parseAgentWebexTitle(r.title);
-      if (b) out.push({ id: String(r.id), name: String(r.title), ...b });
+    const bound = new Set<string>();
+    for (const row of store.list()) {
+      if (row.parentId !== WEBEX_ROOM_PARENT) continue;
+      const room = byId.get(row.threadId);
+      if (!room) {
+        // A truncated listing can't prove a space is gone.
+        if (rooms.complete) store.remove(row.threadId);
+        else out.push({ id: row.threadId, name: row.name, host: row.host, session: row.session });
+        continue;
+      }
+      bound.add(row.threadId);
+      out.push({ id: row.threadId, name: String(room.title), host: row.host, session: row.session });
+    }
+    for (const r of rooms.list) {
+      if (bound.has(String(r.id))) continue;
+      const legacy = parseAgentWebexTitle(r.title);
+      if (legacy) out.push({ id: String(r.id), name: String(r.title), ...legacy });
     }
     return out;
+  }
+
+  private async listGroupRooms(): Promise<{ list: any[]; complete: boolean }> {
+    const max = 1000;
+    const raw = ((await callTool("webex.rooms.list" as any, { max })) || []) as any[];
+    return { list: raw.filter((r) => r.type === "group"), complete: raw.length < max };
   }
 
   async ensureAgentChannel(
     host: string,
     session: string,
     name: string,
-    _dir?: string
+    dir?: string,
+    titled: boolean = true
   ): Promise<ManagedAgentChannel> {
     const existing = (await this.listAgentChannels()).find(
       (c) => c.host === host && c.session === session
     );
     if (existing) return existing;
-    const title = webexAgentTitle(host, name, session);
+    const key = `${host}:${session}`;
+    const pending = this.inflightAgent.get(key);
+    if (pending) return pending;
+    const creating = this.createAgentSpace(host, session, name, dir, titled).finally(() => {
+      this.inflightAgent.delete(key);
+    });
+    this.inflightAgent.set(key, creating);
+    return creating;
+  }
+
+  private async createAgentSpace(
+    host: string,
+    session: string,
+    name: string,
+    dir?: string,
+    titled: boolean = true
+  ): Promise<ManagedAgentChannel> {
+    const project = (dir ? repoFromDir(dir) : "") || "misc";
+    const label = titled ? name.trim() || shortId(session) : shortId(session);
+    const title = webexSpaceTitle(host, project, label);
     const created = (await callTool("webex.room.create" as any, {
       title,
       invite_bot: true,
     })) as any;
-    return { id: String(created.id), name: title, host, session };
+    const id = String(created.id);
+    threadStore().put({
+      threadId: id,
+      parentId: WEBEX_ROOM_PARENT,
+      host,
+      session,
+      project,
+      name: label,
+      nameSource: titled ? NAME_TITLE : NAME_FALLBACK,
+    });
+    return { id, name: title, host, session };
+  }
+
+  async renameAgentChannel(channelId: string, name: string, source: NameSource): Promise<void> {
+    const store = threadStore();
+    if (!store.applyName(channelId, name, source)) return;
+    const row = store.byThread(channelId);
+    if (!row) return;
+    try {
+      await callTool("webex.room.update" as any, {
+        room_id: channelId,
+        title: webexSpaceTitle(row.host, row.project, name),
+      });
+    } catch (err: any) {
+      console.warn(`[webex] rename of ${channelId} failed: ${err.message}`);
+    }
+  }
+
+  /** Moves spaces with the old bracketed title to the new title and binding. */
+  async migrateLegacyAgentChannels(
+    sessions: Array<{ id: string; host: string; dir: string; title?: string }>
+  ): Promise<string[]> {
+    const store = threadStore();
+    const moved: string[] = [];
+    const rooms = await this.listGroupRooms();
+    for (const r of rooms.list) {
+      const legacy = parseAgentWebexTitle(r.title);
+      if (!legacy || store.byThread(String(r.id))) continue;
+      const s = sessions.find((x) => x.host === legacy.host && x.id === legacy.session);
+      if (!s) continue;
+      const project = repoFromDir(s.dir) || "misc";
+      const titled = Boolean(s.title?.trim());
+      const label = titled ? s.title!.trim() : shortId(s.id);
+      const title = webexSpaceTitle(legacy.host, project, label);
+      try {
+        await callTool("webex.room.update" as any, { room_id: String(r.id), title });
+        store.put({
+          threadId: String(r.id),
+          parentId: WEBEX_ROOM_PARENT,
+          host: legacy.host,
+          session: legacy.session,
+          project,
+          name: label,
+          nameSource: titled ? NAME_TITLE : NAME_FALLBACK,
+        });
+        moved.push(title);
+      } catch (err: any) {
+        console.warn(`[webex] migrating "${r.title}" failed: ${err.message}`);
+      }
+    }
+    return moved;
   }
 
   async deleteChannel(channelId: string): Promise<void> {
     await callTool("webex.room.delete" as any, { room_id: channelId });
+    threadStore().remove(channelId);
   }
 
   async cleanupAllManagedChannels(): Promise<string[]> {

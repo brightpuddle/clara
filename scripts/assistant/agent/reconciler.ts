@@ -84,6 +84,12 @@ export async function reconcileAgentSessions(): Promise<{ created: number; remov
   const primary = getPrimaryAdapter();
   const other = getPlatformAdapter(primary.platform === "webex" ? "discord" : "webex");
   const sessions = await listAllAgentSessions();
+  try {
+    const moved = (await primary.migrateLegacyAgentChannels?.(sessions)) ?? [];
+    for (const title of moved) console.log(`[reconciler] Migrated space to "${title}"`);
+  } catch (err: any) {
+    console.warn(`[reconciler] legacy migration failed: ${err.message}`);
+  }
   const existingChannels = await primary.listAgentChannels();
   const plan = planSync(sessions, existingChannels);
 

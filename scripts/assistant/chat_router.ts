@@ -563,8 +563,15 @@ async function syncAgentSessions(): Promise<string> {
   const primary = getPrimaryAdapter();
   const other = getPlatformAdapter(primary.platform === "webex" ? "discord" : "webex");
   const sessions = await listAgentSessions();
-  const plan = planSync(sessions, await primary.listAgentChannels());
   const lines: string[] = [];
+  try {
+    for (const title of (await primary.migrateLegacyAgentChannels?.(sessions)) ?? []) {
+      lines.push(`- Renamed space to **${title}**`);
+    }
+  } catch (err: any) {
+    lines.push(`- Legacy migration failed: ${err.message}`);
+  }
+  const plan = planSync(sessions, await primary.listAgentChannels());
   for (const sess of plan.create) {
     const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir, Boolean(sess.title?.trim()));
     await backfillAgentHistory(ch.id, sess.host, sess.id);

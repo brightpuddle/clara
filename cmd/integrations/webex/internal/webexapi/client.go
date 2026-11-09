@@ -86,6 +86,37 @@ func (c *Client) CreateRoom(title string) (*Room, error) {
 	return &room, nil
 }
 
+// UpdateRoomTitle renames a Webex space.
+func (c *Client) UpdateRoomTitle(roomID, title string) error {
+	token, err := c.getToken()
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(map[string]string{"title": title})
+	if err != nil {
+		return fmt.Errorf("webex: marshal payload: %w", err)
+	}
+	req, err := http.NewRequest(
+		http.MethodPut, apiBase+"/rooms/"+url.PathEscape(roomID), bytes.NewReader(data),
+	)
+	if err != nil {
+		return fmt.Errorf("webex: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("webex: PUT room %s: %w", roomID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("webex: PUT room %s: status %d: %s", roomID, resp.StatusCode, body)
+	}
+	return nil
+}
+
 // DeleteRoom deletes a Webex space by ID.
 func (c *Client) DeleteRoom(roomID string) error {
 	token, err := c.getToken()
