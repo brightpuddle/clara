@@ -125,7 +125,7 @@ const chat: Chat = {
         title: payload?.title,
         state: "starting",
       });
-      const ch = await primary.ensureAgentChannel(host, session, label);
+      const ch = await primary.ensureAgentChannel(host, session, label, payload?.dir);
       const ref: ChannelRef = { platform: primary.platform, channelId: ch.id };
       channels.set(host, session, ref);
       return ref;

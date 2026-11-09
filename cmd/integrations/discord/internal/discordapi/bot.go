@@ -2,7 +2,9 @@ package discordapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,6 +83,11 @@ func (b *Bot) SendMessage(channelID, content string, embed *Embed) (string, erro
 		msg.Embeds = []*discordgo.MessageEmbed{dge}
 	}
 	m, err := b.sess.ChannelMessageSendComplex(channelID, msg)
+	if isArchivedThreadErr(err) {
+		if uerr := b.SetArchived(channelID, false); uerr == nil {
+			m, err = b.sess.ChannelMessageSendComplex(channelID, msg)
+		}
+	}
 	if err != nil {
 		return "", err
 	}
@@ -308,18 +315,25 @@ func (b *Bot) publishMessage(
 ) {
 	channelName := ""
 	channelTopic := ""
-	if ch, err := b.sess.State.Channel(channelID); err == nil && ch != nil {
+	parentID := ""
+	isThread := false
+	ch, err := b.sess.State.Channel(channelID)
+	if err != nil || ch == nil {
+		ch, err = b.sess.Channel(channelID)
+	}
+	if err == nil && ch != nil {
 		channelName = ch.Name
 		channelTopic = ch.Topic
-	} else if ch, err := b.sess.Channel(channelID); err == nil && ch != nil {
-		channelName = ch.Name
-		channelTopic = ch.Topic
+		parentID = ch.ParentID
+		isThread = ch.IsThread()
 	}
 
 	data, _ := json.Marshal(map[string]string{
 		"channel_id":      channelID,
 		"channel_name":    channelName,
 		"channel_topic":   channelTopic,
+		"parent_id":       parentID,
+		"is_thread":       strconv.FormatBool(isThread),
 		"guild_id":        guildID,
 		"message_id":      messageID,
 		"user":            user,
@@ -553,4 +567,69 @@ func nameOrDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+func isArchivedThreadErr(err error) bool {
+	var re *discordgo.RESTError
+	return errors.As(err, &re) && re.Message != nil &&
+		re.Message.Code == discordgo.ErrCodePerformedOperationOnArchivedThread
+}
+
+// ThreadInfo describes a thread or channel looked up by ID.
+type ThreadInfo struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id,omitempty"`
+	Exists   bool   `json:"exists"`
+	Thread   bool   `json:"thread"`
+	Archived bool   `json:"archived"`
+}
+
+// maxAutoArchiveMinutes is the longest auto-archive window Discord allows without boosts.
+const maxAutoArchiveMinutes = 10080
+
+// CreateThread starts a public thread under a text channel and joins it.
+func (b *Bot) CreateThread(parentID, name string) (*ThreadInfo, error) {
+	if len(name) > 100 {
+		name = name[:100]
+	}
+	th, err := b.sess.ThreadStartComplex(parentID, &discordgo.ThreadStart{
+		Name:                name,
+		AutoArchiveDuration: maxAutoArchiveMinutes,
+		Type:                discordgo.ChannelTypeGuildPublicThread,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := b.sess.ThreadJoin(th.ID); err != nil {
+		b.log.Warn().Err(err).Str("thread_id", th.ID).Msg("failed to join thread")
+	}
+	return &ThreadInfo{
+		ID: th.ID, Name: th.Name, ParentID: th.ParentID, Exists: true, Thread: true,
+	}, nil
+}
+
+// GetChannel looks up a channel or thread; a missing channel reports Exists=false.
+func (b *Bot) GetChannel(id string) (*ThreadInfo, error) {
+	ch, err := b.sess.Channel(id)
+	if err != nil {
+		var re *discordgo.RESTError
+		if errors.As(err, &re) && re.Response != nil && re.Response.StatusCode == 404 {
+			return &ThreadInfo{ID: id}, nil
+		}
+		return nil, err
+	}
+	info := &ThreadInfo{
+		ID: ch.ID, Name: ch.Name, ParentID: ch.ParentID, Exists: true, Thread: ch.IsThread(),
+	}
+	if ch.ThreadMetadata != nil {
+		info.Archived = ch.ThreadMetadata.Archived
+	}
+	return info, nil
+}
+
+// SetArchived archives or unarchives a thread.
+func (b *Bot) SetArchived(id string, archived bool) error {
+	_, err := b.sess.ChannelEditComplex(id, &discordgo.ChannelEdit{Archived: &archived})
+	return err
 }

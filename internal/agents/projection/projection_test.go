@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 
@@ -264,5 +265,18 @@ func TestRebuildFromLog(t *testing.T) {
 	}
 	if p.Applied() != 4 {
 		t.Fatalf("applied %d", p.Applied())
+	}
+}
+
+func TestLastActivityTracksEventTime(t *testing.T) {
+	p := projection.New()
+	c := created(t, "s1")
+	apply(t, p, c)
+	later := mk(t, "s1", agents.TypeTurnStarted, agents.TurnStarted{TurnID: "t1"})
+	later.TS = c.TS.Add(time.Hour)
+	apply(t, p, later)
+	s, _ := p.Session("s1")
+	if !s.LastActivity.Equal(later.TS) {
+		t.Fatalf("last activity %v want %v", s.LastActivity, later.TS)
 	}
 }

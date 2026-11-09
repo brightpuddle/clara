@@ -51,8 +51,21 @@ export interface ChatPlatformAdapter {
 
   /**
    * Create a channel/space for a managed agent session (idempotent per session id).
+   * `dir` is the session's working directory; Discord groups sessions into one
+   * channel per project (git repo) and makes each session a thread in it.
    */
-  ensureAgentChannel(host: string, session: string, name: string): Promise<ManagedAgentChannel>;
+  ensureAgentChannel(
+    host: string,
+    session: string,
+    name: string,
+    dir?: string
+  ): Promise<ManagedAgentChannel>;
+
+  /**
+   * Remove channels left over from older layouts, once their sessions have been
+   * recreated in the current layout. Returns the removed channel names.
+   */
+  purgeLegacyAgentChannels?(): Promise<string[]>;
 
   /**
    * Delete a managed channel by its ID.

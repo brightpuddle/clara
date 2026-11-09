@@ -22,6 +22,7 @@ var slashCommands = []slashCommand{
 	{"help", "Show Clara commands for this channel", ""},
 	{"status", "System health, triggers and satellite status", ""},
 	{"sync", "Sync agent and tmux sessions into channels", ""},
+	{"recent", "Latest activity per project", ""},
 	{"sessions", "List active sessions", ""},
 	{"spawn", "Start an agent session", "<name> [agy|opencode] [dir] [model=<id>]"},
 	{"resume", "Adopt an existing agent conversation", "[agy|opencode] [session_id]"},

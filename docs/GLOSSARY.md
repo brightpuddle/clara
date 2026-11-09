@@ -83,3 +83,10 @@ session runner, prompt queue, host log, MCP tools and CloudEvents. A standalone
 Clara capability; Stage 1 of the Cockpit work, merged to `main` before any
 client exists.
 
+
+**Project channel** — On Discord, one text channel per host and git repo
+(`eve-<repo>`, topic `project:<host>:<repo>`). Holds one thread per Session.
+
+**Session thread** — A Discord thread inside a Project channel bound to one
+Session. The binding lives in the `agent_threads` table of the assistant state
+database (threads have no topic). Webex keeps one space per Session.

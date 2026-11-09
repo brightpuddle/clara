@@ -15,6 +15,7 @@ import type { BoundSessionInfo, ChatPlatformAdapter, ManagedChannel, PlatformTyp
 import { DiscordAdapter, resolveDiscordBoundTmuxSession, sanitizeChannelSuffix } from "./discord.ts";
 import { WebexAdapter, resolveWebexBoundTmuxSession } from "./webex.ts";
 import { parseAgentTopic, parseAgentWebexTitle, type AgentBinding } from "../agent/binding.ts";
+import { threadStore } from "../agent/threads.ts";
 import { legacyTmuxTargets, parseTmuxPanes } from "../agent/tmux_targets.ts";
 
 const CONFIG_PATH = join(homedir(), ".config/clara/config.yaml");
@@ -88,9 +89,14 @@ export function resolveAnyBoundTmuxSession(
 export function resolveAnyBoundAgentSession(
   platform: PlatformType,
   nameOrTitle: string,
-  topic: string = ""
+  topic: string = "",
+  channelId: string = ""
 ): AgentBinding | null {
-  return platform === "discord" ? parseAgentTopic(topic) : parseAgentWebexTitle(nameOrTitle);
+  if (platform !== "discord") return parseAgentWebexTitle(nameOrTitle);
+  const byTopic = parseAgentTopic(topic);
+  if (byTopic) return byTopic;
+  const thread = channelId ? threadStore().byThread(channelId) : null;
+  return thread ? { host: thread.host, session: thread.session } : null;
 }
 
 /**

@@ -112,7 +112,7 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithDescription(
 				"Event source: fired when a message is posted in any Discord channel the bot can read. "+
 					"Use as a trigger: clara.on(discord.message_created). "+
-					"Event data: {channel_id, channel_name, channel_topic, guild_id, message_id, user, content, attachment_url, attachment_type}. "+
+					"Event data: {channel_id, channel_name, channel_topic, parent_id, is_thread, guild_id, message_id, user, content, attachment_url, attachment_type}. "+
 					"Filter by channel_id inside the handler.",
 			),
 		),
@@ -128,6 +128,25 @@ func (d *Discord) Tools() ([]byte, error) {
 			mcp.WithString("topic", mcp.Description("Optional channel topic metadata (e.g. 'tmux:clara').")),
 			mcp.WithString("category", mcp.Description("Optional category name to place the channel under (default 'Active Agent Sessions').")),
 			mcp.WithString("guild_id", mcp.Description("Optional Discord server (guild) ID.")),
+		),
+		mcp.NewTool(
+			"thread.create",
+			mcp.WithDescription("Create a public thread under a text channel and join it."),
+			mcp.WithString("parent_id", mcp.Required(), mcp.Description("Parent text channel ID.")),
+			mcp.WithString("name", mcp.Required(), mcp.Description("Thread name (max 100 chars).")),
+		),
+		mcp.NewTool(
+			"channel.get",
+			mcp.WithDescription(
+				"Look up a channel or thread by ID. Returns {exists, thread, archived, name, parent_id}.",
+			),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Channel or thread ID.")),
+		),
+		mcp.NewTool(
+			"thread.set_archived",
+			mcp.WithDescription("Archive or unarchive a thread."),
+			mcp.WithString("channel_id", mcp.Required(), mcp.Description("Thread ID.")),
+			mcp.WithBoolean("archived", mcp.Required(), mcp.Description("true to archive.")),
 		),
 		mcp.NewTool(
 			"channel.delete",
@@ -177,6 +196,12 @@ func (d *Discord) CallTool(name string, args []byte) ([]byte, error) {
 		return d.callChannelsList(args)
 	case "channel.create":
 		return d.callChannelCreate(args)
+	case "thread.create":
+		return d.callThreadCreate(args)
+	case "channel.get":
+		return d.callChannelGet(args)
+	case "thread.set_archived":
+		return d.callThreadSetArchived(args)
 	case "channel.delete":
 		return d.callChannelDelete(args)
 	case "message.react":
@@ -343,6 +368,67 @@ func (d *Discord) callChannelCreate(args []byte) ([]byte, error) {
 		return nil, errors.Wrap(err, "discord channel.create")
 	}
 	return json.Marshal(ch)
+}
+
+func (d *Discord) callThreadCreate(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ParentID string `json:"parent_id"`
+		Name     string `json:"name"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord thread.create: unmarshal")
+	}
+	if a.ParentID == "" || a.Name == "" {
+		return nil, errors.New("parent_id and name are required")
+	}
+	th, err := d.bot.CreateThread(a.ParentID, a.Name)
+	if err != nil {
+		return nil, errors.Wrap(err, "discord thread.create")
+	}
+	return json.Marshal(th)
+}
+
+func (d *Discord) callChannelGet(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string `json:"channel_id"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord channel.get: unmarshal")
+	}
+	if a.ChannelID == "" {
+		return nil, errors.New("channel_id is required")
+	}
+	info, err := d.bot.GetChannel(a.ChannelID)
+	if err != nil {
+		return nil, errors.Wrap(err, "discord channel.get")
+	}
+	return json.Marshal(info)
+}
+
+func (d *Discord) callThreadSetArchived(args []byte) ([]byte, error) {
+	if d.bot == nil {
+		return nil, errors.New("discord bot account not configured")
+	}
+	var a struct {
+		ChannelID string `json:"channel_id"`
+		Archived  bool   `json:"archived"`
+	}
+	if err := json.Unmarshal(args, &a); err != nil {
+		return nil, errors.Wrap(err, "discord thread.set_archived: unmarshal")
+	}
+	if a.ChannelID == "" {
+		return nil, errors.New("channel_id is required")
+	}
+	if err := d.bot.SetArchived(a.ChannelID, a.Archived); err != nil {
+		return nil, errors.Wrap(err, "discord thread.set_archived")
+	}
+	return json.Marshal(map[string]bool{"ok": true})
 }
 
 func (d *Discord) callChannelDelete(args []byte) ([]byte, error) {

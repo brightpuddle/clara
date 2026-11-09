@@ -102,7 +102,8 @@ export class WebexAdapter implements ChatPlatformAdapter {
   async ensureAgentChannel(
     host: string,
     session: string,
-    name: string
+    name: string,
+    _dir?: string
   ): Promise<ManagedAgentChannel> {
     const existing = (await this.listAgentChannels()).find(
       (c) => c.host === host && c.session === session

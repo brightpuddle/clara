@@ -6,6 +6,7 @@ package projection
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/cockroachdb/errors"
 
@@ -30,6 +31,7 @@ type Session struct {
 	LastStopReason agents.StopReason   `json:"last_stop_reason"`
 	QueueLen       int                 `json:"queue_len"`
 	LastSeq        int64               `json:"last_seq"`
+	LastActivity   time.Time           `json:"last_activity"`
 }
 
 type Prompt struct {
@@ -116,7 +118,7 @@ func (p *Projection) Apply(e agents.Event) error {
 			ID: e.Session, Host: e.Host, Agent: c.Agent, Dir: c.Dir, Title: c.Title,
 			Model: c.Model, NativeID: c.NativeID, Kind: c.Kind, Origin: c.Origin,
 			State:   agents.StateStarting,
-			LastSeq: e.HostSeq,
+			LastSeq: e.HostSeq, LastActivity: e.TS,
 		}
 		return nil
 	}
@@ -127,6 +129,7 @@ func (p *Projection) Apply(e agents.Event) error {
 	if e.HostSeq > 0 {
 		s.LastSeq = e.HostSeq
 	}
+	s.LastActivity = e.TS
 
 	switch v := payload.(type) {
 	case agents.SessionUpdated:

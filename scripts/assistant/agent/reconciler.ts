@@ -92,7 +92,7 @@ export async function reconcileAgentSessions(): Promise<{ created: number; remov
 
   for (const sess of plan.create) {
     try {
-      const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess));
+      const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir);
       await backfillAgentChannelHistory(ch.id, sess.host, sess.id);
       createdCount++;
       console.log(`[reconciler] Auto-created channel ${ch.name} for ${sess.host}:${sess.id}`);
@@ -109,6 +109,16 @@ export async function reconcileAgentSessions(): Promise<{ created: number; remov
     } catch (err: any) {
       console.warn(`[reconciler] Failed removing stale channel ${ch.name}: ${err.message}`);
     }
+  }
+
+  // Channels from the one-channel-per-session layout go once their sessions have threads.
+  if (createdCount === plan.create.length) {
+    try {
+      for (const name of (await primary.purgeLegacyAgentChannels?.()) ?? []) {
+        removedCount++;
+        console.log(`[reconciler] Removed legacy channel ${name}`);
+      }
+    } catch {}
   }
 
   // Purge lingering channels on inactive platform

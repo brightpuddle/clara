@@ -13,6 +13,7 @@ export interface SlashCommand {
 
 export const CLARA_AGENT_COMMANDS = new Set([
   "help",
+  "recent",
   "new",
   "clear",
   "model",

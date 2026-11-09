@@ -52,6 +52,8 @@ import { parseSlashCommand } from "./agent/commands.ts";
 import { REMOTE_HOSTS, agentToolFor, splitHost } from "./agent/hosts.ts";
 import { formatHistory } from "./agent/history.ts";
 import { planSync, sessionLabel, type SessionInfo } from "./agent/sync.ts";
+import { formatRecent } from "./agent/recent.ts";
+import { threadStore } from "./agent/threads.ts";
 
 // Set CLARA_AGENT_MANAGED=false to make `/spawn` create tmux sessions again.
 // Existing channels fall back individually by switching their topic to `tmux:...`.
@@ -564,7 +566,7 @@ async function syncAgentSessions(): Promise<string> {
   const plan = planSync(sessions, await primary.listAgentChannels());
   const lines: string[] = [];
   for (const sess of plan.create) {
-    const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess));
+    const ch = await primary.ensureAgentChannel(sess.host, sess.id, sessionLabel(sess), sess.dir);
     await backfillAgentHistory(ch.id, sess.host, sess.id);
     lines.push(`- Created **${ch.name}** for ${sess.agent} \`${sess.id}\` (history restored)`);
   }
@@ -576,6 +578,11 @@ async function syncAgentSessions(): Promise<string> {
       lines.push(`- Failed to remove **${ch.name}**: ${err.message}`);
     }
   }
+  try {
+    for (const name of (await primary.purgeLegacyAgentChannels?.()) ?? []) {
+      lines.push(`- Removed legacy channel **${name}**`);
+    }
+  } catch {}
   // Agent channels left on the inactive platform move to the primary one.
   try {
     for (const ch of await other.listAgentChannels()) {
@@ -592,6 +599,17 @@ async function syncAgentSessions(): Promise<string> {
     `${plan.keep.length + plan.create.length} live, ${plan.create.length} created, ${plan.remove.length} removed.`,
     ...lines,
   ].join("\n");
+}
+
+async function handleRecentCommand(platform: Platform): Promise<string> {
+  const sessions = await listAgentSessions();
+  const threads = platform === "discord" ? threadStore().list() : [];
+  return formatRecent(sessions as any[], {
+    link: (s) => {
+      const t = threads.find((x) => x.host === s.host && x.session === s.id);
+      return t ? `<#${t.threadId}>` : null;
+    },
+  });
 }
 
 async function handleAgentSessionsCommand(): Promise<string> {
@@ -644,6 +662,7 @@ function getAgentChannelHelp(): string {
     `- \`/model [id]\` — show or change the model (only while idle)`,
     `- \`/stop\` — interrupt the running turn (queued prompts continue)`,
     `- \`/kill\` — close the session and delete this channel`,
+    `- \`/recent\` — latest activity per project, with links to each session thread`,
     `- \`/help\` — this message`,
     `- Any other \`/<command>\` (e.g. \`/plan\`, \`/compact\`) is sent to the agent as-is.`,
     `- Anything else is queued as a prompt for the agent. Global commands (\`/status\`, \`/sync\`, \`/sessions\`, \`/spawn\`) run in #agents.`,
@@ -658,6 +677,7 @@ function getHelpMarkdown(): string {
     `- \`/status\` (or \`status\`) — System health, triggers, and Laptop (\`sophia\`) VPN status`,
     `- \`/sync\` (or \`sync\`) — Sync active \`tmux\` sessions into dedicated channels/spaces on **${currentPlat}**`,
     `- \`/platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
+    `- \`/recent\` — Latest activity per project (one line per project, newest first)`,
     `- \`/sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
     `- \`/spawn <name> [agy|opencode] [dir] [model=<id>]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
     `- \`/resume [agy|opencode] [session_id]\` — Discover or adopt an existing native agent conversation into ACP`,
@@ -1134,7 +1154,7 @@ async function main() {
     // ========================================================
     // 0. Managed agent session channel (agent:<host>:<session> topic/title)
     // ========================================================
-    const boundAgent = resolveAnyBoundAgentSession(platform, channelName, channelTopic);
+    const boundAgent = resolveAnyBoundAgentSession(platform, channelName, channelTopic, targetId);
     if (boundAgent) {
       const { session, host: agentHost } = boundAgent;
       const adapter = getPlatformAdapter(platform);
@@ -1181,6 +1201,9 @@ async function main() {
                 isDryRun
               );
             }
+            return;
+          case "recent":
+            await sendReply(platform, targetId, await handleRecentCommand(platform), isDryRun);
             return;
           case "help":
             await sendReply(platform, targetId, getAgentChannelHelp(), isDryRun);
@@ -1536,6 +1559,11 @@ async function main() {
       return;
     }
 
+    if (strippedLower === "recent") {
+      await sendReply(platform, targetId, await handleRecentCommand(platform), isDryRun);
+      return;
+    }
+
     if (strippedLower === "sessions") {
       const out = `${await handleAgentSessionsCommand()}\n\n${await handleSessionsCommand()}`;
       await sendReply(platform, targetId, out, isDryRun);
@@ -1604,7 +1632,7 @@ async function main() {
         const info = (await callAgent(undefined, "agent.session.get", { session: sessionId })) as any;
         const sessionHost = info?.session?.host || LOCAL_HOST_PREFIX;
         const title = info?.session?.title || `${agent}-${nativeId.slice(-4)}`;
-        const ch = await primary.ensureAgentChannel(sessionHost, sessionId, title);
+        const ch = await primary.ensureAgentChannel(sessionHost, sessionId, title, info?.session?.dir);
         await sendReply(
           platform,
           targetId,
@@ -1638,7 +1666,7 @@ async function main() {
           ((await callAgent(spawnHost, "agent.session.get", { session: sessionId })) as any)?.session?.host ||
           spawnHost ||
           LOCAL_HOST_PREFIX;
-        const ch = await primary.ensureAgentChannel(sessionHost, sessionId, rawName);
+        const ch = await primary.ensureAgentChannel(sessionHost, sessionId, rawName, dir);
         await sendReply(
           platform,
           targetId,

@@ -13,11 +13,17 @@ import type {
   ManagedChannel,
   PlatformType,
 } from "./types.ts";
-import { agentTopic, parseAgentTopic } from "../agent/binding.ts";
+import { parseAgentTopic } from "../agent/binding.ts";
+import { repoFromDir } from "../agent/sync.ts";
+import { threadStore } from "../agent/threads.ts";
 
 export const LOCAL_HOST_PREFIX = "eve";
 export const LAPTOP_HOST_PREFIX = "sophia";
 export const DISCORD_CATEGORY = "Active Agent Sessions";
+
+export function projectTopic(host: string, project: string): string {
+  return `project:${host}:${project} — Each agent session is a thread in this channel. /recent shows the latest activity.`;
+}
 
 export function sanitizeChannelSuffix(name: string): string {
   return name
@@ -124,13 +130,30 @@ export class DiscordAdapter implements ChatPlatformAdapter {
     };
   }
 
+  /** Agent sessions are threads; a thread whose Discord counterpart is gone is forgotten. */
   async listAgentChannels(): Promise<ManagedAgentChannel[]> {
-    const raw = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
+    const store = threadStore();
+    const rows = store.list();
+    const checked = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const info = (await callTool("discord.channel.get" as any, {
+            channel_id: r.threadId,
+          })) as any;
+          return { r, exists: Boolean(info?.exists) };
+        } catch {
+          // Transient failure: keep the binding rather than recreating the thread.
+          return { r, exists: true };
+        }
+      })
+    );
     const out: ManagedAgentChannel[] = [];
-    for (const c of raw) {
-      if (c.type !== "text") continue;
-      const b = parseAgentTopic(c.topic || "");
-      if (b) out.push({ id: String(c.id), name: String(c.name), ...b });
+    for (const { r, exists } of checked) {
+      if (!exists) {
+        store.remove(r.threadId);
+        continue;
+      }
+      out.push({ id: r.threadId, name: r.name, host: r.host, session: r.session });
     }
     return out;
   }
@@ -138,7 +161,8 @@ export class DiscordAdapter implements ChatPlatformAdapter {
   async ensureAgentChannel(
     host: string,
     session: string,
-    name: string
+    name: string,
+    dir?: string
   ): Promise<ManagedAgentChannel> {
     const existing = (await this.listAgentChannels()).find(
       (c) => c.host === host && c.session === session
@@ -147,29 +171,61 @@ export class DiscordAdapter implements ChatPlatformAdapter {
     const key = `${host}:${session}`;
     const pending = this.inflightAgent.get(key);
     if (pending) return pending;
-    const creating = this.createAgentChannel(host, session, name).finally(() => {
+    const creating = this.createAgentThread(host, session, name, dir).finally(() => {
       this.inflightAgent.delete(key);
     });
     this.inflightAgent.set(key, creating);
     return creating;
   }
 
-  private async createAgentChannel(
+  private async createAgentThread(
     host: string,
     session: string,
-    name: string
+    name: string,
+    dir?: string
   ): Promise<ManagedAgentChannel> {
-    const chName = `${host}-${sanitizeChannelSuffix(name)}`;
-    const created = (await callTool("discord.channel.create" as any, {
-      name: chName,
-      topic: agentTopic(host, session),
+    const project = (dir ? repoFromDir(dir) : "") || "misc";
+    const parent = (await callTool("discord.channel.create" as any, {
+      name: `${host}-${sanitizeChannelSuffix(project)}`,
+      topic: projectTopic(host, project),
       category: DISCORD_CATEGORY,
     })) as any;
-    return { id: String(created.id), name: chName, host, session };
+    const threadName = name.trim() || session;
+    const thread = (await callTool("discord.thread.create" as any, {
+      parent_id: String(parent.id),
+      name: threadName,
+    })) as any;
+    const binding = {
+      threadId: String(thread.id),
+      parentId: String(parent.id),
+      host,
+      session,
+      project,
+      name: threadName,
+    };
+    threadStore().put(binding);
+    return { id: binding.threadId, name: threadName, host, session };
+  }
+
+  /** Channels from the one-channel-per-session layout, bound by topic. */
+  async purgeLegacyAgentChannels(): Promise<string[]> {
+    const raw = ((await callTool("discord.channels.list" as any, {})) || []) as any[];
+    const removed: string[] = [];
+    for (const c of raw) {
+      if (c.type !== "text" || !parseAgentTopic(c.topic || "")) continue;
+      try {
+        await this.deleteChannel(String(c.id));
+        removed.push(`#${c.name}`);
+      } catch (err: any) {
+        console.warn(`[discord] Failed to remove legacy channel #${c.name}: ${err.message}`);
+      }
+    }
+    return removed;
   }
 
   async deleteChannel(channelId: string): Promise<void> {
     await callTool("discord.channel.delete" as any, { channel_id: channelId });
+    threadStore().remove(channelId);
   }
 
   async cleanupAllManagedChannels(): Promise<string[]> {
