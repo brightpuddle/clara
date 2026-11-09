@@ -100,8 +100,8 @@ over the tunnel and sleep/wake validation. Surfaces in the B3 picker as multi-ho
 Priority may bubble up after B1/B2 (user, 2026-11-04); Discord covers mobile until then.
 Client API (`/v1/snapshot|sync|stream|commands`), device registry, APNs, then the
 iOS app (inbox first, session thread, dictation composer). Until then Discord is the
-mobile client. Starts after B2, so the desk side is settled. Cheap first step: try `opencode web`
-over Tailscale and Discord buttons for approvals before building a PWA or native app.
+mobile client. Starts after B2, so the desk side is settled. Access is over Tailscale to Eve
+(ADR 0009). Cheap first step: try `opencode web` over Tailscale and Discord buttons for approvals before building a PWA or native app.
 
 ### Track F: Retire Discord/Webex for agent sessions (Stage 5)
 Only after iOS is a reliable daily driver. Discord can stay for non-agent
@@ -121,5 +121,6 @@ ADRs) so agents are guided correctly.
 
 ## Decisions pending
 
-- Remote access to the opencode service: Tailscale-only binding vs `serve` auth.
+- Remote access to the opencode service: decided, Tailscale-only (ADR 0009). Sophia keeps
+  the SSH tunnel because Tailscale does not work with Cisco VPN.
 - Mobile surface after Discord buttons: `opencode web` over Tailscale vs a Clara PWA.
