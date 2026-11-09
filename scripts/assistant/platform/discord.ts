@@ -25,6 +25,10 @@ export function projectTopic(host: string, project: string): string {
   return `project:${host}:${project} — Each agent session is a thread in this channel. /recent shows the latest activity.`;
 }
 
+export function isProjectTopic(topic: string): boolean {
+  return /^project:/i.test(String(topic || ""));
+}
+
 export function sanitizeChannelSuffix(name: string): string {
   return name
     .toLowerCase()
@@ -37,7 +41,7 @@ export function resolveDiscordBoundTmuxSession(
   channelName: string,
   channelTopic: string
 ): BoundSessionInfo | null {
-  if (parseAgentTopic(channelTopic)) return null;
+  if (parseAgentTopic(channelTopic) || isProjectTopic(channelTopic)) return null;
   // Session names may contain hyphens; stop at whitespace or the em-dash
   // separator, not at a hyphen.
   const topicHostMatch = String(channelTopic || "").match(/^tmux:(eve|sophia):([^\s—]+)/i);
