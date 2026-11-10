@@ -6,6 +6,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -175,6 +178,29 @@ func requireStr(args map[string]any, name, key string) (string, error) {
 	return v, nil
 }
 
+// resolveDir expands a leading ~ and requires an existing absolute directory.
+func resolveDir(dir string) (string, error) {
+	if dir == "~" || strings.HasPrefix(dir, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", errors.Wrap(err, "resolve home directory")
+		}
+		dir = filepath.Join(home, strings.TrimPrefix(dir, "~"))
+	}
+	dir = filepath.Clean(dir)
+	if !filepath.IsAbs(dir) {
+		return "", errors.Newf("dir %q must be an absolute path", dir)
+	}
+	st, err := os.Stat(dir)
+	if err != nil {
+		return "", errors.Wrapf(err, "dir %q", dir)
+	}
+	if !st.IsDir() {
+		return "", errors.Newf("dir %q is not a directory", dir)
+	}
+	return dir, nil
+}
+
 func (s *service) create(ctx context.Context, args map[string]any) (any, error) {
 	if err := s.check(); err != nil {
 		return nil, err
@@ -184,6 +210,10 @@ func (s *service) create(ctx context.Context, args map[string]any) (any, error) 
 		return nil, err
 	}
 	dir, err := requireStr(args, "agent.session.create", "dir")
+	if err != nil {
+		return nil, err
+	}
+	dir, err = resolveDir(dir)
 	if err != nil {
 		return nil, err
 	}
