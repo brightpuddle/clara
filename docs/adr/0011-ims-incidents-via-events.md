@@ -22,13 +22,17 @@ session, and ran a blocking `notify.ask` flow. That mixed IMS (inventory) with C
   - `agent_requested` (the button inside IMS) launches an agent immediately.
   - Clara picks the agent (`opencode` by default, `CLARA_IMS_AGENT` to override), the
     directory and the prompt. Each incident gets a fresh task session.
+- A supervised worker (`ims-reconcile`) catches up: at start and every 2 minutes it lists open
+  incidents via `scripts/ims-cli incident list` and re-announces any without a card. A
+  `ims_incident_cards` table in `assistant_state.db` dedupes; a pending card whose handler
+  process died (Clara restart) is eligible again.
 - Agents commit fixes directly to `main` (small single-user app; git is the backout) and
   close the ticket with `ims incident resolve <id> --summary ...`.
 
 ## Consequences
 
-- Notifications are push-based and prompt. If Clara is down, IMS only logs a warning;
-  there is no replay of missed events yet.
-- A pending card is a blocked script run (24h timeout); a daemon restart drops it, and
-  the agent can still be launched from the IMS button.
+- Notifications are push-based and prompt. If Clara is down, IMS only logs a warning and the
+  catch-up worker announces the incident once Clara is back.
+- A pending card is a blocked script run (24h timeout); a restart drops it and the catch-up
+  worker re-posts it. The agent can also be launched from the IMS button.
 - Reminders integration (complete reminder -> close issue) is deferred.
