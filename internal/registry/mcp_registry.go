@@ -119,17 +119,20 @@ func (r *Registry) checkServerHealth(ctx context.Context) {
 				Err(err).
 				Str("mcp_server", s.name).
 				Msg("MCP server unresponsive; restarting")
-			go func(srv *MCPServer) {
-				restartCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				defer cancel()
-				if err := r.RestartServer(restartCtx, srv.name); err != nil {
-					r.log.Error().
-						Err(err).
-						Str("mcp_server", srv.name).
-						Msg("watchdog failed to restart server")
-				}
-			}(s)
+			go r.restartUnresponsive(ctx, s)
 		}
+	}
+}
+
+// restartUnresponsive restarts an unhealthy server. ctx must outlive this call:
+// a server that is still unreachable keeps a background reconnect loop bound to
+// it, so cancelling ctx on return would leave the server stuck connecting.
+func (r *Registry) restartUnresponsive(ctx context.Context, srv *MCPServer) {
+	if err := r.RestartServer(ctx, srv.name); err != nil {
+		r.log.Error().
+			Err(err).
+			Str("mcp_server", srv.name).
+			Msg("watchdog failed to restart server")
 	}
 }
 

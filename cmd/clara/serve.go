@@ -36,6 +36,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/rs/zerolog"
+	zlog "github.com/rs/zerolog/log"
 	"github.com/sourcegraph/conc"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -88,6 +89,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 }
 
 func runDaemon(ctx context.Context, logger zerolog.Logger) error {
+	// Packages that log through zerolog's global logger (the opencode mirror, for
+	// one) would otherwise write to stderr, which launchd discards.
+	zlog.Logger = logger
+
 	daemonCtx, shutdown := context.WithCancel(ctx)
 	defer shutdown()
 

@@ -36,12 +36,19 @@ func isStatus(err error, codes ...int) bool {
 	return false
 }
 
+// defaultStreamIdle is well above the service's heartbeat interval.
+const defaultStreamIdle = 90 * time.Second
+
 // client talks to the service and re-reads the registration file whenever the
 // cached credentials stop working.
 type client struct {
 	stateFile string
 	start     func(context.Context) error
 	hc        *http.Client
+	// idle is how long a stream may stay silent before it is abandoned. The
+	// service sends heartbeats, so silence means a dead connection. Zero uses
+	// defaultStreamIdle.
+	idle time.Duration
 
 	mu sync.Mutex
 	ep *Endpoint
@@ -146,7 +153,16 @@ func (c *client) doOnce(ctx context.Context, method, path string, body, out any)
 // stream reads an SSE endpoint, calling fn for each data payload, until the
 // stream ends, fn fails or ctx is cancelled.
 func (c *client) stream(ctx context.Context, path string, fn func(data []byte) error) error {
-	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
+	idle := c.idle
+	if idle <= 0 {
+		idle = defaultStreamIdle
+	}
+	sctx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	watchdog := time.AfterFunc(idle, cancelStream)
+	defer watchdog.Stop()
+
+	req, err := c.newRequest(sctx, http.MethodGet, path, nil)
 	if err != nil {
 		return err
 	}
@@ -165,6 +181,7 @@ func (c *client) stream(ctx context.Context, path string, fn func(data []byte) e
 	var data []byte
 	for {
 		line, err := br.ReadBytes('\n')
+		watchdog.Reset(idle)
 		if len(line) > 0 {
 			line = bytes.TrimRight(line, "\r\n")
 			switch {
@@ -185,6 +202,9 @@ func (c *client) stream(ctx context.Context, path string, fn func(data []byte) e
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
+			}
+			if sctx.Err() != nil {
+				return errors.Newf("event stream silent for %s", idle)
 			}
 			return errors.Wrap(err, "event stream ended")
 		}

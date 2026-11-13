@@ -28,7 +28,7 @@ import (
 
 // httpReconnectInterval is how often background reconnect attempts are made
 // for HTTP MCP servers that were not reachable at startup.
-const httpReconnectInterval = 30 * time.Second
+var httpReconnectInterval = 30 * time.Second
 
 type ServerStatus string
 
