@@ -84,7 +84,12 @@ type PendingAsk struct {
 
 // Open opens or creates the SQLite database at dbPath.
 func Open(dbPath string, log zerolog.Logger) (*Store, error) {
-	db, err := driver.Open(dbPath, nil)
+	if isNewDatabase(dbPath) {
+		if err := initFreshDatabase(dbPath); err != nil {
+			return nil, err
+		}
+	}
+	db, err := driver.Open(sqliteDSN(dbPath), nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "open sqlite database")
 	}

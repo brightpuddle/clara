@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/brightpuddle/clara/internal/config"
 )
@@ -374,4 +375,24 @@ func writeTempFile(t *testing.T, content string) string {
 		t.Fatalf("write temp file: %v", err)
 	}
 	return path
+}
+
+func TestLoad_RetentionDefaultsToThirtyDays(t *testing.T) {
+	cfg, err := config.Load(writeTempFile(t, "log_level: info\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.RetentionDuration(); got != 30*24*time.Hour {
+		t.Errorf("RetentionDuration = %v, want 720h", got)
+	}
+}
+
+func TestLoad_RetentionOverride(t *testing.T) {
+	cfg, err := config.Load(writeTempFile(t, "retention_days: 7\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.RetentionDuration(); got != 7*24*time.Hour {
+		t.Errorf("RetentionDuration = %v, want 168h", got)
+	}
 }

@@ -222,7 +222,8 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 	logger := r.auditLogger
 	r.mu.RUnlock()
 
-	if logger != nil {
+	policy := auditPolicyFor(name)
+	if logger != nil && !policy.skip {
 		runID, _ := ctx.Value(RunIDContextKey).(string)
 		b := make([]byte, 4)
 		_, _ = rand.Read(b)
@@ -239,8 +240,8 @@ func (r *Registry) Call(ctx context.Context, name string, args map[string]any) (
 			ID:         callID,
 			RunID:      runID,
 			ToolName:   name,
-			InputJSON:  string(inputJSON),
-			OutputJSON: string(outputJSON),
+			InputJSON:  capAuditJSON(string(inputJSON), inputCap),
+			OutputJSON: capAuditJSON(string(outputJSON), policy.maxOutput),
 			Error:      errStr,
 			DurationMs: duration,
 			CalledAt:   start,

@@ -55,6 +55,10 @@ type Config struct {
 	// DataDir overrides the default runtime data directory.
 	DataDir string `yaml:"data_dir"`
 
+	// RetentionDays is how long tool-call audit rows, trigger runs and run
+	// history are kept before the daemon prunes them (default 30).
+	RetentionDays int `yaml:"retention_days"`
+
 	// BuilderRepoRoot is the path to the Clara source tree. The builder uses
 	// this to write a `replace github.com/brightpuddle/clara => <path>`
 	// directive into sandbox go.mod files so generated actuators can import
@@ -670,6 +674,14 @@ func (c *Config) MCPCommandSearchPathList() []string {
 		effective = append(effective, path)
 	}
 	return effective
+}
+
+// RetentionDuration returns how long audit and run history is kept.
+func (c *Config) RetentionDuration() time.Duration {
+	if c.RetentionDays <= 0 {
+		return 30 * 24 * time.Hour
+	}
+	return time.Duration(c.RetentionDays) * 24 * time.Hour
 }
 
 // LogLevelNormalized returns the log level string lowercased and trimmed.

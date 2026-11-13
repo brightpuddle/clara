@@ -102,6 +102,10 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 	}
 	defer db.Close()
 
+	go runRetention(
+		daemonCtx, db, cfg.RetentionDuration(), retentionStartDelay, retentionInterval, logger,
+	)
+
 	ilog, err := intentlog.New(cfg.IntentLogsDir())
 	if err != nil {
 		return errors.Wrap(err, "open intent log dir")

@@ -5,6 +5,11 @@
   "description": "Schema for Clara daemon configuration files (config.yaml and conf.d/*.yaml fragments).",
   "type": "object",
   "properties": {
+    "retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Days of tool-call audit rows, trigger runs and run history to keep (default 30)."
+    },
     "log_level": {
       "type": "string",
       "description": "Log verbosity level",
