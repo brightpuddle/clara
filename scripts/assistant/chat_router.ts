@@ -74,9 +74,13 @@ const DEFAULT_WEBEX_ROOM_ID =
 // Fallback to Copilot API gateway (gpt-6-luna / claude-sonnet) if CLARA_USE_CLOUD_LLM=true or MLX is unavailable.
 const LOCAL_MLX_URL = process.env.CLARA_LOCAL_LLM_URL || "http://127.0.0.1:8080/v1";
 const LOCAL_MLX_MODEL =
-  process.env.CLARA_LOCAL_LLM_MODEL || "mlx-community/Qwen2.5-Coder-7B-Instruct-4bit";
-const CLOUD_LLM_URL = process.env.CLARA_CLOUD_LLM_URL || "http://localhost:4141/v1";
-const CLOUD_LLM_MODEL = process.env.CLARA_CLOUD_CHAT_MODEL || "gpt-6-luna";
+  process.env.CLARA_LOCAL_LLM_MODEL || "tier-local";
+
+// Cloud LLM endpoint routed via Bifrost on :8080
+const CLOUD_LLM_URL = process.env.CLARA_CLOUD_LLM_URL || "http://127.0.0.1:8080/v1";
+const CLOUD_LLM_MODEL = process.env.CLARA_CLOUD_CHAT_MODEL || "copilot-local/gpt-6-luna";
+const LLM_API_KEY =
+  process.env.CLARA_LLM_API_KEY || "sk-bf-251735cb-c452-4ef8-89a1-f0e6b43f7d50";
 
 const PREFER_CLOUD = process.env.CLARA_USE_CLOUD_LLM === "true";
 const LLM_BASE_URL = PREFER_CLOUD ? CLOUD_LLM_URL : LOCAL_MLX_URL;
@@ -429,7 +433,10 @@ async function handleStatusCommand(): Promise<string> {
   try {
     const res = await fetch(`${LOCAL_MLX_URL}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LLM_API_KEY}`,
+      },
       body: JSON.stringify({
         model: LOCAL_MLX_MODEL,
         messages: [{ role: "user", content: "ping" }],
@@ -894,7 +901,7 @@ Your capabilities & operating principles:
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer dummy",
+          Authorization: `Bearer ${LLM_API_KEY}`,
         },
         body: JSON.stringify({
           model: LLM_MODEL,
@@ -911,7 +918,7 @@ Your capabilities & operating principles:
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: "Bearer dummy",
+            Authorization: `Bearer ${LLM_API_KEY}`,
           },
           body: JSON.stringify({
             model: CLOUD_LLM_MODEL,
@@ -934,7 +941,7 @@ Your capabilities & operating principles:
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: "Bearer dummy",
+            Authorization: `Bearer ${LLM_API_KEY}`,
           },
           body: JSON.stringify({
             model: CLOUD_LLM_MODEL,
