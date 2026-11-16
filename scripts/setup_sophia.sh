@@ -107,6 +107,8 @@ cat > "$TUNNEL_PLIST" <<EOF
         <string>TCPKeepAlive=yes</string>
         <string>-R</string>
         <string>14444:127.0.0.1:4444</string>
+        <string>-R</string>
+        <string>14374:127.0.0.1:49374</string>
         <string>${USER}@${EVE_HOST}</string>
     </array>
     <key>KeepAlive</key>
@@ -125,7 +127,7 @@ EOF
 launchctl unload "$TUNNEL_PLIST" 2>/dev/null || true
 launchctl load "$TUNNEL_PLIST"
 
-echo "✅ Outbound SSH reverse tunnel LaunchAgent started (sophia:4444 -> ${EVE_HOST}:14444)."
+echo "✅ Outbound SSH reverse tunnel LaunchAgent started (sophia:4444 -> ${EVE_HOST}:14444, sophia:49374 -> ${EVE_HOST}:14374)."
 echo "Registering 'laptop' MCP server on eve (${EVE_HOST})..."
 ssh "${USER}@${EVE_HOST}" "/usr/local/bin/clara mcp remove laptop >/dev/null 2>&1 || true; /usr/local/bin/clara mcp add laptop --url http://127.0.0.1:14444/mcp --description 'Sophia (MacBook Pro) VPN & Tmux Satellite'" || true
 
