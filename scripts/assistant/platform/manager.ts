@@ -131,7 +131,6 @@ export async function syncSessionChannels(
 
   // Discover all running tmux sessions and panes across eve and sophia
   // Sessions hosting opencode are excluded: they are mirrored via the opencode service.
-  // Multiple agy panes in one session surface as independent targets, e.g. "clara:0".
   const activeSessions: { host: "eve" | "sophia"; sessionName: string }[] = [];
 
   // Query eve sessions and panes directly via tmux CLI

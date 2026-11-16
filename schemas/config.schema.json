@@ -124,7 +124,7 @@
     },
     "agents": {
       "$ref": "#/definitions/agents",
-      "description": "Managed agent core (agy, opencode over ACP)"
+      "description": "Managed agent core (opencode)"
     },
     "server": {
       "$ref": "#/definitions/server",
@@ -199,7 +199,7 @@
     },
     "agents": {
       "type": "object",
-      "description": "Managed agent core (agy, opencode over ACP)",
+      "description": "Managed agent core (opencode)",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -212,7 +212,7 @@
         },
         "adapters": {
           "type": "object",
-          "description": "Per-agent settings keyed by agent name (agy, opencode). Defaults to both enabled.",
+          "description": "Per-agent settings keyed by agent name (opencode). Defaults to opencode enabled.",
           "additionalProperties": {
             "type": "object",
             "properties": {

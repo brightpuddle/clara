@@ -24,7 +24,7 @@ import (
 	"github.com/brightpuddle/clara/internal/supervisor"
 )
 
-const description = "Managed coding-agent sessions (agy, opencode) driven over ACP."
+const description = "Managed coding-agent sessions (opencode)."
 
 // BuildAdapters creates the ACP adapters named in cfg.
 func BuildAdapters(cfg config.AgentsConfig, log zerolog.Logger) map[string]adapter.Adapter {
@@ -38,8 +38,6 @@ func BuildAdapters(cfg config.AgentsConfig, log zerolog.Logger) map[string]adapt
 			continue
 		}
 		switch name {
-		case "agy":
-			out[name] = adapter.NewAgy(bin, log)
 		case "opencode":
 			out[name] = adapter.NewOpencode(bin, log)
 		default:
@@ -93,7 +91,7 @@ func Register(
 	}
 
 	add("agent.session.create", "Start a new managed agent session; returns its id.", s.create,
-		mcp.WithString("agent", req("Agent type: agy or opencode.")...),
+		mcp.WithString("agent", req("Agent type (opencode).")...),
 		mcp.WithString("dir", req("Working directory.")...),
 		mcp.WithString("model", str("Model override.")...),
 		mcp.WithString("kind", str("longlived (default) or task.")...),

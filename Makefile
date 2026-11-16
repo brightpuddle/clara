@@ -120,7 +120,7 @@ install-skills:
 		ln -s "$$(pwd)/$$skill" "$(HOME)/.agents/skills/$$name"; \
 	done
 
-## install-hooks: install assistant scripts and register Antigravity (agy) hooks
+## install-hooks: install assistant scripts
 install-hooks:
 	@./scripts/install_hooks.sh
 

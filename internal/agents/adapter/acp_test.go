@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -281,7 +282,6 @@ func TestSetModelUsesQuirk(t *testing.T) {
 		method string
 		key    string
 	}{
-		"agy":      {adapter.AgyQuirks, "session/set_model", "modelId"},
 		"opencode": {adapter.OpencodeQuirks, "session/set_config_option", "value"},
 	}
 	for name, c := range cases {
@@ -313,7 +313,16 @@ func TestSetModelUnsupported(t *testing.T) {
 }
 
 func TestQuotaMessageEmitsBlocked(t *testing.T) {
-	s, p := openSimple(t, adapter.AgyQuirks)
+	q := adapter.Quirks{
+		DetectBlocked: func(text string) *agents.Blocked {
+			if !strings.Contains(text, "quota reached") {
+				return nil
+			}
+			at := time.Now().Add(22*time.Hour + 38*time.Minute)
+			return &agents.Blocked{Kind: "quota", ResetsAt: &at}
+		},
+	}
+	s, p := openSimple(t, q)
 	if err := s.Prompt(context.Background(), adapter.Prompt{ID: "p1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -337,16 +346,6 @@ func TestQuotaMessageEmitsBlocked(t *testing.T) {
 	}
 	if d := time.Until(*blocked.ResetsAt); d < 22*time.Hour || d > 23*time.Hour {
 		t.Fatalf("resets in %v", d)
-	}
-}
-
-func TestDetectQuota(t *testing.T) {
-	if b := adapter.AgyQuirks.DetectBlocked("All good, here is your answer."); b != nil {
-		t.Fatalf("false positive %#v", b)
-	}
-	if b := adapter.AgyQuirks.DetectBlocked("Individual quota reached"); b == nil ||
-		b.ResetsAt != nil {
-		t.Fatalf("quota without reset time: %#v", b)
 	}
 }
 
@@ -389,55 +388,6 @@ func TestList(t *testing.T) {
 
 func fixture(name string) string { return filepath.Join("..", "testdata", "acp", name) }
 
-func TestFixtureToolCallsAgy(t *testing.T) {
-	dial, p := newPeer(t)
-	replay(t, p, fixture("agy_acp.jsonl"))
-	s, err := open(t, newACP(dial, adapter.AgyQuirks),
-		adapter.OpenSpec{Dir: "/tmp", Model: "gemini-3.8-flash-low"}, func() {})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Prompt(context.Background(), adapter.Prompt{ID: "p1", Text: "go"}); err != nil {
-		t.Fatal(err)
-	}
-	evs := eventsUntilTurnEnd(t, s)
-
-	var calls []adapter.ToolCall
-	var updates []adapter.ToolUpdate
-	var msgs []adapter.MessageDone
-	var title string
-	for _, ev := range evs {
-		switch e := ev.(type) {
-		case adapter.ToolCall:
-			calls = append(calls, e)
-		case adapter.ToolUpdate:
-			updates = append(updates, e)
-		case adapter.MessageDone:
-			msgs = append(msgs, e)
-		case adapter.TitleUpdate:
-			title = e.Title
-		}
-	}
-	if len(calls) == 0 || calls[0].Name != "write_file" || calls[0].Kind != "edit" ||
-		len(calls[0].Locations) != 1 {
-		t.Fatalf("tool calls %#v", calls)
-	}
-	if len(updates) == 0 || updates[0].Status != "completed" {
-		t.Fatalf("tool updates %#v", updates)
-	}
-	if len(msgs) == 0 || title != "Create and Read Hello File" {
-		t.Fatalf("msgs %#v title %q", msgs, title)
-	}
-	end := evs[len(evs)-1].(adapter.TurnEnded)
-	if end.StopReason != agents.StopEndTurn || end.Usage == nil || end.Usage.TotalTokens != 24251 {
-		t.Fatalf("turn end %#v", end)
-	}
-	// History flushed before the tool call that follows it, never after TurnEnded.
-	if _, ok := evs[len(evs)-2].(adapter.MessageDone); !ok {
-		t.Fatalf("final message should be flushed right before TurnEnded: %#v", evs[len(evs)-2])
-	}
-}
-
 func TestFixtureCancelThenContinue(t *testing.T) {
 	cases := map[string]struct {
 		file  string
@@ -445,7 +395,6 @@ func TestFixtureCancelThenContinue(t *testing.T) {
 		model string
 		skip  []int // set_model is not sent for opencode (config option instead)
 	}{
-		"agy":      {"acp_cancel_agy.jsonl", adapter.AgyQuirks, "gemini-3.8-flash-low", nil},
 		"opencode": {"acp_cancel_opencode.jsonl", adapter.OpencodeQuirks, "", []int{3}},
 	}
 	for name, c := range cases {

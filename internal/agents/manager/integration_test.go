@@ -18,15 +18,14 @@ import (
 )
 
 // Run with: go test -tags integration ./internal/agents/manager -run Real -v
-// Each agent needs a cheap model, set via CLARA_TEST_AGY_MODEL and
-// CLARA_TEST_OPENCODE_MODEL; an agent without one is skipped.
+// The agent needs a cheap model, set via CLARA_TEST_OPENCODE_MODEL; an agent
+// without one is skipped.
 func TestRealAgentTurn(t *testing.T) {
 	cases := []struct {
 		name  string
 		build func(string) adapter.Adapter
 		env   string
 	}{
-		{"agy", func(b string) adapter.Adapter { return adapter.NewAgy(b, zerolog.Nop()) }, "CLARA_TEST_AGY_MODEL"},
 		{"opencode", func(b string) adapter.Adapter { return adapter.NewOpencode(b, zerolog.Nop()) }, "CLARA_TEST_OPENCODE_MODEL"},
 	}
 	for _, c := range cases {

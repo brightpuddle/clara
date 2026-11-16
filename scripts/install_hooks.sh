@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/install_hooks.sh
 #
-# Dynamically installs and registers Antigravity (agy) hooks in ~/.gemini/config/hooks.json
-# and ensures assistant scripts are placed in ~/.config/clara/scripts/assistant/.
+# Installs assistant scripts into ~/.config/clara/scripts/assistant/ and cleans
+# up legacy Antigravity (agy) hooks from ~/.gemini/config/hooks.json.
 # Safe to run on both Eve (hub) and Sophia (satellite).
 
 set -euo pipefail
@@ -15,37 +15,15 @@ GEMINI_CONFIG_DIR="$HOME/.gemini/config"
 HOOKS_FILE="$GEMINI_CONFIG_DIR/hooks.json"
 
 mkdir -p "$DEST_SCRIPTS_DIR"
-mkdir -p "$GEMINI_CONFIG_DIR"
 
-# 1. Install assistant scripts
+# 1. Install assistant scripts and clean up removed agy hooks
 if [ -d "$REPO_DIR/scripts/assistant" ]; then
   cp -Rf "$REPO_DIR/scripts/assistant/"* "$DEST_SCRIPTS_DIR/"
+  rm -f "$DEST_SCRIPTS_DIR/agy_prompt_hook.ts" "$DEST_SCRIPTS_DIR/agy_stop_hook.ts"
   chmod +x "$DEST_SCRIPTS_DIR/"*.ts 2>/dev/null || true
-  echo "✅ Installed assistant hook scripts to $DEST_SCRIPTS_DIR"
+  echo "✅ Installed assistant scripts to $DEST_SCRIPTS_DIR"
 fi
 
-# 2. Register hooks dynamically in ~/.gemini/config/hooks.json
-BUN_BIN="$(which bun 2>/dev/null || echo "/opt/homebrew/bin/bun")"
-
-cat > "$HOOKS_FILE" <<EOF
-{
-  "clara-discord-turn-notify": {
-    "UserPromptSubmit": [
-      {
-        "type": "command",
-        "command": "${BUN_BIN} run ${DEST_SCRIPTS_DIR}/agy_prompt_hook.ts",
-        "timeout": 15
-      }
-    ],
-    "Stop": [
-      {
-        "type": "command",
-        "command": "${BUN_BIN} run ${DEST_SCRIPTS_DIR}/agy_stop_hook.ts",
-        "timeout": 15
-      }
-    ]
-  }
-}
-EOF
-
-echo "✅ Registered Antigravity (agy) hooks in $HOOKS_FILE"
+# 2. Remove legacy agy hooks registration so agy runs standalone
+rm -f "$HOOKS_FILE"
+echo "✅ Cleaned up legacy agy hooks ($HOOKS_FILE)"

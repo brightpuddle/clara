@@ -58,7 +58,7 @@ import { threadStore } from "./agent/threads.ts";
 // Set CLARA_AGENT_MANAGED=false to make `/spawn` create tmux sessions again.
 // Existing channels fall back individually by switching their topic to `tmux:...`.
 const AGENT_MANAGED_DEFAULT = process.env.CLARA_AGENT_MANAGED !== "false";
-const MANAGED_AGENTS = new Set(["agy", "opencode"]);
+const MANAGED_AGENTS = new Set(["opencode"]);
 
 const HOME = homedir();
 const STATE_DIR = join(HOME, ".local/share/clara");
@@ -136,11 +136,8 @@ stateDb.exec(`
     updated_at INTEGER NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS agy_prompt_mirror (
-    prompt_hash TEXT PRIMARY KEY,
-    session_name TEXT,
-    created_at INTEGER
-  );
+  DROP TABLE IF EXISTS agy_prompt_mirror;
+  DROP TABLE IF EXISTS agy_hook_dedup;
 
   CREATE TABLE IF NOT EXISTS pending_reactions (
     channel_id TEXT,
@@ -312,7 +309,7 @@ async function transcribeVoiceAttachment(attachmentUrl: string): Promise<string>
         "--no-timestamps",
         "-nt",
         "--prompt",
-        "Clara, opencode, agy, tmux, Webex, Discord, Obsidian, Cisco, CML, Mac mini, MyPerformance, timesheet",
+        "Clara, opencode, tmux, Webex, Discord, Obsidian, Cisco, CML, Mac mini, MyPerformance, timesheet",
       ],
       { stdout: "pipe", stderr: "pipe" }
     );
@@ -349,7 +346,7 @@ async function backfillChannelHistoryIfNew(
       .get(channelId);
     if (alreadyDone) return;
 
-    // 1. Capture the agent pane output directly (works for both OpenCode and Agy, local or remote)
+    // 1. Capture the agent pane output directly (works for OpenCode and tmux sessions, local or remote)
     const captureTool = host === "sophia" ? "laptop.tmux.pane.capture" : "tmux.pane.capture";
     try {
       const cap = (await callTool(captureTool as any, {
@@ -629,7 +626,7 @@ async function handleRecentCommand(platform: Platform): Promise<string> {
 async function handleAgentSessionsCommand(): Promise<string> {
   const open = (await listAgentSessions()).filter((x) => x.state !== "closed");
   if (open.length === 0) {
-    return "No managed agent sessions. Use `/spawn <name> [agy|opencode] [dir] [model=<id>]`.";
+    return "No managed agent sessions. Use `/spawn <name> [opencode] [dir] [model=<id>]`.";
   }
   const rows = open.map(
     (x: any) =>
@@ -642,7 +639,7 @@ async function handleSessionsCommand(): Promise<string> {
   try {
     const sessions = (await callTool("tmux.session.list" as any, {})) as any[];
     if (!Array.isArray(sessions) || sessions.length === 0) {
-      return "No active `tmux` sessions on `eve` (Mac mini). Use `spawn <name> [opencode|agy|zsh]` to start one.";
+      return "No active `tmux` sessions on `eve` (Mac mini). Use `spawn <name> [opencode|zsh]` to start one.";
     }
     let md = `### Active Tmux Sessions on \`eve\` (${sessions.length})\n`;
     for (const s of sessions) {
@@ -693,8 +690,8 @@ function getHelpMarkdown(): string {
     `- \`/platform [webex|discord]\` — View or hot-switch the primary agent development platform`,
     `- \`/recent\` — Latest activity per project (one line per project, newest first)`,
     `- \`/sessions\` (or \`sessions\`) — List active \`tmux\` sessions & recent pane output`,
-    `- \`/spawn <name> [agy|opencode] [dir] [model=<id>]\` — Start a managed ACP agent session on \`eve\` + its channel on **${currentPlat}**`,
-    `- \`/resume [agy|opencode] [session_id]\` — Discover or adopt an existing native agent conversation into ACP`,
+    `- \`/spawn <name> [opencode] [dir] [model=<id>]\` — Start a managed agent session on \`eve\` + its channel on **${currentPlat}**`,
+    `- \`/resume [opencode] [session_id]\` — Discover or adopt an existing native agent conversation`,
     `- \`/spawn <name> <shell cmd>\` / \`/spawn sophia:<name>\` — Legacy \`tmux\` session`,
     `- \`/send <name> <text>\` — Send keystrokes/prompt to a \`tmux\` session & view output`,
     `- \`/capture <name>\` — Capture last 35 lines of a \`tmux\` session`,
@@ -1323,20 +1320,6 @@ async function main() {
 
       const sessionInput = normalized;
 
-      // Record prompt hash in agy_prompt_mirror so agy_prompt_hook doesn't echo it back to the channel
-      try {
-        let h = 0;
-        for (let i = 0; i < sessionInput.length; i++) {
-          h = (Math.imul(31, h) + sessionInput.charCodeAt(i)) | 0;
-        }
-        const promptHash = `${sessionName}:${h.toString(36)}`;
-        stateDb
-          .query(
-            "INSERT OR REPLACE INTO agy_prompt_mirror (prompt_hash, session_name, created_at) VALUES (?, ?, ?)"
-          )
-          .run(promptHash, sessionName, Date.now());
-      } catch {}
-
       // Add instant visibility: reaction + typing indicator
       let trackingId = messageId;
       if (messageId && !messageId.startsWith("cli-")) {
@@ -1361,46 +1344,7 @@ async function main() {
         enter: true,
       });
 
-      // Check if this tmux session is running `agy` (which pushes its own clean Markdown
-      // response via the global Stop hook in ~/.gemini/config/hooks.json).
-      let isAgySession = false;
-      if (host === "eve") {
-        try {
-          const [sName, pIdx] = sessionName.split(":");
-          const target = `${sName}:`;
-          const proc = Bun.spawn(
-            [
-              "/opt/homebrew/bin/tmux",
-              "list-panes",
-              "-s",
-              "-t",
-              target,
-              "-F",
-              "#{pane_index}|#{pane_current_command}",
-            ],
-            { stdout: "pipe", stderr: "pipe" }
-          );
-          const out = (await new Response(proc.stdout).text()).trim();
-          for (const line of out.split("\n")) {
-            const [idx, cmd] = line.split("|");
-            if (pIdx !== undefined && idx !== pIdx) continue;
-            const c = (cmd || "").toLowerCase();
-            if (c.includes("agy") || c.includes("antigravity")) {
-              isAgySession = true;
-              break;
-            }
-          }
-        } catch {}
-      }
-
-      if (isAgySession) {
-        // agy's native Stop hook (`agy_stop_hook.ts`) will automatically post the clean
-        // Markdown response when the turn finishes — no noisy terminal scrape needed!
-        return;
-      }
-
-      // For non-agy sessions (opencode, zsh, python, etc.): poll the tmux pane until
-      // output stabilizes and extract only the newly added output.
+      // Poll the tmux pane until output stabilizes and extract only the newly added output.
       const beforeCap = (await callTool(captureTool as any, {
         name: sessionName,
         limit: 40,
@@ -1664,7 +1608,7 @@ async function main() {
       let rawName = parts[0];
       const second = (parts[1] || "").toLowerCase();
       const { host: spawnHost, name: spawnName } = splitHost(rawName);
-      // Managed ACP session on any agent host, agent agy|opencode, no custom shell command.
+      // Managed session on any agent host, agent opencode, no custom shell command.
       const wantsManaged =
         MANAGED_AGENTS.has(second) || (parts.length === 1 && AGENT_MANAGED_DEFAULT);
       if (wantsManaged) {

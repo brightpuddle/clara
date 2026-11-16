@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { planSync, repoFromDir, sessionLabel } from "./sync.ts";
 
-const s = (id: string, state = "idle", dir = "/a/proj") => ({ id, host: "eve", agent: "agy", dir, state });
+const s = (id: string, state = "idle", dir = "/a/proj") => ({ id, host: "eve", agent: "opencode", dir, state });
 const c = (session: string) => ({ id: "c" + session, name: "n", host: "eve", session });
 
 test("creates missing, removes closed and unknown, keeps live", () => {

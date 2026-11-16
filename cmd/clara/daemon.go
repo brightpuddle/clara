@@ -43,7 +43,7 @@ var startCmd = &cobra.Command{
 	Long: `Start the Clara daemon as a background macOS LaunchAgent via launchctl.
 
 To run the daemon in the foreground of this terminal instead, use 'clara serve'.
-To manage dev agent sessions (agy, opencode), see 'clara agent'.`,
+To manage dev agent sessions (opencode), see 'clara agent'.`,
 	RunE:         runStart,
 	SilenceUsage: true,
 }

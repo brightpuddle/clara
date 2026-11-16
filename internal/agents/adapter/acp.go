@@ -33,11 +33,6 @@ func NewACP(name string, dial Dialer, quirks Quirks, log zerolog.Logger) *ACP {
 	return &ACP{name: name, dial: dial, quirks: quirks, log: log}
 }
 
-// NewAgy returns the adapter for `agy acp`.
-func NewAgy(bin string, log zerolog.Logger) *ACP {
-	return NewACP("agy", ExecDialer(bin, []string{"acp"}, log), AgyQuirks, log)
-}
-
 // NewOpencode returns the adapter for `opencode acp`.
 func NewOpencode(bin string, log zerolog.Logger) *ACP {
 	return NewACP("opencode", ExecDialer(bin, []string{"acp"}, log), OpencodeQuirks, log)
@@ -518,8 +513,7 @@ func ExecDialer(bin string, args []string, log zerolog.Logger) Dialer {
 	}
 }
 
-// managedEnv hides tmux from a managed agent and marks it as managed, so
-// the legacy tmux-based agy chat hooks never mirror its turns a second time.
+// managedEnv hides tmux from a managed agent and marks it as managed.
 func managedEnv(env []string) []string {
 	out := make([]string, 0, len(env)+1)
 	for _, kv := range env {

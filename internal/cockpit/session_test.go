@@ -7,7 +7,7 @@ import (
 
 func TestResolveSession(t *testing.T) {
 	sessions := []SessionSummary{
-		{ID: "01M6MV02V85TRXGQFRH7S6R8YE", Host: "eve", Agent: "agy", Title: "Model Selection", State: "idle", Dir: "/Users/nathan/src/clara/main"},
+		{ID: "01M6MV02V85TRXGQFRH7S6R8YE", Host: "eve", Agent: "opencode", Title: "Model Selection", State: "idle", Dir: "/Users/nathan/src/clara/main"},
 		{ID: "01M6M19F2ZHS111EGPNX9546K4", Host: "eve", Agent: "opencode", Title: "Smoke Test", State: "closed", Dir: "/tmp/smoke"},
 		{ID: "01M6ABCXYZ1234567890ABCDEF", Host: "sophia", Agent: "opencode", Title: "Lucia Feature", State: "running", Dir: "/Users/nathan/src/lucia/main"},
 	}

@@ -26,9 +26,9 @@ func TestSortSessionsNeedsYouFirst(t *testing.T) {
 
 func TestFilterSessions(t *testing.T) {
 	sessions := []SessionSummary{
-		{ID: "01M6TEST1", Title: "Fix router bug", Dir: "/Users/nathan/src/clara", Agent: "agy", State: "idle"},
+		{ID: "01M6TEST1", Title: "Fix router bug", Dir: "/Users/nathan/src/clara", Agent: "opencode", State: "idle"},
 		{ID: "01M6TEST2", Title: "Lucia typechecker", Dir: "/Users/nathan/src/lucia", Agent: "opencode", State: "idle"},
-		{ID: "01M6TEST3", Title: "Mail triage", Dir: "/Users/nathan/.config/clara", Agent: "agy", State: "closed"},
+		{ID: "01M6TEST3", Title: "Mail triage", Dir: "/Users/nathan/.config/clara", Agent: "opencode", State: "closed"},
 	}
 
 	// Filter with includeClosed = false (default in cockpit top)
@@ -37,14 +37,14 @@ func TestFilterSessions(t *testing.T) {
 		t.Fatalf("expected 1 match for lucia, got %d", len(matches))
 	}
 
-	matchesAgy := FilterSessions(sessions, "agy", false)
-	if len(matchesAgy) != 1 {
-		t.Fatalf("expected 1 match for active agy, got %d", len(matchesAgy))
+	matchesClara := FilterSessions(sessions, "clara", false)
+	if len(matchesClara) != 1 {
+		t.Fatalf("expected 1 match for active clara, got %d", len(matchesClara))
 	}
 
-	matchesAgyAll := FilterSessions(sessions, "agy", true)
-	if len(matchesAgyAll) != 2 {
-		t.Fatalf("expected 2 matches for agy including closed, got %d", len(matchesAgyAll))
+	matchesClaraAll := FilterSessions(sessions, "clara", true)
+	if len(matchesClaraAll) != 2 {
+		t.Fatalf("expected 2 matches for clara including closed, got %d", len(matchesClaraAll))
 	}
 
 	// Empty query with closed hidden vs all

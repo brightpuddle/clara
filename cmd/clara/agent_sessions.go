@@ -49,14 +49,14 @@ var agentListCmd = &cobra.Command{
 
 var agentCmd = &cobra.Command{
 	Use:   "agent",
-	Short: "Manage dev agent sessions (agy, opencode)",
-	Long: `Manage dev agent sessions (agy, opencode) driven by the Clara daemon.
+	Short: "Manage dev agent sessions (opencode)",
+	Long: `Manage dev agent sessions (opencode) driven by the Clara daemon.
 
 To control the daemon itself, see 'clara start', 'clara stop' and 'clara status'.`,
 }
 
 var agentNewCmd = &cobra.Command{
-	Use:   "new <agy|opencode> [prompt]",
+	Use:   "new <opencode> [prompt]",
 	Short: "Start a managed agent session",
 	Long: `Start a managed agent session through the running daemon.
 
@@ -102,7 +102,7 @@ var agentClearCmd = &cobra.Command{
 }
 
 var agentResumeCmd = &cobra.Command{
-	Use:   "resume <agy|opencode> [native-id]",
+	Use:   "resume <opencode> [native-id]",
 	Short: "Discover or adopt an existing native agent conversation",
 	Args:  cobra.RangeArgs(1, 2),
 	RunE:  runAgentSessionResume,

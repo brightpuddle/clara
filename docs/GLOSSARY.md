@@ -14,8 +14,7 @@ connect to.
 **Sophia** — The satellite host (laptop). Reaches Eve over a reverse SSH tunnel
 and forwards its events up. Never client-facing.
 
-**Agent** — A coding agent program Clara drives. Currently `opencode` and
-`agy` (Antigravity CLI).
+**Agent** — A coding agent program Clara drives. Currently `opencode`.
 
 **Adapter** — Clara code that normalizes one Agent into Sessions and Events
 (`spawn`, `send`, `interrupt`, `status`, `events`).
@@ -53,7 +52,7 @@ cursors, and a revocable credential.
 attach`. Optional and secondary to Events.
 
 **ACP** — Agent Client Protocol: JSON-RPC over stdio between a client (Clara)
-and an agent process (`agy acp`, `opencode acp`). The universal adapter
+and an agent process (`opencode acp`). The universal adapter
 protocol (ADR 0005).
 
 **Turn** — One agent run in response to a prompt, from `turn.started` to

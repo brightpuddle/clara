@@ -38,7 +38,7 @@ func apply(t *testing.T, p *projection.Projection, evs ...agents.Event) {
 
 func created(t *testing.T, s string) agents.Event {
 	return mk(t, s, agents.TypeSessionCreated, agents.SessionCreated{
-		Agent: "agy", Dir: "/work", Title: "t", Kind: agents.KindLongLived,
+		Agent: "opencode", Dir: "/work", Title: "t", Kind: agents.KindLongLived,
 		Origin: agents.OriginManaged,
 	})
 }
@@ -83,7 +83,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if !ok {
 		t.Fatal("missing session")
 	}
-	if s.State != agents.StateRunning || s.Title != "renamed" || s.Agent != "agy" ||
+	if s.State != agents.StateRunning || s.Title != "renamed" || s.Agent != "opencode" ||
 		s.ActiveTurn != "t1" {
 		t.Fatalf("%+v", s)
 	}

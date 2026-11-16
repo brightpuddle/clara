@@ -262,8 +262,7 @@ func (t *Tmux) findAgentTarget(name string) string {
 			parts := strings.SplitN(line, ":", 3)
 			if len(parts) == 3 {
 				cmd := strings.ToLower(parts[2])
-				if strings.Contains(cmd, "opencode") || strings.Contains(cmd, "agy") ||
-					strings.Contains(cmd, "antigravity") {
+				if strings.Contains(cmd, "opencode") {
 					return parts[0] // e.g. %3
 				}
 			}

@@ -108,8 +108,8 @@ test("failed and blocked sessions and questions are announced", async () => {
 test("session.created triggers ensureChannel on chat", async () => {
   const { chat, ensured } = fakeChat();
   const r = new Relay(memStore(), chat);
-  await r.handle(ev("session.created", { agent: "agy", dir: "/path" }, "S123"));
-  expect(ensured).toEqual([{ host: "eve", session: "S123", payload: { agent: "agy", dir: "/path" } }]);
+  await r.handle(ev("session.created", { agent: "opencode", dir: "/path" }, "S123"));
+  expect(ensured).toEqual([{ host: "eve", session: "S123", payload: { agent: "opencode", dir: "/path" } }]);
 });
 
 test("TUI prompts are mirrored, chat prompts are not", async () => {

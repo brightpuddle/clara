@@ -76,7 +76,7 @@ export function formatRecent(
   const now = opts.now ?? Date.now();
   const groups = groupByProject(sessions, opts.projectOf);
   if (groups.length === 0) {
-    return "No open agent sessions. Use `/spawn <name> [agy|opencode] [dir] [model=<id>]`.";
+    return "No open agent sessions. Use `/spawn <name> [opencode] [dir] [model=<id>]`.";
   }
   const shown = groups.slice(0, opts.limit ?? 8);
   const rows = shown.map((g) => {

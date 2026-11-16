@@ -78,7 +78,7 @@ External Signals / Sensors
 clara serve                         # Start the daemon in foreground
 clara status                        # Report trigger counts, tool counts, and daemon status
 clara {start,stop,status,logs}      # macOS LaunchAgent management (daemon)
-clara agent {list,new,send,tail,cancel}  # Dev agent sessions (agy, opencode)
+clara agent {list,new,send,tail,cancel}  # Dev agent sessions (opencode)
 
 # Triggers
 clara trigger list                  # List all loaded triggers
@@ -262,7 +262,7 @@ log.Info().Str("trigger_id", id).Str("event_type", ev.Type).Msg("trigger fired")
 - **`#qa`:** Cisco engineering Q&A, bug scrubs, meeting action items, timesheets, and performance reviews.
 - **`#home`:** Personal notes, reminders, family calendar, and home automation.
 - **`#notify`:** Proactive notifications, mail/triage cards, and health alerts.
-- **`#eve-<name>` / `#sophia-<name>`:** Dedicated channels bound to active `tmux` sessions. Typing in these channels sends keystrokes directly to the terminal; `agy` sessions post turn completion responses via `~/.gemini/config/hooks.json` (`Stop` hook).
+- **`#eve-<name>` / `#sophia-<name>`:** Dedicated channels bound to active `tmux` sessions. Typing in these channels sends keystrokes directly to the terminal.
 
 
 ---
@@ -270,8 +270,7 @@ log.Info().Str("trigger_id", id).Str("event_type", ev.Type).Msg("trigger fired")
 ## Agent Management Core (in development)
 
 Clara is gaining a first-class agent management core (`internal/agents`, builtin
-`agent` tools, `agent.*` CloudEvents) that drives agents such as `agy` and
-`opencode` over ACP, replacing tmux scraping. It is the foundation for a future
+`agent` tools, `agent.*` CloudEvents) that drives agents such as `opencode` over ACP or its peer service, replacing tmux scraping. It is the foundation for a future
 iPhone/Mac client. Read these before touching it:
 
 - Roadmap (read first; ordering of all tracks): `docs/ROADMAP.md`

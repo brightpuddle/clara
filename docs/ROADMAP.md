@@ -2,7 +2,7 @@
 
 Master index of where Clara is going and in what order. Detailed task lists live in
 `docs/superpowers/plans/`; this file is the map. Update it whenever direction changes
-(and add an ADR for any reversal). Last revised: 2026-11-07.
+(and add an ADR for any reversal). Last revised: 2026-11-16.
 
 ## Principles
 
@@ -47,9 +47,7 @@ A Stabilise agent core ─► B Terminal cockpit ─► C Daily priorities ─�
 
 ### Track A: Stabilise the agent core (now, small)
 Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
-- [~] A1 Pin agy model: config `agents.adapters.agy.model` is set; pending daemon
-      restart and a check that new agy sessions start on it. `agy acp` ignores
-      `~/.gemini/antigravity-cli/settings.json`, so the Clara config is the source.
+- [x] A1 Dropped with B4 (agy support removed).
 - [ ] A2 Router and daemon restart mid-turn: no lost or duplicated messages.
 - [ ] A3 Webex smoke test for managed sessions.
 - [ ] A4 Opt-in integration tests (tag `integration`) with cheap models.
@@ -75,7 +73,7 @@ build a conversation TUI. Clara is a peer client of the opencode service.
       form, reply, prompt, model switch and close verified end to end.
 - [x] B3 Session picker: `clara agent list --json`, `editors/nvim/clara_agents.lua`
       (picker `<leader>aa`, lualine component, copy to `~/.config/nvim/lua`).
-- [ ] B4 Freeze and then remove agy paths (ACP managed, hooks) once unused.
+- [x] B4 Freeze and then remove agy paths (ACP managed, hooks) once unused.
 - Daily-driver check: for a week all sessions run on opencode and the remote surfaces
   stay in sync without tmux scraping.
 
@@ -124,7 +122,7 @@ ADRs) so agents are guided correctly.
 1. B0 spike items, then B1 adapter, then B2 mirror check.
 2. B3 picker, A1/A5, and C1 mail triage go-live (small, high daily value).
 3. A2-A4 and D as dogfooding surfaces issues.
-4. B4 agy removal, C2-C5, then E.
+4. C2-C5, then E.
 
 ## Decisions pending
 

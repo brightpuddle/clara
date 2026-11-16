@@ -136,7 +136,7 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 		logger.Error().Err(err).Msg("failed to register notify builtin")
 	}
 
-	// Register the agent core (managed agy/opencode sessions) when enabled.
+	// Register the agent core (managed opencode sessions) when enabled.
 	var agentMgr *agentmanager.Manager
 	if cfg.Agents.Enabled {
 		agentMgr, err = agentmanager.New(
