@@ -99,7 +99,7 @@ The opencode web UI is the mobile client. Verified on Eve (service plus `opencod
 it organises sessions and projects the way we want. Clara does not build a PWA, a native
 app or the `/v1` client API for now. Wait for the official opencode iOS app rather than
 building one.
-- [~] E1 Install Tailscale on Eve (key expiry off, no sleep, unattended recovery) and
+- [x] E1 Install Tailscale on Eve (key expiry off, no sleep, unattended recovery) and
       expose the service with `tailscale serve`. Pair the phone and add to Home Screen.
 - [x] E2 Notifications: Discord/Webex attention pings carry deep links into the web UI.
 - [x] E3 Sophia sessions: its service is only reachable over the SSH tunnel (Tailscale
