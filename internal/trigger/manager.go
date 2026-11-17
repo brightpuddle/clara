@@ -2,8 +2,10 @@ package trigger
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 
+	"github.com/brightpuddle/clara/internal/builtin/pathutil"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
 )
@@ -28,6 +31,7 @@ type Manager struct {
 	cron           *cron.Cron
 	cronEntries    map[string]cron.EntryID
 	workers        map[string]context.CancelFunc
+	pathWatchers   map[string]context.CancelFunc
 	debounceTimers map[string]*time.Timer
 	lastTriggerRun map[string]time.Time
 	ctx            context.Context
@@ -61,6 +65,7 @@ func NewManager(runner *Runner, eventBus *supervisor.EventBus, st *store.Store) 
 		),
 		cronEntries:    make(map[string]cron.EntryID),
 		workers:        make(map[string]context.CancelFunc),
+		pathWatchers:   make(map[string]context.CancelFunc),
 		debounceTimers: make(map[string]*time.Timer),
 		lastTriggerRun: make(map[string]time.Time),
 		primaryDirs:    make(map[string]bool),
@@ -85,6 +90,12 @@ func (m *Manager) Register(def Definition) error {
 	if cancel, ok := m.workers[def.ID]; ok {
 		cancel()
 		delete(m.workers, def.ID)
+	}
+
+	// Stop previous path watcher if replacing
+	if cancel, ok := m.pathWatchers[def.ID]; ok {
+		cancel()
+		delete(m.pathWatchers, def.ID)
 	}
 
 	// Stop previous debounce timer if replacing
@@ -117,6 +128,10 @@ func (m *Manager) Unregister(id string) {
 	if cancel, ok := m.workers[id]; ok {
 		cancel()
 		delete(m.workers, id)
+	}
+	if cancel, ok := m.pathWatchers[id]; ok {
+		cancel()
+		delete(m.pathWatchers, id)
 	}
 	if timer, ok := m.debounceTimers[id]; ok {
 		timer.Stop()
@@ -192,6 +207,10 @@ func (m *Manager) DeleteTrigger(id string) error {
 	if cancel, ok := m.workers[id]; ok {
 		cancel()
 		delete(m.workers, id)
+	}
+	if cancel, ok := m.pathWatchers[id]; ok {
+		cancel()
+		delete(m.pathWatchers, id)
 	}
 	if timer, ok := m.debounceTimers[id]; ok {
 		timer.Stop()
@@ -710,6 +729,10 @@ func (m *Manager) Stop() {
 		cancel()
 		delete(m.workers, id)
 	}
+	for id, cancel := range m.pathWatchers {
+		cancel()
+		delete(m.pathWatchers, id)
+	}
 	m.cron.Stop()
 	m.mu.Unlock()
 }
@@ -763,14 +786,32 @@ func (m *Manager) Test(id string, eventData any) (bool, error) {
 		return false, errors.Newf("trigger %q not found", id)
 	}
 
-	if def.Type != TypeEvent || def.Match == nil {
+	if def.Type != TypeEvent {
 		return true, nil
+	}
+
+	if eventMap, ok := eventData.(map[string]any); ok {
+		return matchDefinition(def, eventMap)
+	}
+
+	if def.Match == nil {
+		return len(def.Watch) == 0, nil
 	}
 
 	return def.Match.Match(eventData)
 }
 
 func (m *Manager) activateTriggerLocked(def Definition) {
+	if len(def.Watch) > 0 && m.eventBus != nil {
+		if cancel, ok := m.pathWatchers[def.ID]; ok {
+			cancel()
+			delete(m.pathWatchers, def.ID)
+		}
+		watchCtx, watchCancel := context.WithCancel(m.ctx)
+		m.pathWatchers[def.ID] = watchCancel
+		m.startPathWatchers(watchCtx, def)
+	}
+
 	switch def.Type {
 	case TypeSchedule:
 		if def.Schedule != "" {
@@ -799,6 +840,15 @@ func (m *Manager) activateTriggerLocked(def Definition) {
 }
 
 func (m *Manager) handleCloudEvent(ce supervisor.CloudEvent) {
+	eventMap := map[string]any{
+		"id":           ce.ID,
+		"source":       ce.Source,
+		"type":         ce.Type,
+		"time":         ce.Time.Format(time.RFC3339),
+		"content_type": ce.ContentType,
+		"data":         ce.Data,
+	}
+
 	m.mu.RLock()
 	var matching []Definition
 	for _, def := range m.triggers {
@@ -806,22 +856,7 @@ func (m *Manager) handleCloudEvent(ce supervisor.CloudEvent) {
 			continue
 		}
 
-		// CloudEvent map representation
-		eventMap := map[string]any{
-			"id":           ce.ID,
-			"source":       ce.Source,
-			"type":         ce.Type,
-			"time":         ce.Time.Format(time.RFC3339),
-			"content_type": ce.ContentType,
-			"data":         ce.Data,
-		}
-
-		if def.Match == nil {
-			matching = append(matching, def)
-			continue
-		}
-
-		matched, err := def.Match.Match(eventMap)
+		matched, err := matchDefinition(def, eventMap)
 		if err != nil {
 			log.Warn().Err(err).Str("trigger", def.ID).Msg("error matching event rule")
 			continue
@@ -834,15 +869,6 @@ func (m *Manager) handleCloudEvent(ce supervisor.CloudEvent) {
 
 	if len(matching) == 0 {
 		return
-	}
-
-	eventMap := map[string]any{
-		"id":           ce.ID,
-		"source":       ce.Source,
-		"type":         ce.Type,
-		"time":         ce.Time.Format(time.RFC3339),
-		"content_type": ce.ContentType,
-		"data":         ce.Data,
 	}
 
 	m.mu.Lock()
@@ -981,4 +1007,262 @@ func (m *Manager) recordRun(ctx context.Context, r *RunRecord) {
 	if err := m.store.RecordTriggerRun(ctx, record); err != nil {
 		log.Error().Err(err).Str("run_id", r.ID).Msg("failed to persist trigger run audit")
 	}
+}
+
+func matchDefinition(def Definition, eventMap map[string]any) (bool, error) {
+	data, _ := eventMap["data"].(map[string]any)
+	if tid, ok := data["trigger_id"].(string); ok && tid != "" && tid != def.ID {
+		return false, nil
+	}
+
+	if def.Match == nil {
+		if len(def.Watch) > 0 {
+			source, _ := eventMap["source"].(string)
+			evType, _ := eventMap["type"].(string)
+			if source != "fs" || evType != "on_change" {
+				return false, nil
+			}
+			if tid, _ := data["trigger_id"].(string); tid == def.ID {
+				return true, nil
+			}
+			return matchesWatchList(def.Watch, data), nil
+		}
+		return true, nil
+	}
+
+	return def.Match.Match(eventMap)
+}
+
+func matchesWatchList(watch []string, data map[string]any) bool {
+	if data == nil {
+		return false
+	}
+	evPath, _ := data["path"].(string)
+	evRoot, _ := data["root"].(string)
+	evRawRoot, _ := data["raw_root"].(string)
+
+	for _, raw := range watch {
+		if evRawRoot != "" && evRawRoot == raw {
+			return true
+		}
+		resolved := pathutil.Resolve(raw)
+		absWatch, err := filepath.Abs(resolved)
+		if err != nil {
+			absWatch = filepath.Clean(resolved)
+		}
+		if evRoot != "" && (filepath.Clean(evRoot) == absWatch || isSameFile(evRoot, absWatch)) {
+			return true
+		}
+		if evPath != "" {
+			cleanEv := filepath.Clean(evPath)
+			if cleanEv == absWatch || isSameFile(cleanEv, absWatch) ||
+				strings.HasPrefix(cleanEv, absWatch+string(filepath.Separator)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (m *Manager) startPathWatchers(ctx context.Context, def Definition) {
+	for _, rawPath := range def.Watch {
+		if strings.TrimSpace(rawPath) == "" {
+			continue
+		}
+		m.watchTargetPath(ctx, def.ID, rawPath)
+	}
+}
+
+func (m *Manager) watchTargetPath(ctx context.Context, triggerID, rawPath string) {
+	resolved := pathutil.Resolve(rawPath)
+	absTarget, err := filepath.Abs(resolved)
+	if err != nil {
+		absTarget = filepath.Clean(resolved)
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Warn().Err(err).Str("trigger", triggerID).Str("path", rawPath).Msg("failed to create trigger path watcher")
+		return
+	}
+
+	info, statErr := os.Stat(absTarget)
+	isDir := statErr == nil && info.IsDir()
+
+	if isDir {
+		if err := addRecursiveWatch(watcher, absTarget); err != nil {
+			log.Warn().Err(err).Str("trigger", triggerID).Str("path", absTarget).Msg("failed to watch trigger directory")
+			_ = watcher.Close()
+			return
+		}
+		go m.watchDirectory(ctx, watcher, triggerID, rawPath, absTarget)
+		return
+	}
+
+	parentDir := filepath.Dir(absTarget)
+	if err := watcher.Add(parentDir); err != nil {
+		log.Warn().Err(err).Str("trigger", triggerID).Str("path", parentDir).Msg("failed to watch trigger parent directory")
+		_ = watcher.Close()
+		return
+	}
+
+	var resolvedTarget string
+	if symTarget, err := filepath.EvalSymlinks(absTarget); err == nil && symTarget != absTarget {
+		resolvedTarget = filepath.Clean(symTarget)
+		if symDir := filepath.Dir(resolvedTarget); symDir != parentDir {
+			_ = watcher.Add(symDir)
+		}
+	}
+
+	go m.watchSingleFile(ctx, watcher, triggerID, rawPath, absTarget, resolvedTarget)
+}
+
+func (m *Manager) watchDirectory(
+	ctx context.Context,
+	watcher *fsnotify.Watcher,
+	triggerID, rawRoot, absRoot string,
+) {
+	defer watcher.Close()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			if err != nil {
+				log.Warn().Err(err).Str("trigger", triggerID).Str("root", absRoot).Msg("trigger path watcher error")
+			}
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Name == "" || shouldIgnoreWatchEvent(event.Name) {
+				continue
+			}
+
+			if event.Has(fsnotify.Create) {
+				if info, statErr := os.Stat(event.Name); statErr == nil && info.IsDir() {
+					_ = addRecursiveWatch(watcher, event.Name)
+				}
+			}
+
+			changeType := classifyWatchEvent(event)
+			if changeType == "" {
+				continue
+			}
+
+			m.eventBus.Publish(supervisor.Event{
+				Server: "fs",
+				Method: "on_change",
+				Params: map[string]any{
+					"path":       filepath.Clean(event.Name),
+					"root":       absRoot,
+					"raw_root":   rawRoot,
+					"event":      changeType,
+					"trigger_id": triggerID,
+					"timestamp":  time.Now().UTC().Format(time.RFC3339),
+				},
+			})
+		}
+	}
+}
+
+func (m *Manager) watchSingleFile(
+	ctx context.Context,
+	watcher *fsnotify.Watcher,
+	triggerID, rawRoot, absTarget, resolvedTarget string,
+) {
+	defer watcher.Close()
+
+	cleanTarget := filepath.Clean(absTarget)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return
+			}
+			if err != nil {
+				log.Warn().Err(err).Str("trigger", triggerID).Str("path", cleanTarget).Msg("trigger file watcher error")
+			}
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return
+			}
+			if event.Name == "" {
+				continue
+			}
+			cleanEv := filepath.Clean(event.Name)
+			matched := cleanEv == cleanTarget ||
+				(resolvedTarget != "" && cleanEv == resolvedTarget) ||
+				isSameFile(cleanEv, cleanTarget)
+			if !matched {
+				continue
+			}
+
+			changeType := classifyWatchEvent(event)
+			if changeType == "" {
+				continue
+			}
+
+			m.eventBus.Publish(supervisor.Event{
+				Server: "fs",
+				Method: "on_change",
+				Params: map[string]any{
+					"path":       cleanTarget,
+					"root":       cleanTarget,
+					"raw_root":   rawRoot,
+					"event":      changeType,
+					"trigger_id": triggerID,
+					"timestamp":  time.Now().UTC().Format(time.RFC3339),
+				},
+			})
+		}
+	}
+}
+
+func addRecursiveWatch(watcher *fsnotify.Watcher, root string) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		base := d.Name()
+		if base == ".git" || base == "node_modules" {
+			return filepath.SkipDir
+		}
+		return watcher.Add(path)
+	})
+}
+
+func classifyWatchEvent(event fsnotify.Event) string {
+	switch {
+	case event.Has(fsnotify.Create):
+		return "create"
+	case event.Has(fsnotify.Write):
+		return "write"
+	case event.Has(fsnotify.Rename):
+		return "rename"
+	case event.Has(fsnotify.Remove):
+		return "remove"
+	default:
+		return ""
+	}
+}
+
+func shouldIgnoreWatchEvent(path string) bool {
+	base := filepath.Base(path)
+	if base == ".DS_Store" || base == ".git" || base == "node_modules" {
+		return true
+	}
+	return strings.HasSuffix(base, "~") ||
+		strings.HasSuffix(base, ".swp") ||
+		strings.HasSuffix(base, ".swx") ||
+		strings.HasSuffix(base, ".tmp")
 }

@@ -53,6 +53,7 @@ type Definition struct {
 	Description string        `json:"description,omitempty" yaml:"description,omitempty"`
 	Enabled     bool          `json:"enabled"               yaml:"enabled"`
 	Type        Type          `json:"type"                  yaml:"type"`
+	Watch       []string      `json:"watch,omitempty"       yaml:"watch,omitempty"`
 	Match       *Rule         `json:"match,omitempty"       yaml:"match,omitempty"`
 	Schedule    string        `json:"schedule,omitempty"    yaml:"schedule,omitempty"` // Cron expr or @every 1m
 	Debounce    time.Duration `json:"debounce,omitempty"    yaml:"debounce,omitempty"`

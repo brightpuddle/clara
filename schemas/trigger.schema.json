@@ -50,6 +50,14 @@
           "description": "Trigger execution mechanism",
           "enum": ["event", "schedule", "worker", "manual"]
         },
+        "watch": {
+          "type": "array",
+          "description": "File or directory paths to watch with fsnotify; emits fs/on_change events when modified",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
         "match": {
           "$ref": "#/definitions/rule",
           "description": "Event matching rule AST (used when type is 'event')"

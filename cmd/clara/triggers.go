@@ -59,6 +59,8 @@ var triggerListCmd = &cobra.Command{
 					ruleDesc = fmt.Sprintf("%s %s %v", t.Match.Field, t.Match.Op, t.Match.Value)
 				} else if t.Match != nil {
 					ruleDesc = "compound rule"
+				} else if len(t.Watch) > 0 {
+					ruleDesc = fmt.Sprintf("watch:%d path(s)", len(t.Watch))
 				} else {
 					ruleDesc = "match all"
 				}

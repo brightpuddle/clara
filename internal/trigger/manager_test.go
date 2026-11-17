@@ -580,3 +580,175 @@ action:
 		t.Fatalf("expected trigger to be unregistered after symlink removal")
 	}
 }
+
+func TestManager_WatchSingleFile_AtomicSave(t *testing.T) {
+	st, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatalf("failed to open memory store: %v", err)
+	}
+	defer st.Close()
+
+	bus := supervisor.NewEventBus()
+	runner := trigger.NewRunner(5 * time.Second)
+	mgr := trigger.NewManager(runner, bus, st)
+
+	dir := t.TempDir()
+	targetFile := filepath.Join(dir, "theme.yaml")
+	otherFile := filepath.Join(dir, "other.yaml")
+	if err := os.WriteFile(targetFile, []byte("mode: dark\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(otherFile, []byte("mode: light\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mgr.Register(trigger.Definition{
+		ID:       "watch-file-trigger",
+		Name:     "Watch File Trigger",
+		Enabled:  true,
+		Type:     trigger.TypeEvent,
+		Debounce: 50 * time.Millisecond,
+		Watch:    []string{targetFile},
+		Match: &trigger.Rule{
+			And: []*trigger.Rule{
+				{Field: "source", Op: trigger.OpEquals, Value: "fs"},
+				{Field: "type", Op: trigger.OpEquals, Value: "on_change"},
+			},
+		},
+		Action: trigger.Action{
+			Exec: "/usr/bin/true",
+		},
+	}); err != nil {
+		t.Fatalf("failed to register watch trigger: %v", err)
+	}
+
+	if err := mgr.Register(trigger.Definition{
+		ID:       "other-watch-trigger",
+		Name:     "Other Watch Trigger",
+		Enabled:  true,
+		Type:     trigger.TypeEvent,
+		Debounce: 50 * time.Millisecond,
+		Watch:    []string{otherFile},
+		Action: trigger.Action{
+			Exec: "/usr/bin/true",
+		},
+	}); err != nil {
+		t.Fatalf("failed to register other trigger: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := mgr.Start(ctx); err != nil {
+		t.Fatalf("failed to start manager: %v", err)
+	}
+	defer mgr.Stop()
+
+	atomicSave := func(content string) {
+		tmp := filepath.Join(dir, "theme.yaml.tmp")
+		if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+			t.Fatalf("write temp file: %v", err)
+		}
+		if err := os.Rename(tmp, targetFile); err != nil {
+			t.Fatalf("rename temp file: %v", err)
+		}
+	}
+
+	waitRuns := func(triggerID string, want int) {
+		t.Helper()
+		for i := 0; i < 60; i++ {
+			runs, err := st.ListTriggerRuns(context.Background(), 10, triggerID)
+			if err == nil && len(runs) >= want {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		runs, _ := st.ListTriggerRuns(context.Background(), 10, triggerID)
+		t.Fatalf("expected at least %d run(s) for %s, got %d", want, triggerID, len(runs))
+	}
+
+	// First atomic save (Neovim-style temp write + rename)
+	atomicSave("mode: light\n")
+	waitRuns("watch-file-trigger", 1)
+
+	// Verify unrelated watcher did not fire
+	otherRuns, err := st.ListTriggerRuns(context.Background(), 10, "other-watch-trigger")
+	if err != nil {
+		t.Fatalf("list other runs: %v", err)
+	}
+	if len(otherRuns) != 0 {
+		t.Fatalf("expected 0 runs for other-watch-trigger, got %d", len(otherRuns))
+	}
+
+	// Second atomic save confirms watch remains attached across renames
+	atomicSave("mode: dark\n")
+	waitRuns("watch-file-trigger", 2)
+}
+
+func TestManager_WatchDirectory(t *testing.T) {
+	st, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatalf("failed to open memory store: %v", err)
+	}
+	defer st.Close()
+
+	bus := supervisor.NewEventBus()
+	runner := trigger.NewRunner(5 * time.Second)
+	mgr := trigger.NewManager(runner, bus, st)
+
+	watchDir := t.TempDir()
+	subDir := filepath.Join(watchDir, "theme")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mgr.Register(trigger.Definition{
+		ID:       "watch-dir-trigger",
+		Name:     "Watch Dir Trigger",
+		Enabled:  true,
+		Type:     trigger.TypeEvent,
+		Debounce: 50 * time.Millisecond,
+		Watch:    []string{watchDir},
+		Action: trigger.Action{
+			Exec: "/usr/bin/true",
+		},
+	}); err != nil {
+		t.Fatalf("failed to register dir watch trigger: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := mgr.Start(ctx); err != nil {
+		t.Fatalf("failed to start manager: %v", err)
+	}
+	defer mgr.Stop()
+
+	waitRuns := func(want int) {
+		t.Helper()
+		for i := 0; i < 60; i++ {
+			runs, err := st.ListTriggerRuns(context.Background(), 10, "watch-dir-trigger")
+			if err == nil && len(runs) >= want {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		runs, _ := st.ListTriggerRuns(context.Background(), 10, "watch-dir-trigger")
+		t.Fatalf("expected at least %d run(s), got %d", want, len(runs))
+	}
+
+	// 1. Modify file in existing subdirectory
+	if err := os.WriteFile(filepath.Join(subDir, "main.ts"), []byte("console.log(1);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitRuns(1)
+
+	// 2. Create a new subdirectory and write inside it
+	newSubDir := filepath.Join(watchDir, "shared")
+	if err := os.MkdirAll(newSubDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := os.WriteFile(filepath.Join(newSubDir, "helper.ts"), []byte("export const x = 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitRuns(2)
+}
