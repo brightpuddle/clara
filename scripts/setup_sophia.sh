@@ -114,10 +114,7 @@ cat > "$TUNNEL_PLIST" <<EOF
         <string>${USER}@${EVE_HOST}</string>
     </array>
     <key>KeepAlive</key>
-    <dict>
-        <key>NetworkState</key>
-        <true/>
-    </dict>
+    <true/>
     <key>RunAtLoad</key>
     <true/>
     <key>ThrottleInterval</key>
