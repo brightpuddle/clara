@@ -1,6 +1,6 @@
 // Package config handles loading and parsing Clara's configuration file.
 // Config is read from ~/.config/clara/config.yaml by default.
-// All string values support ${ENV_VAR} expansion via os.ExpandEnv.
+// All string values support ${ENV_VAR} and ${keychain:<service>} expansion; see secrets.go.
 package config
 
 import (
@@ -277,7 +277,11 @@ func (s *MCPServerConfig) ResolvedEnv() map[string]string {
 	}
 	out := make(map[string]string, len(s.Env))
 	for k, v := range s.Env {
-		out[k] = os.ExpandEnv(v)
+		expanded, err := expandString(v)
+		if err != nil {
+			expanded = ""
+		}
+		out[k] = expanded
 	}
 	return out
 }
@@ -308,21 +312,31 @@ type DiscordNotifyConfig struct {
 
 // Save writes the config to the given path in YAML format.
 func Save(path string, cfg *Config) error {
-	data, err := yaml.Marshal(cfg)
+	var node yaml.Node
+	if err := node.Encode(cfg); err != nil {
+		return errors.Wrap(err, "encode config yaml")
+	}
+	// Keep ${...} references from the existing file instead of writing resolved secrets.
+	if raw, err := os.ReadFile(path); err == nil {
+		if m := templateMap(raw); len(m) > 0 {
+			restoreTemplates(&node, m)
+		}
+	}
+	data, err := yaml.Marshal(&node)
 	if err != nil {
 		return errors.Wrap(err, "marshal config yaml")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return errors.Wrap(err, "create config directory")
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return errors.Wrap(err, "write config file")
 	}
 	return nil
 }
 
 // Load reads and parses a config file at the given path.
-// All string values are expanded with os.ExpandEnv.
+// All string values are expanded; see expandString.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -348,9 +362,8 @@ func LoadWithConfD(basePath, confDDir string) (*Config, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "read base config %q", basePath)
 		}
-		expanded := os.ExpandEnv(string(data))
 		var baseMap map[string]any
-		if err := yaml.Unmarshal([]byte(expanded), &baseMap); err != nil {
+		if err := decodeExpanded(data, &baseMap); err != nil {
 			return nil, errors.Wrapf(err, "parse base config %q", basePath)
 		}
 		mergedMap = baseMap
@@ -385,9 +398,8 @@ func LoadWithConfD(basePath, confDDir string) (*Config, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "read conf.d file %q", file)
 			}
-			expanded := os.ExpandEnv(string(data))
 			var overrideMap map[string]any
-			if err := yaml.Unmarshal([]byte(expanded), &overrideMap); err != nil {
+			if err := decodeExpanded(data, &overrideMap); err != nil {
 				return nil, errors.Wrapf(err, "parse conf.d file %q", file)
 			}
 			if overrideMap != nil {
@@ -550,12 +562,10 @@ func toSlice(v any) ([]any, bool) {
 }
 
 func parse(data []byte) (*Config, error) {
-	// Expand environment variables before YAML parsing so that ${VAR} in
-	// any string value (including nested maps) is resolved at load time.
-	expanded := os.ExpandEnv(string(data))
-
+	// ${VAR} and ${keychain:name} in any string value (including nested maps) are
+	// resolved at load time, after YAML parsing.
 	var cfg Config
-	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+	if err := decodeExpanded(data, &cfg); err != nil {
 		return nil, errors.Wrap(err, "parse config yaml")
 	}
 	applyDefaults(&cfg)
