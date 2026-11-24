@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -26,7 +27,12 @@ whether it can be read from the macOS keychain on this host. Values are never pr
 		if path == "" {
 			path = config.DefaultConfigPath()
 		}
-		refs, err := config.CheckKeychainRefs(path)
+		paths := []string{path}
+		for _, ext := range []string{"yaml", "yml"} {
+			matches, _ := filepath.Glob(filepath.Join(config.DefaultConfDDir(), "*."+ext))
+			paths = append(paths, matches...)
+		}
+		refs, err := config.CheckKeychainRefs(paths...)
 		if err != nil {
 			return err
 		}
