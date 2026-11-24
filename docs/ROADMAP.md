@@ -51,7 +51,7 @@ Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
 - [ ] A2 Router and daemon restart mid-turn: no lost or duplicated messages.
 - [ ] A3 Webex smoke test for managed sessions.
 - [ ] A4 Opt-in integration tests (tag `integration`) with cheap models.
-- [ ] A5 Put live `~/.config/clara/scripts` under version control (or symlink from the repo).
+- [x] A5 Live `~/.config/clara` workflows are in their own git repo (ADR 0012); secrets resolve from the keychain.
 - Daily-driver check: all new agent sessions for a week are managed, none via tmux.
 
 ### Track B: opencode peer-client adapter (next; see ADR 0008, supersedes 0007)
