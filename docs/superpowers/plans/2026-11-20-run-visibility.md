@@ -1,6 +1,7 @@
 # Plan: After-the-Fact Visibility (Track I)
 
 Source of truth for task status. Process: `AGENTS.md` "Development Process".
+Roadmap: `docs/ROADMAP.md` (Track I; I0 is done as Track S, ADR 0012).
 Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
 
 ## Problem
@@ -91,14 +92,14 @@ Receipts require editing the live scripts, which currently have no version contr
 
 ## Phases
 
-### I0 Move workflows under version control (small, do first)
-- [ ] ADR 0012: workflows live in their own repo; clara repo contains no personal workflows.
-- [ ] Create `~/src/clara-workflows`, `.gitignore` per the exclusions above, initial commit
+### I0 Move workflows under version control (done; see ROADMAP Track S, ADR 0012)
+- [x] ADR 0012: workflows live in their own repo; clara repo contains no personal workflows.
+- [x] Create `~/src/clara-workflows`, `.gitignore` per the exclusions above, initial commit
       of current scripts/triggers (no secrets; scan before first commit).
-- [ ] Symlink or `task_dirs` wiring; confirm `clara trigger list` unchanged and the mail
+- [x] Symlink or `task_dirs` wiring; confirm `clara trigger list` unchanged and the mail
       triage schedule still runs.
-- [ ] Remove or archive `*.bak`, stale `tasks/backup`, `backup-*` dirs.
-- [ ] Mark roadmap A5 done.
+- [x] Remove or archive `*.bak`, stale `tasks/backup`, `backup-*` dirs.
+- [x] Mark roadmap A5 done.
 
 ### I1 Linked records and receipts
 - [ ] Schema migration: `event_id`, `parent_run_id`, `session_id`, `receipt`; store

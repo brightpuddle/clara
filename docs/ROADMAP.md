@@ -2,7 +2,7 @@
 
 Master index of where Clara is going and in what order. Detailed task lists live in
 `docs/superpowers/plans/`; this file is the map. Update it whenever direction changes
-(and add an ADR for any reversal). Last revised: 2026-11-16.
+(and add an ADR for any reversal). Last revised: 2026-11-24.
 
 ## Principles
 
@@ -28,14 +28,15 @@ Master index of where Clara is going and in what order. Detailed task lists live
 | `agent.*` MCP tools and bus events | `internal/builtin/agent/` |
 | `clara agent` CLI (list/new/send/tail/cancel) | `cmd/clara/agent_sessions.go`, `agent_hub.go` |
 | Discord/Webex router (client of the agent core) | `~/.config/clara/scripts/assistant/chat_router.ts`, `agent/` |
-| Daily automation scripts (mail, digest, vault) | `~/.config/clara/scripts/{mail_triage,daily_digest,vault_*}` |
+| Daily automation scripts (mail, digest, vault) | `~/.config/clara/scripts/` (own git repo, `brightpuddle/clara-workflows`; ADR 0012) |
+| Per-host config and enabled triggers | `~/.config/clara/{config.yaml,hosts/,conf.d/}`; `hosts/apply.sh` |
+| Secrets (`${keychain:op-*}`), `clara secrets check` | `internal/config/secrets.go`, `cmd/clara/secrets.go` |
 | Triggers, event bus, supervisor | `internal/trigger/`, `internal/supervisor/` |
 | Tool registry and MCP servers | `internal/registry/`, `internal/server/` |
 | Decisions / vocabulary / specs | `docs/adr/`, `docs/GLOSSARY.md`, `docs/superpowers/` |
 
-Note: scripts under `~/.config/clara/scripts` are not in this repo (mail_triage was
-partly committed under `scripts/`). Bringing the live scripts under version control is
-tracked as item A5.
+Note: live workflows are not in this repo. They live in the separate workflows repo at
+`~/.config/clara` (ADR 0012, done as A5/Track S); the clara repo holds no personal workflows.
 
 ## Tracks and order
 
@@ -43,7 +44,13 @@ tracked as item A5.
 A Stabilise agent core ─► B Terminal cockpit ─► C Daily priorities ─► D Federation ─► E Mobile ─► F Retire Discord
         (now)               (next, biggest win)    (interleaved)         (Sophia)       (iOS)
                                                                          G Lucia (parked, research)
+
+S Secrets and workflows repo (done) ─► I Run visibility ─► H Unified memory (spike)
+                                        (feeds C4 digest)    (uses I's receipts as a source)
 ```
+
+Tracks S, I and H are one workstream ("make Clara legible and context-aware"); they are
+independent of B-F and can interleave with C. Order inside it: S, then I, then H.
 
 ### Track A: Stabilise the agent core (now, small)
 Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
@@ -112,6 +119,48 @@ building one.
 Only after the opencode web or iOS client is a reliable daily driver. Discord can stay for non-agent
 notifications. The macOS native app is dropped in favour of stock opencode (ADR 0008).
 
+### Track S: Secrets and workflows repo (done 2026-11-24; ADR 0012)
+Prerequisite for I: scripts must be editable under version control and free of secrets.
+- [x] S1 `${keychain:service}` in config (resolved after YAML parse, never re-expanded;
+      missing item fails startup); `config.Save` keeps references; file mode 0600 (`9805db95`).
+- [x] S2 `clara secrets check` (also scans `conf.d/`) (`2990b3f5`).
+- [x] S3 1Password vault `Clara` is source of truth, synced to keychain as `op-<title>`;
+      `config.yaml` has no plaintext secrets (webhook secret included).
+- [x] S4 `~/.config/clara` is its own git repo (allowlist `.gitignore`, README), pushed to
+      `brightpuddle/clara-workflows`; Sophia cloned and tracking `origin`.
+- [x] S5 Per-host config: shared `config.yaml` plus `hosts/<host>.yaml` via `conf.d/host.yaml`;
+      triggers per host via `hosts/<host>.triggers` and `hosts/apply.sh`. Eve runs the
+      triggers and drives Sophia via `laptop.*`; Sophia runs none.
+- [ ] S6 Install the new clara build on Sophia (needed before any keychain refs in its host
+      file); restart Eve and Sophia daemons on the new layout and confirm.
+- [ ] S7 Reboot Eve untouched: daemon starts with all secrets (keychain unlocked, no timeout).
+- [ ] S8 Finish rotating tokens exposed in the old plaintext config; delete stale copies.
+- [ ] S9 `config.Save` should write only the host file, so `clara mcp add/remove` cannot
+      fold host settings back into the shared base.
+- Daily-driver check: `clara secrets check` clean on both hosts after a reboot.
+
+### Track I: Run visibility (plan: `docs/superpowers/plans/2026-11-20-run-visibility.md`)
+After-the-fact only: what did Clara do, and is it working as intended? Linked run records,
+per-run receipts (`run.report`), declared `expect:` blocks per trigger, `clara health`,
+`clara report`, a daily vault note and digest, later a cockpit Runs tab.
+- [ ] I1 Linked records (`event_id`, `parent_run_id`, `session_id`, `receipt`) and `run.report`;
+      adopt in `mail_triage` first.
+- [ ] I2 `expect:` in trigger schema; baselines; `clara health` (healthy/degraded/failing/silent).
+- [ ] I3 `clara report`, daily vault note, Webex/Discord digest with alerts for failing/silent.
+      Folds into C4 (daily digest).
+- [ ] I4 Cockpit Runs tab (only after I1-I3 are used).
+- Daily-driver check: for a week the digest alone says whether anything is wrong.
+
+### Track H: Unified memory (spike; plan: `docs/superpowers/plans/2026-11-20-memory-spike.md`)
+One small MCP surface (`memory.search`, `memory.get`, maybe `memory.remember`) over zk, docs,
+and notable runs. Gated: it must beat today's tools on a real question set, or it stops.
+- [ ] H0 Eval set of real questions plus baseline with today's tools; check opencode overlap.
+- [ ] H1 Keyword (FTS5) memory over zk and docs.
+- [ ] H2 Vectors (local embeddings only for work content, ADR first) and run history (uses
+      Track I receipts).
+- [ ] H3 Write-back and federation, only if H1/H2 pay off.
+- Daily-driver check: used unprompted for a week.
+
 ### Track G: Lucia (parked)
 `~/src/lucia/main`: type-safe constraints for AI-written code. Revisit once B and C
 are in daily use. Until then, keep Clara conventions explicit (this file, AGENTS.md,
@@ -119,12 +168,18 @@ ADRs) so agents are guided correctly.
 
 ## Immediate order of work
 
-1. B0 spike items, then B1 adapter, then B2 mirror check.
-2. B3 picker, A1/A5, and C1 mail triage go-live (small, high daily value).
-3. A2-A4 and D as dogfooding surfaces issues.
-4. C2-C5, then E.
+1. B0 spike items, then B1 adapter, then B2 mirror check. (Done.)
+2. B3 picker, A1/A5, and C1 mail triage go-live. (Done; Track S done alongside.)
+3. S6-S8 (finish the secrets cut-over), then I1-I2 (receipts and health), starting with
+   mail triage.
+4. H0 (eval set) can run any time; H1+ after I1 so run history has receipts.
+5. A2-A4 and D as dogfooding surfaces issues; C2-C5 (I3 folds into C4), then E.
 
 ## Decisions pending
+
+- Workflows repo and secrets: decided (ADR 0012). Open: whether the host-config split needs
+  an ADR amendment once S9 lands.
+- Embeddings for confidential (Cisco) content must be local; needs an ADR before H2.
 
 - Remote access to the opencode service: decided, Tailscale-only (ADR 0009). Sophia keeps
   the SSH tunnel because Tailscale does not work with Cisco VPN.

@@ -1,7 +1,7 @@
 # Plan: Unified Memory Spike (Track H)
 
 Source of truth for task status. Process: `AGENTS.md` "Development Process".
-Roadmap: `docs/ROADMAP.md` (add Track H once this is accepted).
+Roadmap: `docs/ROADMAP.md` (Track H; runs after Track I1 for the run source).
 Legend: `[ ]` todo, `[~]` in progress, `[x]` done (short SHA).
 
 ## Question this spike answers
