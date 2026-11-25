@@ -134,7 +134,8 @@ Prerequisite for I: scripts must be editable under version control and free of s
 - [~] S6 Rebuild and install the current clara on both hosts (installed binaries predate
       `secrets check` scanning `conf.d/` and S9), then restart both daemons on the new layout
       (Eve's daemon dates from Nov 12, Sophia's from Nov 17) and confirm.
-- [ ] S7 Reboot Eve untouched: daemon starts with all secrets (keychain unlocked, no timeout).
+- [x] S7 Reboot Eve untouched: tested. A fresh login makes the keychain ask for explicit
+      approval of the secrets; accepted (one user, host rarely reloads). See ADR 0012.
 - [ ] S8 Finish rotating tokens exposed in the old plaintext config; delete stale copies.
 - [x] S9 `clara mcp add/remove` edit only the owning YAML file (new entries go to
       `conf.d/host.yaml`); the merged config is never written back, so references, comments and

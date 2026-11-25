@@ -31,3 +31,9 @@ values, so any `clara mcp add/remove` would have re-written secrets to disk.
 - The daemon never writes the merged config back. `clara mcp add/remove` edit only the file
   that owns the entry (new entries go to the host file).
 - Roadmap A5 is satisfied.
+- After a fresh login the keychain prompts for approval of the secrets, so an unattended
+  reload is not fully resilient. Accepted: one user, the host rarely reloads, and keychain
+  plus 1Password are established frameworks. If it becomes a problem, try
+  `security set-generic-password-partition-list -S apple-tool:,apple:` in the sync script
+  (needs the login password at sync time; untested).
+
