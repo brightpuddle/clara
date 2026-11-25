@@ -79,9 +79,45 @@
         "action": {
           "$ref": "#/definitions/action",
           "description": "Execution action to invoke when the trigger fires"
+        },
+        "expect": {
+          "$ref": "#/definitions/expect",
+          "description": "What 'working' means for this trigger; judged by 'clara health'"
         }
       },
       "required": ["id", "type", "action"],
+      "additionalProperties": false
+    },
+    "expect": {
+      "type": "object",
+      "description": "Declared expectations for a trigger",
+      "properties": {
+        "max_silence": {
+          "type": "string",
+          "description": "Alert if there has been no run in this window (e.g. '90m')",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+        },
+        "max_duration": {
+          "type": "string",
+          "description": "Longest a single run should take (e.g. '60s')",
+          "pattern": "^[0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h)+$"
+        },
+        "outcomes": {
+          "type": "array",
+          "description": "Acceptable receipt outcomes; anything else is flagged",
+          "items": { "enum": ["ok", "partial", "failed", "noop"] }
+        },
+        "min_activity": {
+          "type": "object",
+          "description": "Lower bounds on receipt counts, e.g. {counts.seen: 1}",
+          "additionalProperties": { "type": "integer" }
+        },
+        "max_restarts_per_day": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Workers: restarts tolerated per 24h"
+        }
+      },
       "additionalProperties": false
     },
     "rule": {

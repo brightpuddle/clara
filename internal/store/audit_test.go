@@ -118,3 +118,24 @@ func TestGetRunTrace(t *testing.T) {
 		t.Fatalf("missing run: %v %v", none, err)
 	}
 }
+
+func TestListRunSummariesSince(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now()
+	for _, r := range []store.TriggerRunRecord{
+		{ID: "old", TriggerID: "t", TriggerType: "event", Status: "success", StartedAt: now.Add(-48 * time.Hour), FinishedAt: now},
+		{ID: "new", TriggerID: "t", TriggerType: "event", Status: "success", Stdout: "big", Receipt: `{"outcome":"ok"}`, StartedAt: now, FinishedAt: now},
+	} {
+		if err := s.RecordTriggerRun(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.ListRunSummariesSince(ctx, now.Add(-24*time.Hour))
+	if err != nil || len(got) != 1 || got[0].ID != "new" {
+		t.Fatalf("got %+v %v", got, err)
+	}
+	if got[0].Stdout != "" || got[0].Receipt == "" {
+		t.Fatalf("summary should drop stdout but keep receipt: %+v", got[0])
+	}
+}

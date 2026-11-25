@@ -21,6 +21,7 @@ import (
 	shellbuiltin "github.com/brightpuddle/clara/internal/builtin/shell"
 	"github.com/brightpuddle/clara/internal/cockpit"
 	"github.com/brightpuddle/clara/internal/config"
+	"github.com/brightpuddle/clara/internal/health"
 	"github.com/brightpuddle/clara/internal/intentlog"
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/loghub"
@@ -937,6 +938,23 @@ func buildHandler(
 				return
 			}
 			writeResp(&ipc.Response{Data: runs})
+
+		case ipc.MethodHealth:
+			window := 24 * time.Hour
+			if v, _ := req.Params["since"].(string); v != "" {
+				d, err := time.ParseDuration(v)
+				if err != nil || d <= 0 {
+					writeResp(&ipc.Response{Error: "invalid since duration: " + v})
+					return
+				}
+				window = d
+			}
+			results, err := health.Report(ctx, db, triggerMgr.List(), window, time.Now())
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Data: results})
 
 		case ipc.MethodRunGet:
 			id, _ := req.Params["id"].(string)

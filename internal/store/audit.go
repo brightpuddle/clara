@@ -135,6 +135,11 @@ const triggerRunColumns = `id, trigger_id, trigger_type, status, exit_code,
 	stdout, stderr, error, event_data, event_id, parent_run_id, session_id, receipt,
 	started_at, finished_at, duration_ms`
 
+// triggerRunSummaryColumns is triggerRunColumns without the bulky output columns.
+const triggerRunSummaryColumns = `id, trigger_id, trigger_type, status, exit_code,
+	'', '', error, '', event_id, parent_run_id, session_id, receipt,
+	started_at, finished_at, duration_ms`
+
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanTriggerRun(sc rowScanner) (TriggerRunRecord, error) {
@@ -213,6 +218,16 @@ func (s *Store) ListTriggerRuns(
 	q += ` ORDER BY started_at DESC LIMIT ?`
 	args = append(args, limit)
 	return s.queryTriggerRuns(ctx, q, args...)
+}
+
+// ListRunSummariesSince returns runs started at or after since, newest first, without
+// stdout, stderr or event data. Intended for health and report aggregation.
+func (s *Store) ListRunSummariesSince(
+	ctx context.Context, since time.Time,
+) ([]TriggerRunRecord, error) {
+	return s.queryTriggerRuns(ctx,
+		`SELECT `+triggerRunSummaryColumns+` FROM trigger_runs
+		 WHERE started_at >= ? ORDER BY started_at DESC`, since.UnixMilli())
 }
 
 // ListChildRuns returns runs started by the given parent run, oldest first.

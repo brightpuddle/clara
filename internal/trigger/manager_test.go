@@ -805,3 +805,37 @@ func TestManager_TrimsLargeEventData(t *testing.T) {
 		t.Fatalf("event data not trimmed: %d bytes", len(got.EventData))
 	}
 }
+
+func TestManager_LoadsExpectBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t.yaml")
+	yml := `triggers:
+  - id: sched
+    name: sched
+    enabled: true
+    type: schedule
+    schedule: "*/30 * * * *"
+    action: {exec: "true"}
+    expect:
+      max_silence: 90m
+      max_duration: 60s
+      outcomes: [ok, noop]
+      min_activity: {counts.seen: 1}
+`
+	if err := os.WriteFile(path, []byte(yml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr := trigger.NewManager(nil, supervisor.NewEventBus(), nil)
+	if err := mgr.LoadFromFile(path); err != nil {
+		t.Fatal(err)
+	}
+	def, ok := mgr.Get("sched")
+	if !ok || def.Expect == nil {
+		t.Fatalf("expect not loaded: %+v", def)
+	}
+	e := def.Expect
+	if e.MaxSilence != 90*time.Minute || e.MaxDuration != time.Minute ||
+		len(e.Outcomes) != 2 || e.MinActivity["counts.seen"] != 1 {
+		t.Fatalf("bad expect: %+v", e)
+	}
+}

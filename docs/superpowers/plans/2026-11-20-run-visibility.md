@@ -117,11 +117,19 @@ Receipts require editing the live scripts, which currently have no version contr
   covers run -> calls -> children only.
 
 ### I2 Expectations and health
-- [ ] `expect` in trigger schema and loader; unit tests for each verdict.
-- [ ] Baseline statistics per trigger from `trigger_runs` (median/p95 duration, error rate).
-- [ ] `clara health`; add `expect` to the current schedules, starting with mail triage.
-- Daily-driver check: a deliberately broken trigger and a deliberately paused trigger are
-  each reported correctly within one cycle.
+- [x] `expect` in trigger schema (`schemas/trigger.schema.json`) and loader: `max_silence`,
+      `max_duration`, `outcomes`, `min_activity`, `max_restarts_per_day`. Unit tests per verdict
+      (`internal/health`).
+- [x] Baseline statistics from `trigger_runs`: 14-day history (longer if `max_silence` needs
+      it) gives median duration, error rate and "usually reports a receipt". Computed on
+      demand from light run summaries (no stdout/stderr), not stored.
+- [x] `clara health [--since 24h]` (IPC `health`); `expect` added to mail triage, mail
+      sweep, satellite triage and vault inbox triage in the workflows repo.
+- [x] Daily-driver check, run against an isolated daemon: a deliberately failing trigger
+      reports `failing`, a never-run trigger with `max_silence` reports `silent`.
+- Notes: event triggers get no `max_silence` unless the source is reliably chatty (satellite
+  triage has none). `partial` is flagged by default; receipt `anomalies` degrade a trigger.
+  Verdict on a trigger with no `expect` is `unknown` unless it is failing.
 
 ### I3 Reports and delivery
 - [ ] `clara report` text output; prose templates, no LLM required.

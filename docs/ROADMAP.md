@@ -147,7 +147,7 @@ per-run receipts (`run.report`), declared `expect:` blocks per trigger, `clara h
 `clara report`, a daily vault note and digest, later a cockpit Runs tab.
 - [x] I1 Linked records (`event_id`, `parent_run_id`, `session_id`, `receipt`) and `run.report`;
       adopt in `mail_triage` first.
-- [ ] I2 `expect:` in trigger schema; baselines; `clara health` (healthy/degraded/failing/silent).
+- [x] I2 `expect:` in trigger schema; baselines; `clara health` (healthy/degraded/failing/silent).
 - [ ] I3 `clara report`, daily vault note, Webex/Discord digest with alerts for failing/silent.
       Folds into C4 (daily digest).
 - [ ] I4 Cockpit Runs tab (only after I1-I3 are used).

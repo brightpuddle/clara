@@ -46,6 +46,21 @@ type Action struct {
 	MaxRestarts  int               `json:"max_restarts,omitempty"  yaml:"max_restarts,omitempty"`
 }
 
+// Expect declares what "working" means for a trigger; Track I judges runs against it.
+type Expect struct {
+	// MaxSilence is how long the trigger may go without running before it counts as silent.
+	MaxSilence time.Duration `json:"max_silence,omitempty" yaml:"max_silence,omitempty"`
+	// MaxDuration is the longest a single run should take.
+	MaxDuration time.Duration `json:"max_duration,omitempty" yaml:"max_duration,omitempty"`
+	// Outcomes lists acceptable receipt outcomes; any other is flagged. Unset means
+	// everything except partial and failed is fine.
+	Outcomes []string `json:"outcomes,omitempty" yaml:"outcomes,omitempty"`
+	// MinActivity sets lower bounds on receipt counts, e.g. {"counts.seen": 1}.
+	MinActivity map[string]int `json:"min_activity,omitempty" yaml:"min_activity,omitempty"`
+	// MaxRestartsPerDay bounds worker restarts (each restart is a run) in 24h.
+	MaxRestartsPerDay int `json:"max_restarts_per_day,omitempty" yaml:"max_restarts_per_day,omitempty"`
+}
+
 // Definition defines a single trigger.
 type Definition struct {
 	ID          string        `json:"id"                    yaml:"id"`
@@ -59,6 +74,7 @@ type Definition struct {
 	Debounce    time.Duration `json:"debounce,omitempty"    yaml:"debounce,omitempty"`
 	Throttle    time.Duration `json:"throttle,omitempty"    yaml:"throttle,omitempty"`
 	Action      Action        `json:"action"                yaml:"action"`
+	Expect      *Expect       `json:"expect,omitempty"      yaml:"expect,omitempty"`
 }
 
 // ExecutionStatus represents the final status of a run.

@@ -36,6 +36,7 @@ const (
 	MethodTriggerRun  = "trigger.run"
 	MethodRunList     = "run.list"
 	MethodRunGet      = "run.get"
+	MethodHealth      = "health"
 	MethodToolCalls   = "tool.calls"
 	MethodTypesGen    = "types.gen"
 )
