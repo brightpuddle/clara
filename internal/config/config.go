@@ -310,31 +310,6 @@ type DiscordNotifyConfig struct {
 	ChannelID string `yaml:"channel_id"`
 }
 
-// Save writes the config to the given path in YAML format.
-func Save(path string, cfg *Config) error {
-	var node yaml.Node
-	if err := node.Encode(cfg); err != nil {
-		return errors.Wrap(err, "encode config yaml")
-	}
-	// Keep ${...} references from the existing file instead of writing resolved secrets.
-	if raw, err := os.ReadFile(path); err == nil {
-		if m := templateMap(raw); len(m) > 0 {
-			restoreTemplates(&node, m)
-		}
-	}
-	data, err := yaml.Marshal(&node)
-	if err != nil {
-		return errors.Wrap(err, "marshal config yaml")
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return errors.Wrap(err, "create config directory")
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return errors.Wrap(err, "write config file")
-	}
-	return nil
-}
-
 // Load reads and parses a config file at the given path.
 // All string values are expanded; see expandString.
 func Load(path string) (*Config, error) {

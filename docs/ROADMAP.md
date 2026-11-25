@@ -131,12 +131,14 @@ Prerequisite for I: scripts must be editable under version control and free of s
 - [x] S5 Per-host config: shared `config.yaml` plus `hosts/<host>.yaml` via `conf.d/host.yaml`;
       triggers per host via `hosts/<host>.triggers` and `hosts/apply.sh`. Eve runs the
       triggers and drives Sophia via `laptop.*`; Sophia runs none.
-- [ ] S6 Install the new clara build on Sophia (needed before any keychain refs in its host
-      file); restart Eve and Sophia daemons on the new layout and confirm.
+- [~] S6 Rebuild and install the current clara on both hosts (installed binaries predate
+      `secrets check` scanning `conf.d/` and S9), then restart both daemons on the new layout
+      (Eve's daemon dates from Nov 12, Sophia's from Nov 17) and confirm.
 - [ ] S7 Reboot Eve untouched: daemon starts with all secrets (keychain unlocked, no timeout).
 - [ ] S8 Finish rotating tokens exposed in the old plaintext config; delete stale copies.
-- [ ] S9 `config.Save` should write only the host file, so `clara mcp add/remove` cannot
-      fold host settings back into the shared base.
+- [x] S9 `clara mcp add/remove` edit only the owning YAML file (new entries go to
+      `conf.d/host.yaml`); the merged config is never written back, so references, comments and
+      the base/host split survive. `config.Save` removed.
 - Daily-driver check: `clara secrets check` clean on both hosts after a reboot.
 
 ### Track I: Run visibility (plan: `docs/superpowers/plans/2026-11-20-run-visibility.md`)

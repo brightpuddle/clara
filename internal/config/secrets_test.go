@@ -80,30 +80,3 @@ func TestLoadWithConfDExpandsKeychain(t *testing.T) {
 		t.Fatalf("got %v", cfg.Integrations["x"]["token"])
 	}
 }
-
-func TestSavePreservesKeychainReferences(t *testing.T) {
-	fakeKeychain(t, map[string]string{"op-t": "tok-value-123"})
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("integrations:\n  x:\n    token: ${keychain:op-t}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.LogLevel = "info"
-	if err := Save(path, cfg); err != nil {
-		t.Fatal(err)
-	}
-	data, _ := os.ReadFile(path)
-	if strings.Contains(string(data), "tok-value-123") {
-		t.Fatalf("secret was written to disk:\n%s", data)
-	}
-	if !strings.Contains(string(data), "${keychain:op-t}") {
-		t.Fatalf("reference lost:\n%s", data)
-	}
-	info, _ := os.Stat(path)
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
-	}
-}

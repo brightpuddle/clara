@@ -26,6 +26,8 @@ values, so any `clara mcp add/remove` would have re-written secrets to disk.
 ## Consequences
 
 - Eve must keep its login keychain unlocked (auto-login, no lock timeout).
-- Per-host config differences (e.g. `agents.host`, `laptop` MCP server) should move to an
-  untracked `conf.d/host.yaml`; not done yet.
+- Per-host config: shared `config.yaml` plus `hosts/<host>.yaml`, linked as `conf.d/host.yaml`
+  by `hosts/apply.sh`; triggers are enabled per host from `hosts/<host>.triggers`.
+- The daemon never writes the merged config back. `clara mcp add/remove` edit only the file
+  that owns the entry (new entries go to the host file).
 - Roadmap A5 is satisfied.

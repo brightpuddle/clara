@@ -114,43 +114,6 @@ func decodeExpanded(data []byte, out any) error {
 	return root.Decode(out)
 }
 
-// templateMap maps resolved values back to the reference text in the raw config, so a
-// save does not turn "${keychain:x}" into the secret itself.
-func templateMap(raw []byte) map[string]string {
-	var root yaml.Node
-	if err := yaml.Unmarshal(raw, &root); err != nil {
-		return nil
-	}
-	m := map[string]string{}
-	var walk func(*yaml.Node)
-	walk = func(n *yaml.Node) {
-		if n.Kind == yaml.ScalarNode && strings.Contains(n.Value, "${") {
-			if v, err := expandString(n.Value); err == nil && v != "" && v != n.Value {
-				m[v] = n.Value
-			}
-			return
-		}
-		for _, c := range n.Content {
-			walk(c)
-		}
-	}
-	walk(&root)
-	return m
-}
-
-func restoreTemplates(n *yaml.Node, m map[string]string) {
-	if n.Kind == yaml.ScalarNode {
-		if raw, ok := m[n.Value]; ok {
-			n.Value = raw
-			n.Style = yaml.DoubleQuotedStyle
-		}
-		return
-	}
-	for _, c := range n.Content {
-		restoreTemplates(c, m)
-	}
-}
-
 // SecretRef is a keychain reference found in a config file.
 type SecretRef struct {
 	Service string

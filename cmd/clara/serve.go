@@ -829,7 +829,7 @@ func buildHandler(
 			} else {
 				cfg.MCPServers = append(cfg.MCPServers, newSrvCfg)
 			}
-			if err := saveConfig(cfg, log); err != nil {
+			if err := persistMCPUpsert(newSrvCfg, log); err != nil {
 				writeResp(&ipc.Response{Error: "failed to save config: " + err.Error()})
 				return
 			}
@@ -867,7 +867,7 @@ func buildHandler(
 				writeResp(&ipc.Response{Error: "server " + name + " not found in config"})
 				return
 			}
-			if err := saveConfig(cfg, log); err != nil {
+			if err := persistMCPRemove(name, log); err != nil {
 				writeResp(&ipc.Response{Error: "failed to save config: " + err.Error()})
 				return
 			}
@@ -1216,15 +1216,30 @@ func isTerminalFile(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
-func saveConfig(cfg *config.Config, log zerolog.Logger) error {
-	path := cfgFile
-	if path == "" {
-		path = config.DefaultConfigPath()
+// configPaths returns the base config file and conf.d directory the daemon was loaded from.
+// An explicit --config disables conf.d, matching loadConfig.
+func configPaths() (base, confD string) {
+	if cfgFile != "" {
+		return cfgFile, ""
 	}
-	if err := config.Save(path, cfg); err != nil {
+	return config.DefaultConfigPath(), config.DefaultConfDDir()
+}
+
+func persistMCPUpsert(srv config.MCPServerConfig, log zerolog.Logger) error {
+	base, confD := configPaths()
+	if err := config.UpsertMCPServer(base, confD, srv); err != nil {
 		return err
 	}
-	log.Info().Str("path", path).Msg("configuration saved")
+	log.Info().Str("server", srv.Name).Msg("mcp server saved to config")
+	return nil
+}
+
+func persistMCPRemove(name string, log zerolog.Logger) error {
+	base, confD := configPaths()
+	if _, err := config.RemoveMCPServer(base, confD, name); err != nil {
+		return err
+	}
+	log.Info().Str("server", name).Msg("mcp server removed from config")
 	return nil
 }
 
