@@ -54,6 +54,7 @@ func init() {
 	rootCmd.AddCommand(triggerCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(healthCmd)
+	rootCmd.AddCommand(reportCmd)
 	rootCmd.AddCommand(pluginCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(statusCmd)

@@ -37,6 +37,7 @@ const (
 	MethodRunList     = "run.list"
 	MethodRunGet      = "run.get"
 	MethodHealth      = "health"
+	MethodReport      = "report"
 	MethodToolCalls   = "tool.calls"
 	MethodTypesGen    = "types.gen"
 )

@@ -341,18 +341,24 @@ type RunSource interface {
 
 const minBaselineWindow = 14 * 24 * time.Hour
 
-// Report evaluates every definition over window, sorted so the triggers needing
-// attention come first.
-func Report(
-	ctx context.Context, src RunSource, defs []trigger.Definition, window time.Duration, now time.Time,
-) ([]Result, error) {
+// HistoryWindow is how far back runs must be loaded to judge defs: the baseline
+// period, extended if any max_silence needs more.
+func HistoryWindow(defs []trigger.Definition) time.Duration {
 	history := minBaselineWindow
 	for _, d := range defs {
 		if d.Expect != nil && 2*d.Expect.MaxSilence > history {
 			history = 2 * d.Expect.MaxSilence
 		}
 	}
-	runs, err := src.ListRunSummariesSince(ctx, now.Add(-history))
+	return history
+}
+
+// Report evaluates every definition over window, sorted so the triggers needing
+// attention come first.
+func Report(
+	ctx context.Context, src RunSource, defs []trigger.Definition, window time.Duration, now time.Time,
+) ([]Result, error) {
+	runs, err := src.ListRunSummariesSince(ctx, now.Add(-HistoryWindow(defs)))
 	if err != nil {
 		return nil, err
 	}

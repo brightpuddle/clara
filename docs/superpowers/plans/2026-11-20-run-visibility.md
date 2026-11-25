@@ -132,10 +132,20 @@ Receipts require editing the live scripts, which currently have no version contr
   Verdict on a trigger with no `expect` is `unknown` unless it is failing.
 
 ### I3 Reports and delivery
-- [ ] `clara report` text output; prose templates, no LLM required.
-- [ ] Daily vault note and Webex/Discord digest with alert-on-failing/silent.
-- [ ] Optional: LLM one-paragraph "what stood out" over the structured report only (never
-      over raw logs), if the templated version feels dry.
+- [x] `clara report [--since 24h] [--trigger id] [--format text|markdown]` and the
+      `clara.report` tool (`internal/report`): templated prose, no LLM; needs-attention first,
+      then one line per trigger with window totals from receipts.
+- [x] Daily vault note and digest: `scripts/daily_report/main.ts --daily` writes
+      `Clara/Reports/clara-report-YYYY-MM-DD` via `zk.note_create` (falls back to
+      `note_update`) and sends headline plus attention list through `notify.send`.
+- [x] Alerts: `--alert` (every 15 min) messages only when a trigger newly becomes failing or
+      silent (re-alerts after 24h, announces recovery). State in
+      `~/.local/share/clara/health_alerts.json`.
+- Triggers in the workflows repo: `triggers-available/health_report.yaml` (not enabled; enable
+  per host). Verified end to end against an isolated daemon (report, dedupe, dry-run note);
+  the vault write itself is untested because the zk plugin was not in the sandbox.
+- Not done: LLM "what stood out" paragraph (optional; only if the templates feel dry), and
+  folding the existing `daily_digest` into this (C4).
 - Daily-driver check: for a week, the digest is enough to say whether anything is wrong
   without opening a tool.
 

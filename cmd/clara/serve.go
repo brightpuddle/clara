@@ -27,6 +27,7 @@ import (
 	"github.com/brightpuddle/clara/internal/loghub"
 	"github.com/brightpuddle/clara/internal/orchestrator"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/report"
 	"github.com/brightpuddle/clara/internal/server"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/supervisor"
@@ -955,6 +956,16 @@ func buildHandler(
 				return
 			}
 			writeResp(&ipc.Response{Data: results})
+
+		case ipc.MethodReport:
+			since, _ := req.Params["since"].(string)
+			trig, _ := req.Params["trigger"].(string)
+			rep, err := report.BuildFor(ctx, db, triggerMgr.List(), since, trig, time.Now())
+			if err != nil {
+				writeResp(&ipc.Response{Error: err.Error()})
+				return
+			}
+			writeResp(&ipc.Response{Data: rep.Render()})
 
 		case ipc.MethodRunGet:
 			id, _ := req.Params["id"].(string)

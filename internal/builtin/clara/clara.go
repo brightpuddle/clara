@@ -17,6 +17,7 @@ import (
 
 	"github.com/brightpuddle/clara/internal/config"
 	"github.com/brightpuddle/clara/internal/registry"
+	"github.com/brightpuddle/clara/internal/report"
 	"github.com/brightpuddle/clara/internal/store"
 	"github.com/brightpuddle/clara/internal/trigger"
 )
@@ -70,6 +71,14 @@ func Register(
 				mcp.WithString("id", mcp.Required(), mcp.Description("The execution run ID")),
 			),
 			handler: svc.handleRunGet,
+		},
+		{
+			spec: mcp.NewTool("clara.report",
+				mcp.WithDescription("Prose-first report of what Clara did and whether it is working: headline, triggers needing attention, per-trigger lines, with markdown and plain-text renderings. Also the health verdicts."),
+				mcp.WithString("since", mcp.Description("Window to cover, e.g. 24h (default), 6h, 72h")),
+				mcp.WithString("trigger", mcp.Description("Limit to one trigger ID")),
+			),
+			handler: svc.handleReport,
 		},
 		{
 			spec: mcp.NewTool("run.report",
@@ -170,6 +179,19 @@ func (s *Service) handleRunGet(ctx context.Context, args map[string]any) (any, e
 		return nil, errors.Newf("run %q not found", id)
 	}
 	return run, nil
+}
+
+func (s *Service) handleReport(ctx context.Context, args map[string]any) (any, error) {
+	if s.db == nil || s.triggerMgr == nil {
+		return nil, errors.New("audit database or trigger manager unavailable")
+	}
+	since, _ := args["since"].(string)
+	trig, _ := args["trigger"].(string)
+	rep, err := report.BuildFor(ctx, s.db, s.triggerMgr.List(), since, trig, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return rep.Render(), nil
 }
 
 func (s *Service) handleRunReport(ctx context.Context, args map[string]any) (any, error) {
