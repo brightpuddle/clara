@@ -102,13 +102,19 @@ Receipts require editing the live scripts, which currently have no version contr
 - [x] Mark roadmap A5 done.
 
 ### I1 Linked records and receipts
-- [ ] Schema migration: `event_id`, `parent_run_id`, `session_id`, `receipt`; store
-      triggering event. Tests with fixtures.
-- [ ] Propagate `CLARA_EVENT_ID` and `CLARA_PARENT_RUN_ID` to scripts; propagate run id on
-      tool calls already made by scripts (verify the HTTP/IPC paths set `RunIDContextKey`).
-- [ ] `run.report` builtin tool; mechanical fallback receipt; `clara types gen` picks it up.
-- [ ] `clara run show` prints receipt, trigger reason (event), and tool-call tree.
-- [ ] Adopt `run.report` in `mail_triage` (triage.ts, sweep.ts) as the first real receipts.
+- [x] Schema migration: `event_id`, `parent_run_id`, `session_id`, `receipt`; event data
+      trimmed to 8 KB. Tests with fixtures.
+- [x] `clara tool call` forwards `CLARA_RUN_ID` over IPC and the daemon puts it on the
+      context. Before this, `RunIDContextKey` was never set, so no script tool call was
+      linked to its run. `CLARA_PARENT_RUN_ID` is exported to child runs. HTTP/MCP callers
+      still do not carry a run id (scripts use the CLI, so nothing needs it yet).
+- [x] `run.report` builtin; mechanical fallback receipt. (`clara types gen` not yet re-run
+      on the live daemon.)
+- [x] `clara run show` prints receipt, linked ids, ordered tool calls and started runs.
+- [x] Adopted in `mail_triage` (triage.ts, sweep.ts) via `reportRun` in clara.ts and
+      `mail_triage/receipt.ts`. The engine now records per-account errors it used to swallow.
+- Not done: a persisted `trace` query from event upward (event -> trigger -> run); `run show`
+  covers run -> calls -> children only.
 
 ### I2 Expectations and health
 - [ ] `expect` in trigger schema and loader; unit tests for each verdict.

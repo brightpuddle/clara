@@ -134,12 +134,15 @@ func runToolCall(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	params := map[string]any{"name": args[0]}
+	if runID := os.Getenv("CLARA_RUN_ID"); runID != "" {
+		params["run_id"] = runID
+	}
+
 	resp, err := sendRawRequest(cfg.ControlSocketPath(), ipc.Request{
 		Method: ipc.MethodToolCall,
-		Params: map[string]any{
-			"name": args[0],
-		},
-		Args: parsedArgs,
+		Params: params,
+		Args:   parsedArgs,
 	})
 	if err != nil {
 		prettyPrint(map[string]any{"error": fmt.Sprintf("tool call request failed: %v", err)})

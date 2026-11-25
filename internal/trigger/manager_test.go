@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -751,4 +752,56 @@ func TestManager_WatchDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitRuns(2)
+}
+
+func TestManager_RecordsLinksAndMechanicalReceipt(t *testing.T) {
+	st, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	mgr := trigger.NewManager(trigger.NewRunner(5*time.Second), supervisor.NewEventBus(), st)
+	if err := mgr.Register(trigger.Definition{
+		ID: "plain", Name: "plain", Enabled: true, Type: trigger.TypeManual,
+		Action: trigger.Action{Exec: "sh", Args: []string{"-c", "true"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := mgr.Run(context.Background(), "plain", map[string]any{"id": "evt-7", "type": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := st.GetTriggerRun(context.Background(), rec.ID)
+	if err != nil || got == nil {
+		t.Fatalf("get: %v %v", got, err)
+	}
+	if got.EventID != "evt-7" {
+		t.Errorf("event id = %q", got.EventID)
+	}
+	if !strings.Contains(got.Receipt, `"mechanical":true`) {
+		t.Errorf("expected mechanical receipt, got %q", got.Receipt)
+	}
+}
+
+func TestManager_TrimsLargeEventData(t *testing.T) {
+	st, err := store.OpenMemory(zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	mgr := trigger.NewManager(trigger.NewRunner(5*time.Second), supervisor.NewEventBus(), st)
+	_ = mgr.Register(trigger.Definition{
+		ID: "plain", Name: "plain", Enabled: true, Type: trigger.TypeManual,
+		Action: trigger.Action{Exec: "sh", Args: []string{"-c", "true"}},
+	})
+	rec, _ := mgr.Run(context.Background(), "plain",
+		map[string]any{"id": "e", "data": strings.Repeat("x", 100_000)})
+	got, _ := st.GetTriggerRun(context.Background(), rec.ID)
+	if len(got.EventData) > 9_000 || !strings.Contains(got.EventData, "truncated") {
+		t.Fatalf("event data not trimmed: %d bytes", len(got.EventData))
+	}
 }

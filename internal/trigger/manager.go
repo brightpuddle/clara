@@ -2,6 +2,8 @@ package trigger
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -989,6 +991,20 @@ func (m *Manager) recordRun(ctx context.Context, r *RunRecord) {
 		return
 	}
 
+	receipt := r.Receipt
+	if receipt == nil {
+		calls, err := m.store.ListToolCalls(ctx, 1000, r.ID)
+		if err != nil {
+			log.Warn().Err(err).Str("run_id", r.ID).Msg("could not load tool calls for receipt")
+		}
+		mech := MechanicalReceipt(r, calls)
+		receipt = &mech
+	}
+	receiptJSON, err := json.Marshal(receipt)
+	if err != nil {
+		log.Warn().Err(err).Str("run_id", r.ID).Msg("could not encode receipt")
+	}
+
 	record := store.TriggerRunRecord{
 		ID:          r.ID,
 		TriggerID:   r.TriggerID,
@@ -998,7 +1014,11 @@ func (m *Manager) recordRun(ctx context.Context, r *RunRecord) {
 		Stdout:      r.Stdout,
 		Stderr:      r.Stderr,
 		Error:       r.Error,
-		EventData:   r.EventData,
+		EventData:   trimEventData(r.EventData),
+		EventID:     r.EventID,
+		ParentRunID: r.ParentRunID,
+		SessionID:   r.SessionID,
+		Receipt:     string(receiptJSON),
 		StartedAt:   r.StartedAt,
 		FinishedAt:  r.FinishedAt,
 		DurationMs:  r.DurationMs,
@@ -1007,6 +1027,22 @@ func (m *Manager) recordRun(ctx context.Context, r *RunRecord) {
 	if err := m.store.RecordTriggerRun(ctx, record); err != nil {
 		log.Error().Err(err).Str("run_id", r.ID).Msg("failed to persist trigger run audit")
 	}
+}
+
+// maxStoredEventData bounds the event payload kept in the audit DB. Events can carry
+// mail or chat bodies; the run only needs enough to explain why it fired.
+const maxStoredEventData = 8 * 1024
+
+func trimEventData(s string) string {
+	if len(s) <= maxStoredEventData {
+		return s
+	}
+	return strings.ToValidUTF8(s[:maxStoredEventData], "") + fmt.Sprintf("…[truncated, %d bytes total]", len(s))
+}
+
+// Report records a script's receipt for an active run (see run.report).
+func (m *Manager) Report(runID string, rc Receipt) error {
+	return m.runner.Report(runID, rc)
 }
 
 func matchDefinition(def Definition, eventMap map[string]any) (bool, error) {

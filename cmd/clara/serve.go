@@ -613,6 +613,10 @@ func buildHandler(
 				args = map[string]any{}
 			}
 
+			if rid, _ := req.Params["run_id"].(string); rid != "" {
+				ctx = context.WithValue(ctx, registry.RunIDContextKey, rid)
+			}
+
 			result, err := reg.Call(ctx, name, args)
 			if err != nil {
 				parts := strings.SplitN(name, ".", 2)
@@ -936,7 +940,7 @@ func buildHandler(
 
 		case ipc.MethodRunGet:
 			id, _ := req.Params["id"].(string)
-			r, err := db.GetTriggerRun(ctx, id)
+			r, err := db.GetRunTrace(ctx, id)
 			if err != nil {
 				writeResp(&ipc.Response{Error: err.Error()})
 				return

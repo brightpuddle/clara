@@ -85,4 +85,8 @@ type RunRecord struct {
 	DurationMs  int64           `json:"duration_ms"`
 	Error       string          `json:"error,omitempty"`
 	EventData   string          `json:"event_data,omitempty"`
+	EventID     string          `json:"event_id,omitempty"`
+	ParentRunID string          `json:"parent_run_id,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
+	Receipt     *Receipt        `json:"receipt,omitempty"`
 }

@@ -145,7 +145,7 @@ Prerequisite for I: scripts must be editable under version control and free of s
 After-the-fact only: what did Clara do, and is it working as intended? Linked run records,
 per-run receipts (`run.report`), declared `expect:` blocks per trigger, `clara health`,
 `clara report`, a daily vault note and digest, later a cockpit Runs tab.
-- [ ] I1 Linked records (`event_id`, `parent_run_id`, `session_id`, `receipt`) and `run.report`;
+- [x] I1 Linked records (`event_id`, `parent_run_id`, `session_id`, `receipt`) and `run.report`;
       adopt in `mail_triage` first.
 - [ ] I2 `expect:` in trigger schema; baselines; `clara health` (healthy/degraded/failing/silent).
 - [ ] I3 `clara report`, daily vault note, Webex/Discord digest with alerts for failing/silent.

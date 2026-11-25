@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/brightpuddle/clara/internal/ipc"
 	"github.com/brightpuddle/clara/internal/store"
+	"github.com/brightpuddle/clara/internal/trigger"
 	"github.com/spf13/cobra"
 )
 
@@ -91,7 +94,7 @@ var runShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		var r store.TriggerRunRecord
+		var r store.RunTrace
 		if err := json.Unmarshal(data, &r); err != nil {
 			return err
 		}
@@ -106,6 +109,9 @@ var runShowCmd = &cobra.Command{
 		if r.Error != "" {
 			fmt.Printf("Error:        %s\n", r.Error)
 		}
+		printRunLinks(r)
+		printRunReceipt(r.Receipt)
+		printRunTrace(r)
 		if r.EventData != "" {
 			fmt.Printf("\n--- Event Data ---\n%s\n", r.EventData)
 		}
@@ -175,4 +181,67 @@ func init() {
 	runCmd.AddCommand(runListCmd)
 	runCmd.AddCommand(runShowCmd)
 	runCmd.AddCommand(runToolsCmd)
+}
+
+func printRunLinks(r store.RunTrace) {
+	if r.EventID != "" {
+		fmt.Printf("Event:        %s\n", r.EventID)
+	}
+	if r.ParentRunID != "" {
+		fmt.Printf("Parent run:   %s\n", r.ParentRunID)
+	}
+	if r.SessionID != "" {
+		fmt.Printf("Agent session: %s\n", r.SessionID)
+	}
+}
+
+func printRunReceipt(raw string) {
+	if raw == "" {
+		return
+	}
+	var rc trigger.Receipt
+	if err := json.Unmarshal([]byte(raw), &rc); err != nil {
+		return
+	}
+	kind := "reported by script"
+	if rc.Mechanical {
+		kind = "mechanical: script reported none"
+	}
+	fmt.Printf("\n--- Receipt (%s) ---\n", kind)
+	fmt.Printf("Outcome:      %s\n%s\n", rc.Outcome, rc.Summary)
+	if len(rc.Counts) > 0 {
+		keys := make([]string, 0, len(rc.Counts))
+		for k := range rc.Counts {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%d", k, rc.Counts[k]))
+		}
+		fmt.Printf("Counts:       %s\n", strings.Join(parts, " "))
+	}
+	for _, a := range rc.Anomalies {
+		fmt.Printf("  ! %s\n", a)
+	}
+}
+
+func printRunTrace(r store.RunTrace) {
+	if len(r.ToolCalls) > 0 {
+		fmt.Printf("\n--- Tool calls (%d) ---\n", len(r.ToolCalls))
+		for _, c := range r.ToolCalls {
+			status := "ok"
+			if c.Error != "" {
+				status = "ERR " + c.Error
+			}
+			fmt.Printf("  %s  %-28s %5dms  %s\n",
+				c.CalledAt.Format("15:04:05.000"), c.ToolName, c.DurationMs, status)
+		}
+	}
+	if len(r.Children) > 0 {
+		fmt.Printf("\n--- Started runs ---\n")
+		for _, c := range r.Children {
+			fmt.Printf("  %s  %s  %s\n", c.ID, c.TriggerID, c.Status)
+		}
+	}
 }

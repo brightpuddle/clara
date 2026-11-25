@@ -19,6 +19,10 @@ type TriggerRunRecord struct {
 	Stderr      string    `json:"stderr"`
 	Error       string    `json:"error"`
 	EventData   string    `json:"event_data"`
+	EventID     string    `json:"event_id,omitempty"`
+	ParentRunID string    `json:"parent_run_id,omitempty"`
+	SessionID   string    `json:"session_id,omitempty"`
+	Receipt     string    `json:"receipt,omitempty"`
 	StartedAt   time.Time `json:"started_at"`
 	FinishedAt  time.Time `json:"finished_at"`
 	DurationMs  int64     `json:"duration_ms"`
@@ -87,27 +91,90 @@ func (s *Store) initAuditSchema() error {
 	if err != nil {
 		return errors.Wrap(err, "create audit schema")
 	}
-	return nil
+	return s.migrateTriggerRunLinks()
 }
 
-// RecordTriggerRun persists or updates a run record.
+// migrateTriggerRunLinks adds the Track I linkage columns to databases created
+// before they existed.
+func (s *Store) migrateTriggerRunLinks() error {
+	have := map[string]bool{}
+	rows, err := s.db.Query(`SELECT name FROM pragma_table_info('trigger_runs')`)
+	if err != nil {
+		return errors.Wrap(err, "inspect trigger_runs")
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return errors.Wrap(err, "scan trigger_runs column")
+		}
+		have[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, col := range []string{"event_id", "parent_run_id", "session_id", "receipt"} {
+		if have[col] {
+			continue
+		}
+		if _, err := s.db.Exec(
+			`ALTER TABLE trigger_runs ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`,
+		); err != nil {
+			return errors.Wrapf(err, "add trigger_runs.%s", col)
+		}
+	}
+	_, err = s.db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_trigger_runs_parent ON trigger_runs(parent_run_id)`)
+	return errors.Wrap(err, "index trigger_runs.parent_run_id")
+}
+
+const triggerRunColumns = `id, trigger_id, trigger_type, status, exit_code,
+	stdout, stderr, error, event_data, event_id, parent_run_id, session_id, receipt,
+	started_at, finished_at, duration_ms`
+
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanTriggerRun(sc rowScanner) (TriggerRunRecord, error) {
+	var r TriggerRunRecord
+	var startedAtMs, finishedAtMs int64
+	err := sc.Scan(
+		&r.ID, &r.TriggerID, &r.TriggerType, &r.Status, &r.ExitCode,
+		&r.Stdout, &r.Stderr, &r.Error, &r.EventData,
+		&r.EventID, &r.ParentRunID, &r.SessionID, &r.Receipt,
+		&startedAtMs, &finishedAtMs, &r.DurationMs,
+	)
+	r.StartedAt = time.UnixMilli(startedAtMs)
+	r.FinishedAt = time.UnixMilli(finishedAtMs)
+	return r, err
+}
+
+// RecordTriggerRun persists or updates a run record. On update, link fields and
+// receipt are only overwritten by non-empty values.
 func (s *Store) RecordTriggerRun(ctx context.Context, r TriggerRunRecord) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO trigger_runs (
-			id, trigger_id, trigger_type, status, exit_code,
-			stdout, stderr, error, event_data, started_at, finished_at, duration_ms
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO trigger_runs (`+triggerRunColumns+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			status = excluded.status,
 			exit_code = excluded.exit_code,
 			stdout = excluded.stdout,
 			stderr = excluded.stderr,
 			error = excluded.error,
+			event_id = CASE WHEN excluded.event_id != '' THEN excluded.event_id ELSE event_id END,
+			parent_run_id = CASE WHEN excluded.parent_run_id != ''
+				THEN excluded.parent_run_id ELSE parent_run_id END,
+			session_id = CASE WHEN excluded.session_id != ''
+				THEN excluded.session_id ELSE session_id END,
+			receipt = CASE WHEN excluded.receipt != '' THEN excluded.receipt ELSE receipt END,
 			finished_at = excluded.finished_at,
 			duration_ms = excluded.duration_ms
 	`,
 		r.ID, r.TriggerID, r.TriggerType, r.Status, r.ExitCode,
 		r.Stdout, r.Stderr, r.Error, r.EventData,
+		r.EventID, r.ParentRunID, r.SessionID, r.Receipt,
 		r.StartedAt.UnixMilli(), r.FinishedAt.UnixMilli(), r.DurationMs,
 	)
 	if err != nil {
@@ -118,82 +185,60 @@ func (s *Store) RecordTriggerRun(ctx context.Context, r TriggerRunRecord) error 
 
 // GetTriggerRun retrieves a single trigger run by ID.
 func (s *Store) GetTriggerRun(ctx context.Context, id string) (*TriggerRunRecord, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, trigger_id, trigger_type, status, exit_code,
-		       stdout, stderr, error, event_data, started_at, finished_at, duration_ms
-		FROM trigger_runs
-		WHERE id = ?
-	`, id)
-
-	var r TriggerRunRecord
-	var startedAtMs, finishedAtMs int64
-
-	err := row.Scan(
-		&r.ID, &r.TriggerID, &r.TriggerType, &r.Status, &r.ExitCode,
-		&r.Stdout, &r.Stderr, &r.Error, &r.EventData,
-		&startedAtMs, &finishedAtMs, &r.DurationMs,
-	)
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+triggerRunColumns+` FROM trigger_runs WHERE id = ?`, id)
+	r, err := scanTriggerRun(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, errors.Wrap(err, "get trigger run")
 	}
-
-	r.StartedAt = time.UnixMilli(startedAtMs)
-	r.FinishedAt = time.UnixMilli(finishedAtMs)
 	return &r, nil
 }
 
 // ListTriggerRuns returns recent trigger runs.
-func (s *Store) ListTriggerRuns(ctx context.Context, limit int, triggerID string) ([]TriggerRunRecord, error) {
+func (s *Store) ListTriggerRuns(
+	ctx context.Context, limit int, triggerID string,
+) ([]TriggerRunRecord, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-
-	var rows *sql.Rows
-	var err error
-
+	q := `SELECT ` + triggerRunColumns + ` FROM trigger_runs`
+	args := []any{}
 	if triggerID != "" {
-		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, trigger_id, trigger_type, status, exit_code,
-			       stdout, stderr, error, event_data, started_at, finished_at, duration_ms
-			FROM trigger_runs
-			WHERE trigger_id = ?
-			ORDER BY started_at DESC
-			LIMIT ?
-		`, triggerID, limit)
-	} else {
-		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, trigger_id, trigger_type, status, exit_code,
-			       stdout, stderr, error, event_data, started_at, finished_at, duration_ms
-			FROM trigger_runs
-			ORDER BY started_at DESC
-			LIMIT ?
-		`, limit)
+		q += ` WHERE trigger_id = ?`
+		args = append(args, triggerID)
 	}
+	q += ` ORDER BY started_at DESC LIMIT ?`
+	args = append(args, limit)
+	return s.queryTriggerRuns(ctx, q, args...)
+}
 
+// ListChildRuns returns runs started by the given parent run, oldest first.
+func (s *Store) ListChildRuns(ctx context.Context, parentID string) ([]TriggerRunRecord, error) {
+	return s.queryTriggerRuns(ctx,
+		`SELECT `+triggerRunColumns+` FROM trigger_runs
+		 WHERE parent_run_id = ? ORDER BY started_at ASC`, parentID)
+}
+
+func (s *Store) queryTriggerRuns(
+	ctx context.Context, q string, args ...any,
+) ([]TriggerRunRecord, error) {
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, errors.Wrap(err, "list trigger runs")
+		return nil, errors.Wrap(err, "query trigger runs")
 	}
 	defer rows.Close()
 
 	var records []TriggerRunRecord
 	for rows.Next() {
-		var r TriggerRunRecord
-		var startedAtMs, finishedAtMs int64
-		if err := rows.Scan(
-			&r.ID, &r.TriggerID, &r.TriggerType, &r.Status, &r.ExitCode,
-			&r.Stdout, &r.Stderr, &r.Error, &r.EventData,
-			&startedAtMs, &finishedAtMs, &r.DurationMs,
-		); err != nil {
+		r, err := scanTriggerRun(rows)
+		if err != nil {
 			return nil, errors.Wrap(err, "scan trigger run")
 		}
-		r.StartedAt = time.UnixMilli(startedAtMs)
-		r.FinishedAt = time.UnixMilli(finishedAtMs)
 		records = append(records, r)
 	}
-
 	return records, rows.Err()
 }
 
@@ -323,4 +368,34 @@ func (s *Store) ListActivitySamples(ctx context.Context, limit int, since time.T
 		records = append(records, a)
 	}
 	return records, rows.Err()
+}
+
+// RunTrace is a run with everything linked to it: its tool calls in call order
+// and the runs it started.
+type RunTrace struct {
+	TriggerRunRecord
+	ToolCalls []ToolCallRecord   `json:"tool_calls"`
+	Children  []TriggerRunRecord `json:"children"`
+}
+
+// GetRunTrace returns the run plus its tool calls and child runs, or nil if the
+// run does not exist.
+func (s *Store) GetRunTrace(ctx context.Context, id string) (*RunTrace, error) {
+	run, err := s.GetTriggerRun(ctx, id)
+	if err != nil || run == nil {
+		return nil, err
+	}
+	calls, err := s.ListToolCalls(ctx, 1000, id)
+	if err != nil {
+		return nil, err
+	}
+	// ListToolCalls is newest-first; a trace reads oldest-first.
+	for i, j := 0, len(calls)-1; i < j; i, j = i+1, j-1 {
+		calls[i], calls[j] = calls[j], calls[i]
+	}
+	kids, err := s.ListChildRuns(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &RunTrace{TriggerRunRecord: *run, ToolCalls: calls, Children: kids}, nil
 }

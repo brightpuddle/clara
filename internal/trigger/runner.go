@@ -9,17 +9,51 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 
 	"github.com/brightpuddle/clara/internal/builtin/pathutil"
+	"github.com/brightpuddle/clara/internal/registry"
 )
 
 // Runner is responsible for executing external scripts and recording output.
 type Runner struct {
 	defaultTimeout time.Duration
+
+	mu      sync.Mutex
+	pending map[string]*Receipt // receipts reported by scripts that are still running
+}
+
+// Report records a script-supplied receipt for a run that is still executing.
+// The last report for a run wins.
+func (r *Runner) Report(runID string, rc Receipt) error {
+	if err := rc.Validate(); err != nil {
+		return errors.Wrap(err, "invalid receipt")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.pending[runID]; !ok {
+		return errors.Newf("run %q is not active", runID)
+	}
+	r.pending[runID] = &rc
+	return nil
+}
+
+func (r *Runner) begin(runID string) {
+	r.mu.Lock()
+	r.pending[runID] = nil
+	r.mu.Unlock()
+}
+
+func (r *Runner) finish(runID string) *Receipt {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rc := r.pending[runID]
+	delete(r.pending, runID)
+	return rc
 }
 
 // NewRunner creates a new script execution runner.
@@ -29,6 +63,7 @@ func NewRunner(defaultTimeout time.Duration) *Runner {
 	}
 	return &Runner{
 		defaultTimeout: defaultTimeout,
+		pending:        map[string]*Receipt{},
 	}
 }
 
@@ -53,6 +88,18 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 		Status:      StatusRunning,
 		StartedAt:   startedAt,
 	}
+	// A run started from inside another run (e.g. a script calling clara.trigger_run)
+	// carries the caller's run id on the context.
+	record.ParentRunID, _ = ctx.Value(registry.RunIDContextKey).(string)
+	r.begin(runID)
+	defer func() {
+		if rc := r.finish(runID); rc != nil {
+			record.Receipt = rc
+			if rc.SessionID != "" {
+				record.SessionID = rc.SessionID
+			}
+		}
+	}()
 
 	// Serialize event data
 	var eventJSON []byte
@@ -115,6 +162,10 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 		fmt.Sprintf("CLARA_TRIGGER_ID=%s", def.ID),
 		fmt.Sprintf("CLARA_TRIGGER_TYPE=%s", def.Type),
 	)
+	record.EventID = eventID
+	if record.ParentRunID != "" {
+		env = append(env, fmt.Sprintf("CLARA_PARENT_RUN_ID=%s", record.ParentRunID))
+	}
 	if eventID != "" {
 		env = append(env, fmt.Sprintf("CLARA_EVENT_ID=%s", eventID))
 	}

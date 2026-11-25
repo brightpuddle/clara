@@ -50,6 +50,7 @@ func Register(
 	}
 
 	reg.RegisterNamespaceDescription("clara", description)
+	reg.RegisterNamespaceDescription("run", "Receipts for supervised script runs.")
 
 	tools := []struct {
 		spec    mcp.Tool
@@ -69,6 +70,18 @@ func Register(
 				mcp.WithString("id", mcp.Required(), mcp.Description("The execution run ID")),
 			),
 			handler: svc.handleRunGet,
+		},
+		{
+			spec: mcp.NewTool("run.report",
+				mcp.WithDescription("Report the receipt for the calling run: what the script did, in one or two sentences, with counts and anything unusual. Call once at the end of a script; uses CLARA_RUN_ID automatically when invoked from a supervised script."),
+				mcp.WithString("outcome", mcp.Required(), mcp.Description("One of: ok, partial, failed, noop (ran, nothing to do)")),
+				mcp.WithString("summary", mcp.Required(), mcp.Description("Human-readable account of what happened")),
+				mcp.WithObject("counts", mcp.Description("Named integer counters, e.g. {\"seen\":14,\"filed\":9}")),
+				mcp.WithArray("anomalies", mcp.Description("Things that were unusual or need attention"), mcp.WithStringItems()),
+				mcp.WithString("session_id", mcp.Description("Agent session started by this run, if any")),
+				mcp.WithString("run_id", mcp.Description("Run to report for (default: the calling run)")),
+			),
+			handler: svc.handleRunReport,
 		},
 		{
 			spec: mcp.NewTool("clara.triggers_list",
@@ -157,6 +170,46 @@ func (s *Service) handleRunGet(ctx context.Context, args map[string]any) (any, e
 		return nil, errors.Newf("run %q not found", id)
 	}
 	return run, nil
+}
+
+func (s *Service) handleRunReport(ctx context.Context, args map[string]any) (any, error) {
+	if s.triggerMgr == nil {
+		return nil, errors.New("trigger manager unavailable")
+	}
+	runID, _ := args["run_id"].(string)
+	if runID == "" {
+		runID, _ = ctx.Value(registry.RunIDContextKey).(string)
+	}
+	if runID == "" {
+		return nil, errors.New("no run id: call from a supervised script or pass run_id")
+	}
+
+	rc := trigger.Receipt{}
+	rc.Outcome, _ = args["outcome"].(string)
+	rc.Summary, _ = args["summary"].(string)
+	rc.SessionID, _ = args["session_id"].(string)
+	if counts, ok := args["counts"].(map[string]any); ok {
+		rc.Counts = make(map[string]int, len(counts))
+		for k, v := range counts {
+			f, ok := v.(float64)
+			if !ok {
+				return nil, errors.Newf("counts.%s must be a number", k)
+			}
+			rc.Counts[k] = int(f)
+		}
+	}
+	if list, ok := args["anomalies"].([]any); ok {
+		for _, a := range list {
+			if str, ok := a.(string); ok && str != "" {
+				rc.Anomalies = append(rc.Anomalies, str)
+			}
+		}
+	}
+
+	if err := s.triggerMgr.Report(runID, rc); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "run_id": runID}, nil
 }
 
 func (s *Service) handleTriggersList(_ context.Context, _ map[string]any) (any, error) {
