@@ -23,7 +23,7 @@ Master index of where Clara is going and in what order. Detailed task lists live
 ## Code map (where is the logic?)
 
 | Concern | Location |
-|---|---|
+| --- | --- |
 | Agent core: ACP adapters, session runner, prompt queue, host log, hub | `internal/agents/` |
 | `agent.*` MCP tools and bus events | `internal/builtin/agent/` |
 | `clara agent` CLI (list/new/send/tail/cancel) | `cmd/clara/agent_sessions.go`, `agent_hub.go` |
@@ -53,7 +53,9 @@ Tracks S, I and H are one workstream ("make Clara legible and context-aware"); t
 independent of B-F and can interleave with C. Order inside it: S, then I, then H.
 
 ### Track A: Stabilise the agent core (now, small)
+
 Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
+
 - [x] A1 Dropped with B4 (agy support removed).
 - [ ] A2 Router and daemon restart mid-turn: no lost or duplicated messages.
 - [ ] A3 Webex smoke test for managed sessions.
@@ -62,8 +64,10 @@ Stage 1 is merged and dogfooded on Eve. Finish the rough edges as they bite.
 - Daily-driver check: all new agent sessions for a week are managed, none via tmux.
 
 ### Track B: opencode peer-client adapter (next; see ADR 0008, supersedes 0007)
+
 The desk client is stock `opencode attach` (Neovim via `ctrl-x e`). Clara does not
 build a conversation TUI. Clara is a peer client of the opencode service.
+
 - [x] B0 Close spike items (see spike doc, B0 findings): endpoint/auth discovery from Go, remote access auth
       (Tailscale-only vs `serve` auth), forms across service restart, log endpoint
       stability.
@@ -85,8 +89,10 @@ build a conversation TUI. Clara is a peer client of the opencode service.
   stay in sync without tmux scraping.
 
 ### Track C: Daily priorities automation (interleaved with B)
+
 Original goal: automatically handle incoming priorities (mail, Webex, reminders,
 calendar).
+
 - [x] C1 Mail triage: live execution with 116+ deterministic YAML rules + AI semantic
       fall-through; dynamic rule learning; Sophia satellite routing for Cisco Exchange;
       Apple Reminders creation with deep `message://` links and deduplication; running on schedule
@@ -98,14 +104,17 @@ calendar).
 - Daily-driver check: morning digest is read and acted on for a week.
 
 ### Track D: Federation (Stage 2 of the agent plan)
+
 Sophia runs the same core; Eve's hub aggregates. Mostly built; needs live testing
 over the tunnel and sleep/wake validation. Surfaces in the B3 picker as multi-host rows.
 
 ### Track E: Mobile (revised 2026-11-09; ADR 0009, ADR 0010)
+
 The opencode web UI is the mobile client. Verified on Eve (service plus `opencode pair`):
 it organises sessions and projects the way we want. Clara does not build a PWA, a native
 app or the `/v1` client API for now. Wait for the official opencode iOS app rather than
 building one.
+
 - [x] E1 Install Tailscale on Eve (key expiry off, no sleep, unattended recovery) and
       expose the service with `tailscale serve`. Pair the phone and add to Home Screen.
 - [x] E2 Notifications: Discord/Webex attention pings carry deep links into the web UI.
@@ -116,11 +125,14 @@ building one.
 - Daily-driver check: a week of triaging and answering agent sessions from the phone.
 
 ### Track F: Retire Discord/Webex for agent sessions (Stage 5)
+
 Only after the opencode web or iOS client is a reliable daily driver. Discord can stay for non-agent
 notifications. The macOS native app is dropped in favour of stock opencode (ADR 0008).
 
 ### Track S: Secrets and workflows repo (done 2026-11-24; ADR 0012)
+
 Prerequisite for I: scripts must be editable under version control and free of secrets.
+
 - [x] S1 `${keychain:service}` in config (resolved after YAML parse, never re-expanded;
       missing item fails startup); `config.Save` keeps references; file mode 0600 (`9805db95`).
 - [x] S2 `clara secrets check` (also scans `conf.d/`) (`2990b3f5`).
@@ -143,9 +155,11 @@ Prerequisite for I: scripts must be editable under version control and free of s
 - Daily-driver check: `clara secrets check` clean on both hosts after a reboot.
 
 ### Track I: Run visibility (plan: `docs/superpowers/plans/2026-11-20-run-visibility.md`)
+
 After-the-fact only: what did Clara do, and is it working as intended? Linked run records,
 per-run receipts (`run.report`), declared `expect:` blocks per trigger, `clara health`,
 `clara report`, a daily vault note and digest, later a cockpit Runs tab.
+
 - [x] I1 Linked records (`event_id`, `parent_run_id`, `session_id`, `receipt`) and `run.report`;
       adopt in `mail_triage` first.
 - [x] I2 `expect:` in trigger schema; baselines; `clara health` (healthy/degraded/failing/silent).
@@ -155,8 +169,10 @@ per-run receipts (`run.report`), declared `expect:` blocks per trigger, `clara h
 - Daily-driver check: for a week the digest alone says whether anything is wrong.
 
 ### Track H: Unified memory (spike; plan: `docs/superpowers/plans/2026-11-20-memory-spike.md`)
+
 One small MCP surface (`memory.search`, `memory.get`, maybe `memory.remember`) over zk, docs,
 and notable runs. Gated: it must beat today's tools on a real question set, or it stops.
+
 - [ ] H0 Eval set of real questions plus baseline with today's tools; check opencode overlap.
 - [ ] H1 Keyword (FTS5) memory over zk and docs.
 - [ ] H2 Vectors (local embeddings only for work content, ADR first) and run history (uses
@@ -165,6 +181,7 @@ and notable runs. Gated: it must beat today's tools on a real question set, or i
 - Daily-driver check: used unprompted for a week.
 
 ### Track G: Lucia (parked)
+
 `~/src/lucia/main`: type-safe constraints for AI-written code. Revisit once B and C
 are in daily use. Until then, keep Clara conventions explicit (this file, AGENTS.md,
 ADRs) so agents are guided correctly.
