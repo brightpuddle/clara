@@ -41,7 +41,7 @@ components:
   agents-hub:        { in: internal/agents/hub }
   agents-manager:    { in: internal/agents/manager }
   cockpit:      { in: internal/cockpit }
-  builtin:      { in: [internal/builtin, internal/builtin/agent, internal/builtin/clara, internal/builtin/db, internal/builtin/fs, internal/builtin/notify, internal/builtin/shell] }
+  builtin:      { in: [internal/builtin, internal/builtin/agent, internal/builtin/db, internal/builtin/fs, internal/builtin/notify, internal/builtin/shell] }
   trigger:      { in: internal/trigger }
   health:       { in: internal/health }
   report:       { in: internal/report }
@@ -56,6 +56,7 @@ components:
   store:        { in: internal/store }
   loghub:       { in: internal/loghub }
   ringbuf:      { in: internal/ringbuf }
+  builtin-clara: { in: internal/builtin/clara }
   pathutil:     { in: internal/builtin/pathutil }
   ipc:          { in: internal/ipc }
   intentlog:    { in: internal/intentlog }
@@ -101,7 +102,7 @@ deps:
   agents-manager:
     mayDependOn: [agents, agents-adapter, agents-log, agents-opencode, agents-projection, agents-runner]
   cli:
-    mayDependOn: [agents, agents-hub, agents-manager, agents-opencode, auth, builtin, cockpit, config, health, ipc, loghub, orchestrator, registry, report, server, store, supervisor, telemetry, trigger, typestub, rootembed]
+    mayDependOn: [agents, agents-hub, agents-manager, agents-opencode, auth, builtin, builtin-clara, cockpit, config, health, ipc, loghub, orchestrator, registry, report, server, store, supervisor, telemetry, trigger, typestub, rootembed]
     anyVendorDeps: true
   int-discord:
     mayDependOn: [contract, int-discordapi]
@@ -117,8 +118,11 @@ deps:
   cockpit:
     mayDependOn: [agents]
   builtin:
-    mayDependOn: [agents, agents-adapter, agents-hub, agents-manager, agents-opencode, agents-projection, registry, config, store, supervisor,
-      report, trigger] # TODO(arch-debt): builtin/clara imports report+trigger; invert via interfaces
+    mayDependOn: [agents, agents-adapter, agents-hub, agents-manager, agents-opencode, agents-projection, registry, config, store, supervisor]
+  builtin-clara:
+    # builtin/clara is the daemon's self-introspection facade (runs, triggers, reports),
+    # so it legitimately sits above the trigger/report services.
+    mayDependOn: [config, registry, report, store, trigger]
   trigger:
     mayDependOn: [registry, store, supervisor]
   health:
