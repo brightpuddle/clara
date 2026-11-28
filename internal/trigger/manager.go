@@ -1040,6 +1040,9 @@ func trimEventData(s string) string {
 	return strings.ToValidUTF8(s[:maxStoredEventData], "") + fmt.Sprintf("…[truncated, %d bytes total]", len(s))
 }
 
+// ActiveRuns reports, per trigger id, when its oldest in-flight run started.
+func (m *Manager) ActiveRuns() map[string]time.Time { return m.runner.Active() }
+
 // Report records a script's receipt for an active run (see run.report).
 func (m *Manager) Report(runID string, rc Receipt) error {
 	return m.runner.Report(runID, rc)

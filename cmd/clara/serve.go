@@ -955,7 +955,7 @@ func buildHandler(
 				}
 				window = d
 			}
-			results, err := health.Report(ctx, db, triggerMgr.List(), window, time.Now())
+			results, err := health.Report(ctx, db, triggerMgr.List(), window, time.Now(), triggerMgr.ActiveRuns())
 			if err != nil {
 				writeResp(&ipc.Response{Error: err.Error()})
 				return
@@ -965,7 +965,7 @@ func buildHandler(
 		case ipc.MethodReport:
 			since, _ := req.Params["since"].(string)
 			trig, _ := req.Params["trigger"].(string)
-			rep, err := report.BuildFor(ctx, db, triggerMgr.List(), since, trig, time.Now())
+			rep, err := report.BuildFor(ctx, db, triggerMgr.List(), since, trig, time.Now(), triggerMgr.ActiveRuns())
 			if err != nil {
 				writeResp(&ipc.Response{Error: err.Error()})
 				return

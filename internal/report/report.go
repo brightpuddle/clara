@@ -35,7 +35,7 @@ type Report struct {
 // Build evaluates every definition over window and aggregates receipts.
 func Build(
 	ctx context.Context, src health.RunSource, defs []trigger.Definition,
-	window time.Duration, now time.Time,
+	window time.Duration, now time.Time, active map[string]time.Time,
 ) (*Report, error) {
 	runs, err := src.ListRunSummariesSince(ctx, now.Add(-health.HistoryWindow(defs)))
 	if err != nil {
@@ -49,7 +49,13 @@ func Build(
 	rep := &Report{Window: window, Until: now}
 	for _, d := range defs {
 		hist := byTrigger[d.ID]
-		line := TriggerLine{Result: health.Evaluate(d, hist, now, window), Totals: map[string]int{}}
+		var since *time.Time
+		if t, ok := active[d.ID]; ok {
+			since = &t
+		}
+		line := TriggerLine{
+			Result: health.EvaluateActive(d, hist, now, window, since), Totals: map[string]int{},
+		}
 		for _, r := range hist {
 			if now.Sub(r.StartedAt) > window {
 				continue
@@ -256,13 +262,13 @@ func ParseWindow(s string) (time.Duration, error) {
 // BuildFor builds the report and optionally narrows it to one trigger.
 func BuildFor(
 	ctx context.Context, src health.RunSource, defs []trigger.Definition,
-	since, triggerID string, now time.Time,
+	since, triggerID string, now time.Time, active map[string]time.Time,
 ) (*Report, error) {
 	window, err := ParseWindow(since)
 	if err != nil {
 		return nil, err
 	}
-	r, err := Build(ctx, src, defs, window, now)
+	r, err := Build(ctx, src, defs, window, now, active)
 	if err != nil {
 		return nil, err
 	}

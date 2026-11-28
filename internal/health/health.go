@@ -54,6 +54,8 @@ type Result struct {
 const (
 	minBaselineRuns = 5
 	slowFactor      = 2.0
+	// minSlowDelta keeps sub-second jitter from reading as "slower than usual".
+	minSlowDelta = 2 * time.Second
 )
 
 // Evaluate judges def. runs may include history older than window; it is used as
@@ -61,9 +63,25 @@ const (
 func Evaluate(
 	def trigger.Definition, runs []store.TriggerRunRecord, now time.Time, window time.Duration,
 ) Result {
+	return EvaluateActive(def, runs, now, window, nil)
+}
+
+// EvaluateActive is Evaluate for a trigger that may be running right now (activeSince is
+// when its oldest in-flight run started, nil if none). A worker only gets a run record when
+// it exits, so a worker that is up must not be judged by the failure that preceded it.
+func EvaluateActive(
+	def trigger.Definition, runs []store.TriggerRunRecord, now time.Time, window time.Duration,
+	activeSince *time.Time,
+) Result {
 	res := Result{TriggerID: def.ID, Name: def.Name, Verdict: Healthy}
 
-	sorted := append([]store.TriggerRunRecord(nil), runs...)
+	// Runs the supervisor stopped (shutdown, reload) say nothing about the script.
+	var sorted []store.TriggerRunRecord
+	for _, r := range runs {
+		if r.Status != string(trigger.StatusCancelled) {
+			sorted = append(sorted, r)
+		}
+	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].StartedAt.After(sorted[j].StartedAt) })
 
 	var recent, base []store.TriggerRunRecord
@@ -91,6 +109,15 @@ func Evaluate(
 		return finish(res, Unknown, "disabled")
 	}
 	exp := def.Expect
+
+	if def.Type == trigger.TypeWorker && activeSince != nil {
+		if exp != nil {
+			if issues := restartIssues(def, exp, sorted, now); len(issues) > 0 {
+				return finish(res, Degraded, strings.Join(issues, "; "))
+			}
+		}
+		return finish(res, Healthy, "running for "+short(now.Sub(*activeSince)))
+	}
 
 	// Silence is judged on all history: the last run may be outside the window.
 	if exp != nil && exp.MaxSilence > 0 {
@@ -208,7 +235,7 @@ func durationIssues(exp *trigger.Expect, recent, base []store.TriggerRunRecord) 
 	}
 	if len(base) >= minBaselineRuns {
 		bm, rm := median(durations(base)), median(durations(recent))
-		if bm > 0 && rm > bm*slowFactor {
+		if bm > 0 && rm > bm*slowFactor && rm-bm >= minSlowDelta {
 			out = append(out, fmt.Sprintf("slower than usual: median %s vs %s", short(rm), short(bm)))
 		}
 	}
@@ -316,7 +343,9 @@ func median(ds []time.Duration) time.Duration {
 }
 
 func short(d time.Duration) string {
-	d = d.Round(time.Second)
+	if d >= time.Second {
+		d = d.Round(time.Second)
+	}
 	switch {
 	case d >= time.Hour:
 		h, m := int(d.Hours()), int(d.Minutes())%60
@@ -330,6 +359,9 @@ func short(d time.Duration) string {
 			return fmt.Sprintf("%dm", m)
 		}
 		return fmt.Sprintf("%dm%ds", m, s)
+	}
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
 	}
 	return fmt.Sprintf("%ds", int(d.Seconds()))
 }
@@ -357,6 +389,7 @@ func HistoryWindow(defs []trigger.Definition) time.Duration {
 // attention come first.
 func Report(
 	ctx context.Context, src RunSource, defs []trigger.Definition, window time.Duration, now time.Time,
+	active map[string]time.Time,
 ) ([]Result, error) {
 	runs, err := src.ListRunSummariesSince(ctx, now.Add(-HistoryWindow(defs)))
 	if err != nil {
@@ -369,7 +402,11 @@ func Report(
 
 	out := make([]Result, 0, len(defs))
 	for _, d := range defs {
-		out = append(out, Evaluate(d, byTrigger[d.ID], now, window))
+		var since *time.Time
+		if t, ok := active[d.ID]; ok {
+			since = &t
+		}
+		out = append(out, EvaluateActive(d, byTrigger[d.ID], now, window, since))
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if ri, rj := out[i].Verdict.Rank(), out[j].Verdict.Rank(); ri != rj {

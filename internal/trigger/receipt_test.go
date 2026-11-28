@@ -118,3 +118,36 @@ func writeFile(t *testing.T, p string) {
 		t.Fatal(err)
 	}
 }
+
+func TestRunner_CancelledByParentContext(t *testing.T) {
+	runner := trigger.NewRunner(5 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	def := trigger.Definition{ID: "t", Type: trigger.TypeWorker,
+		Action: trigger.Action{Exec: "sh", Args: []string{"-c", "sleep 30"}}}
+	go func() { time.Sleep(200 * time.Millisecond); cancel() }()
+	rec := runner.Execute(ctx, def, nil)
+	if rec.Status != trigger.StatusCancelled {
+		t.Fatalf("status = %s, want cancelled", rec.Status)
+	}
+}
+
+func TestRunner_ActiveListsRunningRuns(t *testing.T) {
+	runner := trigger.NewRunner(5 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	def := trigger.Definition{ID: "w", Type: trigger.TypeWorker,
+		Action: trigger.Action{Exec: "sh", Args: []string{"-c", "sleep 30"}}}
+	done := make(chan struct{})
+	go func() { runner.Execute(ctx, def, nil); close(done) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && runner.Active()["w"].IsZero() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if runner.Active()["w"].IsZero() {
+		t.Fatal("worker not reported active")
+	}
+	cancel()
+	<-done
+	if !runner.Active()["w"].IsZero() {
+		t.Fatal("worker still active after exit")
+	}
+}

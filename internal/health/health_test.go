@@ -182,11 +182,44 @@ func TestReportSortsAttentionFirst(t *testing.T) {
 	}
 	got, err := health.Report(context.Background(),
 		fakeSource{mk("a-good"), mk("z-bad", failed())},
-		[]trigger.Definition{good, bad}, 24*time.Hour, now)
+		[]trigger.Definition{good, bad}, 24*time.Hour, now, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got[0].TriggerID != "z-bad" || got[0].Verdict != health.Failing || got[1].Verdict != health.Healthy {
 		t.Fatalf("unexpected order: %+v", got)
+	}
+}
+
+func TestSubSecondDurationsAreNotSlower(t *testing.T) {
+	d := sched(&trigger.Expect{})
+	runs := []store.TriggerRunRecord{run(time.Hour, dur(300))}
+	for i := 2; i <= 8; i++ {
+		runs = append(runs, run(time.Duration(i)*24*time.Hour/2*3, dur(100)))
+	}
+	if r := eval(d, runs...); r.Verdict == health.Degraded {
+		t.Fatalf("sub-second jitter flagged: %s", r.Evidence)
+	}
+}
+
+func TestCancelledRunsAreNotFailures(t *testing.T) {
+	d := sched(&trigger.Expect{})
+	cancelled := func() opt { return func(r *store.TriggerRunRecord) { r.Status = "cancelled"; r.ExitCode = -1 } }
+	r := eval(d, run(time.Minute, cancelled()), run(time.Hour))
+	if r.Verdict != health.Healthy || r.Failures != 0 {
+		t.Fatalf("cancelled counted as failure: %+v", r)
+	}
+}
+
+func TestRunningWorkerIsHealthyDespiteOldFailure(t *testing.T) {
+	d := trigger.Definition{ID: "t", Name: "T", Enabled: true, Type: trigger.TypeWorker, Expect: &trigger.Expect{}}
+	old := []store.TriggerRunRecord{run(12*time.Hour, failed())}
+	since := now.Add(-11 * time.Hour)
+	r := health.EvaluateActive(d, old, now, 24*time.Hour, &since)
+	if r.Verdict != health.Healthy || !strings.Contains(r.Evidence, "running") {
+		t.Fatalf("running worker: %s (%s)", r.Verdict, r.Evidence)
+	}
+	if r2 := health.EvaluateActive(d, old, now, 24*time.Hour, nil); r2.Verdict != health.Failing {
+		t.Fatalf("stopped worker with a failed last run should fail, got %s", r2.Verdict)
 	}
 }

@@ -84,7 +84,9 @@ const (
 	StatusSuccess ExecutionStatus = "success"
 	StatusFailure ExecutionStatus = "failure"
 	StatusTimeout ExecutionStatus = "timeout"
-	StatusRunning ExecutionStatus = "running"
+	// StatusCancelled means the supervisor stopped the run (shutdown, reload); not a failure.
+	StatusCancelled ExecutionStatus = "cancelled"
+	StatusRunning   ExecutionStatus = "running"
 )
 
 // RunRecord represents a single execution audit entry.

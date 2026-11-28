@@ -187,7 +187,7 @@ func (s *Service) handleReport(ctx context.Context, args map[string]any) (any, e
 	}
 	since, _ := args["since"].(string)
 	trig, _ := args["trigger"].(string)
-	rep, err := report.BuildFor(ctx, s.db, s.triggerMgr.List(), since, trig, time.Now())
+	rep, err := report.BuildFor(ctx, s.db, s.triggerMgr.List(), since, trig, time.Now(), s.triggerMgr.ActiveRuns())
 	if err != nil {
 		return nil, err
 	}

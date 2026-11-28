@@ -24,7 +24,26 @@ type Runner struct {
 	defaultTimeout time.Duration
 
 	mu      sync.Mutex
-	pending map[string]*Receipt // receipts reported by scripts that are still running
+	pending map[string]*Receipt  // receipts reported by scripts that are still running
+	active  map[string]activeRun // runs in flight, by run id
+}
+
+type activeRun struct {
+	triggerID string
+	startedAt time.Time
+}
+
+// Active returns, per trigger id, when its oldest in-flight run started.
+func (r *Runner) Active() map[string]time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]time.Time, len(r.active))
+	for _, a := range r.active {
+		if cur, ok := out[a.triggerID]; !ok || a.startedAt.Before(cur) {
+			out[a.triggerID] = a.startedAt
+		}
+	}
+	return out
 }
 
 // Report records a script-supplied receipt for a run that is still executing.
@@ -42,8 +61,9 @@ func (r *Runner) Report(runID string, rc Receipt) error {
 	return nil
 }
 
-func (r *Runner) begin(runID string) {
+func (r *Runner) begin(runID, triggerID string, at time.Time) {
 	r.mu.Lock()
+	r.active[runID] = activeRun{triggerID: triggerID, startedAt: at}
 	r.pending[runID] = nil
 	r.mu.Unlock()
 }
@@ -53,6 +73,7 @@ func (r *Runner) finish(runID string) *Receipt {
 	defer r.mu.Unlock()
 	rc := r.pending[runID]
 	delete(r.pending, runID)
+	delete(r.active, runID)
 	return rc
 }
 
@@ -64,6 +85,7 @@ func NewRunner(defaultTimeout time.Duration) *Runner {
 	return &Runner{
 		defaultTimeout: defaultTimeout,
 		pending:        map[string]*Receipt{},
+		active:         map[string]activeRun{},
 	}
 }
 
@@ -91,7 +113,7 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 	// A run started from inside another run (e.g. a script calling clara.trigger_run)
 	// carries the caller's run id on the context.
 	record.ParentRunID, _ = ctx.Value(registry.RunIDContextKey).(string)
-	r.begin(runID)
+	r.begin(runID, def.ID, startedAt)
 	defer func() {
 		if rc := r.finish(runID); rc != nil {
 			record.Receipt = rc
@@ -205,6 +227,9 @@ func (r *Runner) Execute(ctx context.Context, def Definition, eventData any) *Ru
 		if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 			record.Status = StatusTimeout
 			record.Error = fmt.Sprintf("execution timed out after %s", timeout)
+		} else if ctx.Err() != nil {
+			record.Status = StatusCancelled
+			record.Error = "stopped by supervisor"
 		} else {
 			record.Status = StatusFailure
 			record.Error = err.Error()

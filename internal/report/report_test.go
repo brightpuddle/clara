@@ -48,7 +48,7 @@ func build(t *testing.T) *report.Report {
 		run("sweep", 5*time.Minute, "failure", ""),
 		// "quiet" has never run.
 	}
-	r, err := report.Build(context.Background(), runs, defs(), 24*time.Hour, now)
+	r, err := report.Build(context.Background(), runs, defs(), 24*time.Hour, now, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestMarkdownAndText(t *testing.T) {
 
 func TestAllHealthyHeadline(t *testing.T) {
 	runs := src{run("mail", time.Minute, "success", `{"outcome":"ok","summary":"x"}`)}
-	r, _ := report.Build(context.Background(), runs, defs()[:1], 24*time.Hour, now)
+	r, _ := report.Build(context.Background(), runs, defs()[:1], 24*time.Hour, now, nil)
 	if r.Headline() == "" || len(r.NeedsAttention()) != 0 || !strings.Contains(r.Markdown(), "Nothing needs attention") {
 		t.Fatalf("unexpected: %q\n%s", r.Headline(), r.Markdown())
 	}

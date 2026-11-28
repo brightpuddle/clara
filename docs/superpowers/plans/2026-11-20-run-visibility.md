@@ -131,6 +131,17 @@ Receipts require editing the live scripts, which currently have no version contr
   triage has none). `partial` is flagged by default; receipt `anomalies` degrade a trigger.
   Verdict on a trigger with no `expect` is `unknown` unless it is failing.
 
+### I2.1 Health false positives (found in first week of use)
+- [x] Sub-second duration jitter no longer reads as "slower than usual" (needs a 2s delta).
+- [x] `cancelled` run status for supervisor-stopped runs (shutdown/reload); not a failure, and
+      ignored by health.
+- [x] Workers only get a run record when they exit, so a healthy long-lived worker looked
+      like "last run failed". The runner now tracks in-flight runs and health reports a
+      running worker as healthy ("running for 11h").
+- [x] Mail triage: when every account fails only via the remote Sophia path, the receipt is
+      `noop` with an anomaly ("remote mail unreachable, likely zero trust/VPN"), so it shows
+      as degraded with an explanation, not failing and paging.
+
 ### I3 Reports and delivery
 - [x] `clara report [--since 24h] [--trigger id] [--format text|markdown]` and the
       `clara.report` tool (`internal/report`): templated prose, no LLM; needs-attention first,
