@@ -1,0 +1,141 @@
+version: 3
+workdir: .
+exclude:
+  - .delta
+  - .meta
+  - .agents
+  - bin
+  - build
+  - clara
+  - examples
+  - scripts
+  - swift
+  - extension
+  - editors
+  - proto
+  - schemas
+  - docs
+excludeFiles:
+  - "^.*_test\\.go$"
+allow:
+  depOnAnyVendor: true
+  # deepScan flags composition-root DI (cmd/clara passing concrete types into
+  # internal constructors) as the callee depending on the caller. Disabled.
+  deepScan: false
+
+# Target layering (top depends on bottom):
+#   cmd (outside workdir, not linted)
+#   builtin    tool providers
+#   services   trigger, health, report, telemetry, auth, server, typestub, cockpit
+#   runtime    supervisor, orchestrator
+#   platform   registry, config, store, loghub, ringbuf, ipc, ...
+#   agents     self-contained agent core
+
+components:
+  agents:       { in: internal/agents }
+  agents-log:   { in: internal/agents/log }
+  agents-adapter:    { in: internal/agents/adapter }
+  agents-opencode:   { in: internal/agents/opencode }
+  agents-projection: { in: internal/agents/projection }
+  agents-runner:     { in: internal/agents/runner }
+  agents-hub:        { in: internal/agents/hub }
+  agents-manager:    { in: internal/agents/manager }
+  cockpit:      { in: internal/cockpit }
+  builtin:      { in: [internal/builtin, internal/builtin/agent, internal/builtin/clara, internal/builtin/db, internal/builtin/fs, internal/builtin/notify, internal/builtin/shell] }
+  trigger:      { in: internal/trigger }
+  health:       { in: internal/health }
+  report:       { in: internal/report }
+  telemetry:    { in: internal/telemetry }
+  auth:         { in: internal/auth }
+  server:       { in: internal/server }
+  typestub:     { in: internal/typestub }
+  supervisor:   { in: internal/supervisor }
+  orchestrator: { in: internal/orchestrator }
+  registry:     { in: internal/registry }
+  config:       { in: internal/config }
+  store:        { in: internal/store }
+  loghub:       { in: internal/loghub }
+  ringbuf:      { in: internal/ringbuf }
+  pathutil:     { in: internal/builtin/pathutil }
+  ipc:          { in: internal/ipc }
+  intentlog:    { in: internal/intentlog }
+  search:       { in: internal/search }
+  theme:        { in: internal/theme }
+  toolcatalog:  { in: internal/toolcatalog }
+  sdk:          { in: pkg/sdk }
+  contract:     { in: pkg/contract/** }
+  cli:          { in: cmd/clara }
+  integrations: { in: [cmd/integrations/zk, cmd/integrations/llm, cmd/integrations/web, cmd/integrations/chrome, cmd/integrations/task, cmd/integrations/tmux] }
+  int-discord:  { in: cmd/integrations/discord }
+  int-discordapi: { in: cmd/integrations/discord/internal/discordapi }
+  int-webex:    { in: cmd/integrations/webex }
+  int-webexapi: { in: cmd/integrations/webex/internal/webexapi }
+  rootembed:    { in: . }
+
+commonComponents:
+  - ringbuf
+  - pathutil
+  - sdk
+  - contract
+  - ipc
+  - intentlog
+  - search
+  - theme
+  - toolcatalog
+
+deps:
+  agents:
+    anyVendorDeps: true
+  agents-log:
+    mayDependOn: [agents]
+  agents-adapter:
+    mayDependOn: [agents]
+  agents-opencode:
+    mayDependOn: [agents]
+  agents-hub:
+    mayDependOn: [agents]
+  agents-projection:
+    mayDependOn: [agents, agents-log]
+  agents-runner:
+    mayDependOn: [agents, agents-adapter, agents-log, agents-projection]
+  agents-manager:
+    mayDependOn: [agents, agents-adapter, agents-log, agents-opencode, agents-projection, agents-runner]
+  cli:
+    mayDependOn: [agents, agents-hub, agents-manager, agents-opencode, auth, builtin, cockpit, config, health, ipc, loghub, orchestrator, registry, report, server, store, supervisor, telemetry, trigger, typestub, rootembed]
+    anyVendorDeps: true
+  int-discord:
+    mayDependOn: [contract, int-discordapi]
+  int-webex:
+    mayDependOn: [contract, int-webexapi]
+  int-discordapi:
+    anyVendorDeps: true
+  int-webexapi:
+    anyVendorDeps: true
+  integrations:
+    mayDependOn: [contract, rootembed]
+    anyVendorDeps: true
+  cockpit:
+    mayDependOn: [agents]
+  builtin:
+    mayDependOn: [agents, agents-adapter, agents-hub, agents-manager, agents-opencode, agents-projection, registry, config, store, supervisor,
+      report, trigger] # TODO(arch-debt): builtin/clara imports report+trigger; invert via interfaces
+  trigger:
+    mayDependOn: [registry, store, supervisor]
+  health:
+    mayDependOn: [store, trigger]
+  report:
+    mayDependOn: [health, store, trigger]
+  telemetry:
+    mayDependOn: [store, supervisor]
+  auth:
+    mayDependOn: [store]
+  config:
+    mayDependOn: [trigger] # TODO(arch-debt): config imports trigger types; move shared types down
+  server:
+    mayDependOn: [config, registry]
+  typestub:
+    mayDependOn: [registry]
+  supervisor:
+    mayDependOn: [loghub, orchestrator, registry]
+  registry:
+    mayDependOn: [store]

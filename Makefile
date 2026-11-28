@@ -1,4 +1,4 @@
-.PHONY: build test vet lint proto fmt bridge clean install install-clara install-skills install-hooks uninstall sign-cert setup check-deps
+.PHONY: build test vet lint arch proto fmt bridge clean install install-clara install-skills install-hooks uninstall sign-cert setup check-deps
 
 GOLINES_FLAGS := -m 100 --base-formatter goimports
 BRIDGE_APP_DIR := /usr/local/libexec/ClaraBridge.app
@@ -90,6 +90,9 @@ vet:
 ## lint: run staticcheck
 lint:
 	staticcheck ./...
+
+arch:
+	go-arch-lint check
 
 ## fmt: format all Go code with golines + goimports
 fmt:
