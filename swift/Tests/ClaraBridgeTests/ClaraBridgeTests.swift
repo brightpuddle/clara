@@ -54,4 +54,19 @@ final class ClaraBridgeTests: XCTestCase {
         XCTAssertTrue(toolNames.contains("photos_album_assets"))
         XCTAssertTrue(toolNames.contains("photos_album_hashes"))
     }
+
+    func testMailListInboxScriptCompilesWithAndWithoutAccount() {
+        let tools = BridgeTools()
+        let cases: [(String?, Bool)] = [(nil, true), (nil, false), ("Google", true), ("Google", false)]
+        for (account, unread) in cases {
+            let source = tools.mailListInboxScript(accountName: account, limit: 5, unreadOnly: unread)
+            guard let script = NSAppleScript(source: "with timeout of 30 seconds\n\(source)\nend timeout") else {
+                XCTFail("could not create script for account=\(account ?? "nil") unread=\(unread)")
+                continue
+            }
+            var error: NSDictionary?
+            script.compileAndReturnError(&error)
+            XCTAssertNil(error, "compile failed for account=\(account ?? "nil") unread=\(unread): \(String(describing: error))")
+        }
+    }
 }

@@ -1343,7 +1343,14 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         let limit = optionalInt(args, "limit") ?? 50
         let accountName = optionalString(args, "account_name")
         let unreadOnly = optionalBool(args, "unread") ?? false
-        
+        let script = mailListInboxScript(accountName: accountName, limit: limit, unreadOnly: unreadOnly)
+        return try executeAppleScript(script, timeout: 120) as? [[String: Any]] ?? []
+    }
+
+    /// Builds the AppleScript for mail_list_inbox. Swift multi-line string literals carry no
+    /// trailing newline, so every fragment must end with an explicit "\n" or it fuses with the next
+    /// one ("end tryif ...") and fails to compile.
+    func mailListInboxScript(accountName: String?, limit: Int, unreadOnly: Bool) -> String {
         var script = "tell application \"Mail\"\n"
         if let accountName = accountName, !accountName.isEmpty {
             script += """
@@ -1362,6 +1369,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
                 on error
                     set theInbox to inbox
                 end try
+
             """
         } else {
             script += "    set theInbox to inbox\n"
@@ -1398,7 +1406,7 @@ final class BridgeTools: NSObject, UNUserNotificationCenterDelegate, @unchecked 
         end tell
         """
 
-        return try executeAppleScript(script, timeout: 120) as? [[String: Any]] ?? []
+        return script
     }
 
     private func mailGetMessage(_ args: [String: Any]) async throws -> [String: Any] {
