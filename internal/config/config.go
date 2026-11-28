@@ -15,7 +15,6 @@ import (
 	"github.com/google/shlex"
 	"gopkg.in/yaml.v3"
 
-	"github.com/brightpuddle/clara/internal/trigger"
 )
 
 // DefaultConfigPath returns the default config file path.
@@ -67,8 +66,9 @@ type Config struct {
 	// running binary's directory.
 	BuilderRepoRoot string `yaml:"builder_repo_root"`
 
-	// Triggers is the list of trigger definitions configured inline in config.yaml.
-	Triggers []trigger.Definition `yaml:"triggers"`
+	// Triggers holds raw inline trigger definitions from config.yaml. They are decoded
+	// into trigger.Definition by the caller so config does not depend on the trigger package.
+	Triggers []yaml.Node `yaml:"triggers"`
 
 	// TriggerDirs overrides the default directories where trigger .yaml files are loaded.
 	// When non-empty, the default (~/.config/clara/triggers) is not used unless explicitly listed.

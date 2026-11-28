@@ -265,7 +265,12 @@ func runDaemon(ctx context.Context, logger zerolog.Logger) error {
 
 	triggerRunner := trigger.NewRunner(60 * time.Second)
 	triggerMgr := trigger.NewManager(triggerRunner, sup.EventBus(), db)
-	for _, t := range cfg.Triggers {
+	for i := range cfg.Triggers {
+		var t trigger.Definition
+		if err := cfg.Triggers[i].Decode(&t); err != nil {
+			logger.Warn().Err(err).Int("index", i).Msg("failed to decode inline trigger")
+			continue
+		}
 		if err := triggerMgr.Register(t); err != nil {
 			logger.Warn().Err(err).Str("trigger", t.ID).Msg("failed to register inline trigger")
 		}

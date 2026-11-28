@@ -321,12 +321,24 @@ trigger_dirs:
 	if len(cfg.Triggers) != 2 {
 		t.Fatalf("Triggers len: got %d want 2", len(cfg.Triggers))
 	}
-	if cfg.Triggers[0].ID != "t1" || cfg.Triggers[0].Name != "Updated Trigger 1" ||
-		cfg.Triggers[0].Action.Exec != "lua base.lua" {
-		t.Errorf("Triggers[0] not properly merged: %+v", cfg.Triggers[0])
+	var trig [2]struct {
+		ID     string `yaml:"id"`
+		Name   string `yaml:"name"`
+		Action struct {
+			Exec string `yaml:"exec"`
+		} `yaml:"action"`
 	}
-	if cfg.Triggers[1].ID != "t2" || cfg.Triggers[1].Name != "New Trigger 2" {
-		t.Errorf("Triggers[1] not properly appended: %+v", cfg.Triggers[1])
+	for i := range trig {
+		if err := cfg.Triggers[i].Decode(&trig[i]); err != nil {
+			t.Fatalf("decode trigger %d: %v", i, err)
+		}
+	}
+	if trig[0].ID != "t1" || trig[0].Name != "Updated Trigger 1" ||
+		trig[0].Action.Exec != "lua base.lua" {
+		t.Errorf("Triggers[0] not properly merged: %+v", trig[0])
+	}
+	if trig[1].ID != "t2" || trig[1].Name != "New Trigger 2" {
+		t.Errorf("Triggers[1] not properly appended: %+v", trig[1])
 	}
 
 	// 5. Primitive slice append for trigger_dirs:

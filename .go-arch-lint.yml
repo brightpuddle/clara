@@ -129,8 +129,6 @@ deps:
     mayDependOn: [store, supervisor]
   auth:
     mayDependOn: [store]
-  config:
-    mayDependOn: [trigger] # TODO(arch-debt): config imports trigger types; move shared types down
   server:
     mayDependOn: [config, registry]
   typestub:
